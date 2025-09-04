@@ -1,0 +1,29 @@
+{
+  "name": "tauri-plugin-typegen",
+  "version": "0.1.0",
+  "description": "TypeScript bindings for tauri-plugin-typegen",
+  "main": "index.ts",
+  "types": "index.ts",
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "tauri",
+    "plugin",
+    "typescript",
+    "codegen",
+    "typegen"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "@tauri-apps/api": "^2.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "files": [
+    "index.ts",
+    "dist/"
+  ]
+}
