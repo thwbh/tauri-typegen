@@ -5,6 +5,7 @@ use std::fs;
 pub struct TypeScriptGenerator {
     validation_library: String,
     custom_types: HashSet<String>,
+    known_structs: HashMap<String, StructInfo>,
 }
 
 impl TypeScriptGenerator {
@@ -12,6 +13,7 @@ impl TypeScriptGenerator {
         Self {
             validation_library: validation_library.unwrap_or_else(|| "zod".to_string()),
             custom_types: HashSet::new(),
+            known_structs: HashMap::new(),
         }
     }
 
@@ -22,6 +24,9 @@ impl TypeScriptGenerator {
         output_path: &str,
     ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
         let mut generated_files = Vec::new();
+
+        // Store known structs for schema generation
+        self.known_structs = discovered_structs.clone();
 
         // Collect all custom types
         self.collect_custom_types(commands);
@@ -64,7 +69,7 @@ impl TypeScriptGenerator {
                     self.custom_types.insert(param.typescript_type.clone());
                 }
             }
-            
+
             // Collect type from return type
             if self.is_custom_type(&command.return_type) {
                 self.custom_types.insert(command.return_type.clone());
@@ -75,7 +80,7 @@ impl TypeScriptGenerator {
     fn generate_types_file(
         &self,
         commands: &[CommandInfo],
-        discovered_structs: &HashMap<String, StructInfo>
+        discovered_structs: &HashMap<String, StructInfo>,
     ) -> Result<String, Box<dyn std::error::Error>> {
         let mut content = String::new();
 
@@ -96,8 +101,14 @@ impl TypeScriptGenerator {
             self.collect_referenced_types(&command.return_type, &mut used_types);
         }
 
-        // Generate interfaces only for types that are actually used
-        for type_name in &used_types {
+        // Generate interfaces for all discovered types (both used and nested)
+        let mut all_types: HashSet<String> = used_types.clone();
+        
+        // Add nested types that are referenced by the used types
+        // This ensures we generate types that are used transitively
+        self.discover_nested_dependencies(&used_types, discovered_structs, &mut all_types);
+        
+        for type_name in &all_types {
             if let Some(struct_info) = discovered_structs.get(type_name) {
                 if struct_info.is_enum {
                     content.push_str(&self.generate_enum_type(struct_info));
@@ -122,12 +133,19 @@ impl TypeScriptGenerator {
 
     // Helper method to recursively collect referenced types
     pub fn collect_referenced_types(&self, rust_type: &str, used_types: &mut HashSet<String>) {
-        // Handle Result<T, E> - extract T
+        let rust_type = rust_type.trim();
+        
+        // Handle Result<T, E> - extract both T and E
         if rust_type.starts_with("Result<") {
-            if let Some(inner) = rust_type.strip_prefix("Result<").and_then(|s| s.strip_suffix(">")) {
-                let parts: Vec<&str> = inner.split(',').map(|s| s.trim()).collect();
-                if let Some(ok_type) = parts.first() {
+            if let Some(inner) = rust_type
+                .strip_prefix("Result<")
+                .and_then(|s| s.strip_suffix(">"))
+            {
+                if let Some(comma_pos) = inner.find(',') {
+                    let ok_type = inner[..comma_pos].trim();
+                    let err_type = inner[comma_pos + 1..].trim();
                     self.collect_referenced_types(ok_type, used_types);
+                    self.collect_referenced_types(err_type, used_types);
                 }
             }
             return;
@@ -135,16 +153,60 @@ impl TypeScriptGenerator {
 
         // Handle Option<T> - extract T
         if rust_type.starts_with("Option<") {
-            if let Some(inner) = rust_type.strip_prefix("Option<").and_then(|s| s.strip_suffix(">")) {
-                self.collect_referenced_types(inner, used_types);
+            if let Some(inner) = rust_type
+                .strip_prefix("Option<")
+                .and_then(|s| s.strip_suffix(">"))
+            {
+                self.collect_referenced_types(inner.trim(), used_types);
             }
             return;
         }
 
         // Handle Vec<T> - extract T
         if rust_type.starts_with("Vec<") {
-            if let Some(inner) = rust_type.strip_prefix("Vec<").and_then(|s| s.strip_suffix(">")) {
-                self.collect_referenced_types(inner, used_types);
+            if let Some(inner) = rust_type
+                .strip_prefix("Vec<")
+                .and_then(|s| s.strip_suffix(">"))
+            {
+                self.collect_referenced_types(inner.trim(), used_types);
+            }
+            return;
+        }
+        
+        // Handle HashMap<K, V> and BTreeMap<K, V> - extract K and V
+        if rust_type.starts_with("HashMap<") || rust_type.starts_with("BTreeMap<") {
+            let prefix = if rust_type.starts_with("HashMap<") { "HashMap<" } else { "BTreeMap<" };
+            if let Some(inner) = rust_type
+                .strip_prefix(prefix)
+                .and_then(|s| s.strip_suffix(">"))
+            {
+                if let Some(comma_pos) = inner.find(',') {
+                    let key_type = inner[..comma_pos].trim();
+                    let value_type = inner[comma_pos + 1..].trim();
+                    self.collect_referenced_types(key_type, used_types);
+                    self.collect_referenced_types(value_type, used_types);
+                }
+            }
+            return;
+        }
+        
+        // Handle HashSet<T> and BTreeSet<T> - extract T
+        if rust_type.starts_with("HashSet<") || rust_type.starts_with("BTreeSet<") {
+            let prefix = if rust_type.starts_with("HashSet<") { "HashSet<" } else { "BTreeSet<" };
+            if let Some(inner) = rust_type
+                .strip_prefix(prefix)
+                .and_then(|s| s.strip_suffix(">"))
+            {
+                self.collect_referenced_types(inner.trim(), used_types);
+            }
+            return;
+        }
+        
+        // Handle tuple types like (T, U, V)
+        if rust_type.starts_with('(') && rust_type.ends_with(')') && rust_type != "()" {
+            let inner = &rust_type[1..rust_type.len()-1];
+            for part in inner.split(',') {
+                self.collect_referenced_types(part.trim(), used_types);
             }
             return;
         }
@@ -157,50 +219,74 @@ impl TypeScriptGenerator {
         }
 
         // Skip primitive types
-        if matches!(rust_type,
-        "String" | "str" | "i32" | "i64" | "f32" | "f64" | "bool" |
-        "usize" | "isize" | "u32" | "u64" | "()" | "u8" | "i8" | "u16" | "i16"
-    ) {
+        if matches!(
+            rust_type,
+            "String"
+                | "str"
+                | "i32"
+                | "i64"
+                | "f32"
+                | "f64"
+                | "bool"
+                | "usize"
+                | "isize"
+                | "u32"
+                | "u64"
+                | "()"
+                | "u8"
+                | "i8"
+                | "u16"
+                | "i16"
+                | "u128"
+                | "i128"
+        ) {
             return;
         }
 
         // This is a custom type - add it to the set
-        used_types.insert(rust_type.to_string());
+        if !rust_type.is_empty() && rust_type.chars().next().map_or(false, char::is_alphabetic) {
+            used_types.insert(rust_type.to_string());
+        }
     }
 
     fn generate_interface_type(&self, struct_info: &StructInfo) -> String {
         let mut content = String::new();
-        
+
         content.push_str(&format!("export interface {} {{\n", struct_info.name));
-        
+
         for field in &struct_info.fields {
             if field.is_public {
                 let optional_marker = if field.is_optional { "?" } else { "" };
                 let field_name = self.to_camel_case(&field.name);
-                content.push_str(&format!("  {}{}: {};\n", field_name, optional_marker, field.typescript_type));
+                content.push_str(&format!(
+                    "  {}{}: {};\n",
+                    field_name, optional_marker, field.typescript_type
+                ));
             }
         }
-        
+
         content.push_str("}\n");
         content
     }
 
     fn generate_enum_type(&self, struct_info: &StructInfo) -> String {
         let mut content = String::new();
-        
+
         // For now, represent enums as union types
         content.push_str(&format!("export type {} = ", struct_info.name));
-        
-        let variants: Vec<String> = struct_info.fields.iter()
+
+        let variants: Vec<String> = struct_info
+            .fields
+            .iter()
             .map(|field| format!("\"{}\"", field.name))
             .collect();
-        
+
         if variants.is_empty() {
             content.push_str("never");
         } else {
             content.push_str(&variants.join(" | "));
         }
-        
+
         content.push_str(";\n");
         content
     }
@@ -208,18 +294,24 @@ impl TypeScriptGenerator {
     fn generate_params_interface(&self, command: &CommandInfo) -> String {
         let interface_name = format!("{}Params", self.to_pascal_case(&command.name));
         let mut content = format!("export interface {} {{\n", interface_name);
-        
+
         for param in &command.parameters {
             let optional_marker = if param.is_optional { "?" } else { "" };
             let param_name = self.to_camel_case(&param.name);
-            content.push_str(&format!("  {}{}: {};\n", param_name, optional_marker, param.typescript_type));
+            content.push_str(&format!(
+                "  {}{}: {};\n",
+                param_name, optional_marker, param.typescript_type
+            ));
         }
-        
+
         content.push_str("}\n");
         content
     }
 
-    fn generate_validation_schemas(&self, commands: &[CommandInfo]) -> Result<String, Box<dyn std::error::Error>> {
+    fn generate_validation_schemas(
+        &self,
+        commands: &[CommandInfo],
+    ) -> Result<String, Box<dyn std::error::Error>> {
         let mut content = String::new();
 
         content.push_str(&format!(
@@ -229,7 +321,7 @@ impl TypeScriptGenerator {
         match self.validation_library.as_str() {
             "zod" => {
                 content.push_str("import { z } from 'zod';\n\n");
-                
+
                 for command in commands {
                     if !command.parameters.is_empty() {
                         let schema = self.generate_zod_schema(command);
@@ -240,7 +332,7 @@ impl TypeScriptGenerator {
             }
             "yup" => {
                 content.push_str("import * as yup from 'yup';\n\n");
-                
+
                 for command in commands {
                     if !command.parameters.is_empty() {
                         let schema = self.generate_yup_schema(command);
@@ -258,14 +350,17 @@ impl TypeScriptGenerator {
     fn generate_zod_schema(&self, command: &CommandInfo) -> String {
         let schema_name = format!("{}ParamsSchema", self.to_pascal_case(&command.name));
         let mut content = format!("export const {} = z.object({{\n", schema_name);
-        
+
         for param in &command.parameters {
             let param_name = self.to_camel_case(&param.name);
             let zod_type = self.typescript_to_zod_type(&param.typescript_type);
             let optional_suffix = if param.is_optional { ".optional()" } else { "" };
-            content.push_str(&format!("  {}: {}{},\n", param_name, zod_type, optional_suffix));
+            content.push_str(&format!(
+                "  {}: {}{},\n",
+                param_name, zod_type, optional_suffix
+            ));
         }
-        
+
         content.push_str("});\n");
         content
     }
@@ -273,18 +368,21 @@ impl TypeScriptGenerator {
     fn generate_yup_schema(&self, command: &CommandInfo) -> String {
         let schema_name = format!("{}ParamsSchema", self.to_pascal_case(&command.name));
         let mut content = format!("export const {} = yup.object({{\n", schema_name);
-        
+
         for param in &command.parameters {
             let param_name = self.to_camel_case(&param.name);
             let yup_type = self.typescript_to_yup_type(&param.typescript_type);
             content.push_str(&format!("  {}: {},\n", param_name, yup_type));
         }
-        
+
         content.push_str("});\n");
         content
     }
 
-    fn generate_command_bindings(&self, commands: &[CommandInfo]) -> Result<String, Box<dyn std::error::Error>> {
+    fn generate_command_bindings(
+        &self,
+        commands: &[CommandInfo],
+    ) -> Result<String, Box<dyn std::error::Error>> {
         let mut content = String::new();
 
         content.push_str(&format!(
@@ -292,11 +390,11 @@ impl TypeScriptGenerator {
         ));
 
         content.push_str("import { invoke } from '@tauri-apps/api/core';\n");
-        
+
         if self.validation_library != "none" {
             content.push_str("import * as schemas from './schemas';\n");
         }
-        
+
         content.push_str("import type * as types from './types';\n\n");
 
         for command in commands {
@@ -310,63 +408,89 @@ impl TypeScriptGenerator {
 
     fn generate_command_binding(&self, command: &CommandInfo) -> String {
         let function_name = self.to_camel_case(&command.name);
-        let return_type = &command.return_type;
-        
+        let return_type = self.format_return_type(&command.return_type);
+
         let mut content = String::new();
-        
+
         if command.parameters.is_empty() {
             // No parameters
             content.push_str(&format!(
                 "export async function {}(): Promise<{}> {{\n  return invoke('{}');\n}}\n",
-                function_name,
-                return_type,
-                command.name
+                function_name, return_type, command.name
             ));
         } else {
             // Has parameters
             let params_type = format!("types.{}Params", self.to_pascal_case(&command.name));
-            
+
             content.push_str(&format!(
                 "export async function {}(params: {}): Promise<{}> {{\n",
-                function_name,
-                params_type,
-                return_type
+                function_name, params_type, return_type
             ));
-            
+
             if self.validation_library != "none" {
-                let schema_name = format!("schemas.{}ParamsSchema", self.to_pascal_case(&command.name));
+                let schema_name =
+                    format!("schemas.{}ParamsSchema", self.to_pascal_case(&command.name));
                 content.push_str(&format!(
                     "  const validatedParams = {}.parse(params);\n  return invoke('{}', validatedParams);\n",
                     schema_name,
                     command.name
                 ));
             } else {
-                content.push_str(&format!(
-                    "  return invoke('{}', params);\n",
-                    command.name
-                ));
+                content.push_str(&format!("  return invoke('{}', params);\n", command.name));
             }
-            
+
             content.push_str("}\n");
         }
-        
+
         content
     }
-
-    fn generate_index_file(&self, generated_files: &[String]) -> Result<String, Box<dyn std::error::Error>> {
-        let mut content = String::new();
+    
+    fn format_return_type(&self, return_type: &str) -> String {
+        // If it's a primitive type, return as-is
+        if matches!(
+            return_type,
+            "string" | "number" | "boolean" | "void" | "any" | "unknown" | "null" | "undefined"
+        ) {
+            return return_type.to_string();
+        }
         
+        // If it ends with [] (array), handle the inner type
+        if return_type.ends_with("[]") {
+            let inner_type = &return_type[..return_type.len() - 2];
+            let formatted_inner = self.format_return_type(inner_type);
+            return format!("{}[]", formatted_inner);
+        }
+        
+        // If it contains | (union type), handle each part
+        if return_type.contains(" | ") {
+            let parts: Vec<String> = return_type
+                .split(" | ")
+                .map(|part| self.format_return_type(part.trim()))
+                .collect();
+            return parts.join(" | ");
+        }
+        
+        // Otherwise, it's a custom type - prefix with types.
+        format!("types.{}", return_type)
+    }
+
+    fn generate_index_file(
+        &self,
+        generated_files: &[String],
+    ) -> Result<String, Box<dyn std::error::Error>> {
+        let mut content = String::new();
+
         content.push_str(&format!(
             "/**\n * Auto-generated TypeScript bindings for Tauri commands\n * Generated by tauri-plugin-typegen\n * Do not edit manually - regenerate using: cargo tauri-typegen generate\n */\n\n"
         ));
-        
+
         for file in generated_files {
             if file != "index.ts" {
                 let module_name = file.strip_suffix(".ts").unwrap_or(file);
                 content.push_str(&format!("export * from './{}';\n", module_name));
             }
         }
-        
+
         Ok(content)
     }
 
@@ -391,23 +515,132 @@ impl TypeScriptGenerator {
         }
     }
 
+    fn generate_zod_object_schema_for_struct(&self, struct_info: &StructInfo) -> String {
+        if struct_info.fields.is_empty() {
+            return "z.object({})".to_string();
+        }
+        
+        let mut field_schemas = Vec::new();
+        for field in &struct_info.fields {
+            let field_name = &field.name;
+            let field_type_schema = self.typescript_to_zod_type(&field.typescript_type);
+            
+            let optional_suffix = if field.is_optional {
+                ".optional()"
+            } else {
+                ""
+            };
+            
+            field_schemas.push(format!("  {}: {}{}", field_name, field_type_schema, optional_suffix));
+        }
+        
+        format!("z.object({{\n{}\n}})", field_schemas.join(",\n"))
+    }
+
+    fn discover_nested_dependencies(
+        &self,
+        initial_types: &HashSet<String>,
+        discovered_structs: &HashMap<String, StructInfo>,
+        all_types: &mut HashSet<String>
+    ) {
+        let mut to_process: Vec<String> = initial_types.iter().cloned().collect();
+        let mut processed: HashSet<String> = HashSet::new();
+        
+        while let Some(type_name) = to_process.pop() {
+            if processed.contains(&type_name) {
+                continue;
+            }
+            processed.insert(type_name.clone());
+            
+            if let Some(struct_info) = discovered_structs.get(&type_name) {
+                for field in &struct_info.fields {
+                    let mut nested_types = HashSet::new();
+                    self.collect_referenced_types(&field.typescript_type, &mut nested_types);
+                    
+                    for nested_type in nested_types {
+                        if !all_types.contains(&nested_type) && discovered_structs.contains_key(&nested_type) {
+                            all_types.insert(nested_type.clone());
+                            to_process.push(nested_type);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     pub fn typescript_to_zod_type(&self, ts_type: &str) -> String {
+        // Handle arrays first (before nullable check)
+        if ts_type.ends_with("[]") {
+            let item_type = &ts_type[..ts_type.len() - 2];
+            // Remove parentheses if they exist around the item type
+            let item_type = if item_type.starts_with('(') && item_type.ends_with(')') {
+                &item_type[1..item_type.len()-1]
+            } else {
+                item_type
+            };
+            return format!("z.array({})", self.typescript_to_zod_type(item_type));
+        }
+        
+        // Handle tuple types [T, U, V] - BEFORE nullable types
+        if ts_type.starts_with('[') && ts_type.ends_with(']') {
+            // Check if this is a nullable tuple (entire tuple is nullable)
+            if ts_type.ends_with("] | null") {
+                // This is handled by the nullable check below
+            } else {
+                // This is a regular tuple, possibly with nullable elements inside
+                let inner = &ts_type[1..ts_type.len()-1];
+                let types: Vec<String> = inner
+                    .split(',')
+                    .map(|part| self.typescript_to_zod_type(part.trim()))
+                    .collect();
+                return format!("z.tuple([{}])", types.join(", "));
+            }
+        }
+        
+        // Handle nullable types
         if ts_type.contains(" | null") {
             let base_type = ts_type.replace(" | null", "");
             return format!("{}.nullable()", self.typescript_to_zod_type(&base_type));
         }
         
-        if ts_type.ends_with("[]") {
-            let item_type = &ts_type[..ts_type.len() - 2];
-            return format!("z.array({})", self.typescript_to_zod_type(item_type));
+        // Handle Record<K, V> types (from HashMap/BTreeMap)
+        if ts_type.starts_with("Record<") {
+            if let Some(inner) = ts_type.strip_prefix("Record<").and_then(|s| s.strip_suffix(">")) {
+                if let Some(comma_pos) = inner.find(',') {
+                    let key_type = inner[..comma_pos].trim();
+                    let value_type = inner[comma_pos + 1..].trim();
+                    let key_schema = self.typescript_to_zod_type(key_type);
+                    let value_schema = self.typescript_to_zod_type(value_type);
+                    return format!("z.record({}, {})", key_schema, value_schema);
+                }
+            }
+            return "z.record(z.string(), z.any())".to_string();
         }
-        
+
         match ts_type {
             "string" => "z.string()".to_string(),
             "number" => "z.number()".to_string(),
             "boolean" => "z.boolean()".to_string(),
             "void" => "z.void()".to_string(),
-            _ => "z.any()".to_string(), // Custom types
+            _ => {
+                // For custom types, check if we know the struct definition
+                if let Some(struct_info) = self.known_structs.get(ts_type) {
+                    if struct_info.is_enum {
+                        // Generate enum schema
+                        let variants: Vec<String> = struct_info.fields.iter()
+                            .map(|field| format!("\"{}\"" , field.name))
+                            .collect();
+                        format!("z.enum([{}])", variants.join(", "))
+                    } else {
+                        // Generate object schema for struct
+                        self.generate_zod_object_schema_for_struct(struct_info)
+                    }
+                } else {
+                    // Unknown custom type - could be a forward reference or missing struct
+                    // For now, use lazy validation to avoid circular dependency issues
+                    format!("z.lazy(() => z.any()) /* {} - define schema separately if needed */", ts_type)
+                }
+            }
         }
     }
 
@@ -416,12 +649,34 @@ impl TypeScriptGenerator {
             let base_type = ts_type.replace(" | null", "");
             return format!("{}.nullable()", self.typescript_to_yup_type(&base_type));
         }
-        
+
         if ts_type.ends_with("[]") {
             let item_type = &ts_type[..ts_type.len() - 2];
             return format!("yup.array().of({})", self.typescript_to_yup_type(item_type));
         }
         
+        // Handle Record<K, V> types (from HashMap/BTreeMap)
+        if ts_type.starts_with("Record<") {
+            if let Some(inner) = ts_type.strip_prefix("Record<").and_then(|s| s.strip_suffix(">")) {
+                if let Some(comma_pos) = inner.find(',') {
+                    let value_type = inner[comma_pos + 1..].trim();
+                    let value_schema = self.typescript_to_yup_type(value_type);
+                    return format!("yup.object().test('record', 'Invalid record', (value) => {{ if (!value) return true; return Object.values(value).every(v => {}.isValidSync(v)); }})", value_schema);
+                }
+            }
+            return "yup.object()".to_string();
+        }
+        
+        // Handle tuple types [T, U, V]
+        if ts_type.starts_with('[') && ts_type.ends_with(']') {
+            let inner = &ts_type[1..ts_type.len()-1];
+            let types: Vec<String> = inner
+                .split(',')
+                .map(|part| self.typescript_to_yup_type(part.trim()))
+                .collect();
+            return format!("yup.tuple([{}])", types.join(", "));
+        }
+
         match ts_type {
             "string" => "yup.string()".to_string(),
             "number" => "yup.number()".to_string(),
@@ -432,8 +687,10 @@ impl TypeScriptGenerator {
     }
 
     pub fn is_custom_type(&self, ts_type: &str) -> bool {
-        !matches!(ts_type, "string" | "number" | "boolean" | "void" | "any" | "unknown" | "null" | "undefined")
-            && !ts_type.ends_with("[]")
+        !matches!(
+            ts_type,
+            "string" | "number" | "boolean" | "void" | "any" | "unknown" | "null" | "undefined"
+        ) && !ts_type.ends_with("[]")
             && !ts_type.contains(" | ")
     }
 }

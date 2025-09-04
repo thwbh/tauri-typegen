@@ -22,7 +22,9 @@ impl Default for GenerateConfig {
     }
 }
 
-pub fn generate_from_config(config: &GenerateConfig) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+pub fn generate_from_config(
+    config: &GenerateConfig,
+) -> Result<Vec<String>, Box<dyn std::error::Error>> {
     let verbose = config.verbose.unwrap_or(false);
 
     if verbose {
@@ -48,12 +50,24 @@ pub fn generate_from_config(config: &GenerateConfig) -> Result<Vec<String>, Box<
         let discovered_structs = analyzer.get_discovered_structs();
         println!("🏗️  Found {} struct definitions:", discovered_structs.len());
         for (name, struct_info) in discovered_structs {
-            let struct_type = if struct_info.is_enum { "enum" } else { "struct" };
-            println!("  - {} ({}) with {} fields", name, struct_type, struct_info.fields.len());
+            let struct_type = if struct_info.is_enum {
+                "enum"
+            } else {
+                "struct"
+            };
+            println!(
+                "  - {} ({}) with {} fields",
+                name,
+                struct_type,
+                struct_info.fields.len()
+            );
             for field in &struct_info.fields {
                 let visibility = if field.is_public { "pub" } else { "private" };
                 let optional = if field.is_optional { "?" } else { "" };
-                println!("    • {}{}: {} ({})", field.name, optional, field.typescript_type, visibility);
+                println!(
+                    "    • {}{}: {} ({})",
+                    field.name, optional, field.typescript_type, visibility
+                );
             }
         }
 
@@ -78,15 +92,26 @@ pub fn generate_from_config(config: &GenerateConfig) -> Result<Vec<String>, Box<
     };
 
     if verbose {
-        println!("🚀 Generating TypeScript models with {} validation...", validation.as_ref().unwrap());
+        println!(
+            "🚀 Generating TypeScript models with {} validation...",
+            validation.as_ref().unwrap()
+        );
     }
 
     // Generate TypeScript models with discovered structs
     let mut generator = TypeScriptGenerator::new(validation);
-    let generated_files = generator.generate_models(&commands, analyzer.get_discovered_structs(), &config.output_path)?;
+    let generated_files = generator.generate_models(
+        &commands,
+        analyzer.get_discovered_structs(),
+        &config.output_path,
+    )?;
 
     if verbose {
-        println!("✅ Successfully generated {} files for {} commands:", generated_files.len(), commands.len());
+        println!(
+            "✅ Successfully generated {} files for {} commands:",
+            generated_files.len(),
+            commands.len()
+        );
         for file in &generated_files {
             println!("  📄 {}/{}", config.output_path, file);
         }

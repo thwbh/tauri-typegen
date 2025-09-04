@@ -1,8 +1,8 @@
-use std::fs;
-use tempfile::TempDir;
 use serial_test::serial;
+use std::fs;
 use tauri_plugin_typegen::analyzer::CommandAnalyzer;
 use tauri_plugin_typegen::generator::TypeScriptGenerator;
+use tempfile::TempDir;
 
 fn create_complex_test_project() -> TempDir {
     let temp_dir = TempDir::new().unwrap();
@@ -123,7 +123,11 @@ pub fn export_data(format: String, include_inactive: bool) -> Result<String, Str
 }
     "#;
 
-    fs::write(src_dir.join("modules").join("analytics.rs"), analytics_commands).unwrap();
+    fs::write(
+        src_dir.join("modules").join("analytics.rs"),
+        analytics_commands,
+    )
+    .unwrap();
 
     // Utility commands
     let utils_commands = r#"
@@ -195,7 +199,13 @@ fn test_full_pipeline_complex_project() {
     let output_path = temp_dir.path().join("generated");
     let mut generator = TypeScriptGenerator::new(Some("zod".to_string()));
 
-    let generated_files = generator.generate_models(&commands, analyzer.get_discovered_structs(), output_path.to_str().unwrap()).unwrap();
+    let generated_files = generator
+        .generate_models(
+            &commands,
+            analyzer.get_discovered_structs(),
+            output_path.to_str().unwrap(),
+        )
+        .unwrap();
 
     assert_eq!(generated_files.len(), 4);
     assert!(generated_files.contains(&"types.ts".to_string()));
@@ -232,7 +242,8 @@ fn test_full_pipeline_complex_project() {
     assert!(schemas_content.contains("CreateUserParamsSchema"));
     assert!(schemas_content.contains("z.object({"));
     // Check for actual parameter schemas based on command signatures
-    assert!(schemas_content.contains("request: z.any()"));
+    // The CreateUserRequest should now generate proper object schema instead of z.any()
+    assert!(schemas_content.contains("request: z.object({") || schemas_content.contains("request: z.lazy("));
     assert!(schemas_content.contains("ExportDataParamsSchema"));
     assert!(schemas_content.contains("format: z.string()"));
     assert!(schemas_content.contains("includeInactive: z.boolean()"));
@@ -245,7 +256,7 @@ fn test_full_pipeline_complex_project() {
     // Check specific command functions
     assert!(commands_content.contains("export async function createUser"));
     assert!(commands_content.contains("params: types.CreateUserParams"));
-    assert!(commands_content.contains("Promise<User>"));
+    assert!(commands_content.contains("Promise<types.User>"));
     assert!(commands_content.contains("schemas.CreateUserParamsSchema.parse(params)"));
     assert!(commands_content.contains("invoke('create_user'"));
 
@@ -253,7 +264,9 @@ fn test_full_pipeline_complex_project() {
     assert!(commands_content.contains("export async function deleteUser"));
     assert!(commands_content.contains("export async function getUserCount"));
     // Check for void return type handling
-    assert!(commands_content.contains("Promise<void>") || commands_content.contains("Promise<unknown>"));
+    assert!(
+        commands_content.contains("Promise<void>") || commands_content.contains("Promise<unknown>")
+    );
 
     // Check that function without parameters works correctly
     assert!(commands_content.contains("export async function getUserCount(): Promise<number>"));
@@ -277,7 +290,13 @@ fn test_full_pipeline_with_yup() {
     let output_path = temp_dir.path().join("generated_yup");
     let mut generator = TypeScriptGenerator::new(Some("yup".to_string()));
 
-    let generated_files = generator.generate_models(&commands, analyzer.get_discovered_structs(), output_path.to_str().unwrap()).unwrap();
+    let generated_files = generator
+        .generate_models(
+            &commands,
+            analyzer.get_discovered_structs(),
+            output_path.to_str().unwrap(),
+        )
+        .unwrap();
 
     assert_eq!(generated_files.len(), 4);
 
@@ -302,7 +321,13 @@ fn test_full_pipeline_without_validation() {
     let output_path = temp_dir.path().join("generated_no_validation");
     let mut generator = TypeScriptGenerator::new(Some("none".to_string()));
 
-    let generated_files = generator.generate_models(&commands, analyzer.get_discovered_structs(), output_path.to_str().unwrap()).unwrap();
+    let generated_files = generator
+        .generate_models(
+            &commands,
+            analyzer.get_discovered_structs(),
+            output_path.to_str().unwrap(),
+        )
+        .unwrap();
 
     // Should generate 3 files (no schemas.ts)
     assert_eq!(generated_files.len(), 3);
@@ -327,7 +352,8 @@ fn test_type_mapping_accuracy() {
     let commands = analyzer.analyze_project(project_path).unwrap();
 
     // Find create_user command and verify parameter types
-    let create_user = commands.iter()
+    let create_user = commands
+        .iter()
         .find(|c| c.name == "create_user")
         .expect("create_user should be found");
 
@@ -338,7 +364,8 @@ fn test_type_mapping_accuracy() {
     assert_eq!(request_param.typescript_type, "CreateUserRequest");
 
     // Find get_users command and verify optional parameter
-    let get_users = commands.iter()
+    let get_users = commands
+        .iter()
         .find(|c| c.name == "get_users")
         .expect("get_users should be found");
 
@@ -349,7 +376,8 @@ fn test_type_mapping_accuracy() {
     assert!(filter_param.typescript_type.contains("| null"));
 
     // Find export_data command and verify multiple parameters
-    let export_data = commands.iter()
+    let export_data = commands
+        .iter()
         .find(|c| c.name == "export_data")
         .expect("export_data should be found");
 
@@ -372,7 +400,13 @@ fn test_generated_content_syntax_valid() {
     let output_path = temp_dir.path().join("generated");
     let mut generator = TypeScriptGenerator::new(Some("zod".to_string()));
 
-    generator.generate_models(&commands, analyzer.get_discovered_structs(), output_path.to_str().unwrap()).unwrap();
+    generator
+        .generate_models(
+            &commands,
+            analyzer.get_discovered_structs(),
+            output_path.to_str().unwrap(),
+        )
+        .unwrap();
 
     let types_content = fs::read_to_string(output_path.join("types.ts")).unwrap();
     let schemas_content = fs::read_to_string(output_path.join("schemas.ts")).unwrap();
@@ -404,17 +438,23 @@ fn test_file_path_tracking_accuracy() {
     let commands = analyzer.analyze_project(project_path).unwrap();
 
     // Verify file paths are tracked correctly
-    let create_user = commands.iter()
+    let create_user = commands
+        .iter()
         .find(|c| c.name == "create_user")
         .expect("create_user should be found");
     assert!(create_user.file_path.ends_with("user_commands.rs"));
 
-    let get_analytics = commands.iter()
+    let get_analytics = commands
+        .iter()
         .find(|c| c.name == "get_analytics")
         .expect("get_analytics should be found");
-    assert!(get_analytics.file_path.contains("modules") && get_analytics.file_path.ends_with("analytics.rs"));
+    assert!(
+        get_analytics.file_path.contains("modules")
+            && get_analytics.file_path.ends_with("analytics.rs")
+    );
 
-    let calculate_hash = commands.iter()
+    let calculate_hash = commands
+        .iter()
         .find(|c| c.name == "calculate_hash")
         .expect("calculate_hash should be found");
     assert!(calculate_hash.file_path.ends_with("utils.rs"));
@@ -433,12 +473,21 @@ fn test_async_detection_accuracy() {
     let create_user = commands.iter().find(|c| c.name == "create_user").unwrap();
     assert!(create_user.is_async);
 
-    let get_user_count = commands.iter().find(|c| c.name == "get_user_count").unwrap();
+    let get_user_count = commands
+        .iter()
+        .find(|c| c.name == "get_user_count")
+        .unwrap();
     assert!(!get_user_count.is_async);
 
-    let validate_email = commands.iter().find(|c| c.name == "validate_email").unwrap();
+    let validate_email = commands
+        .iter()
+        .find(|c| c.name == "validate_email")
+        .unwrap();
     assert!(validate_email.is_async);
 
-    let calculate_hash = commands.iter().find(|c| c.name == "calculate_hash").unwrap();
+    let calculate_hash = commands
+        .iter()
+        .find(|c| c.name == "calculate_hash")
+        .unwrap();
     assert!(!calculate_hash.is_async);
 }

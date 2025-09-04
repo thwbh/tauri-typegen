@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::fs;
-use tempfile::TempDir;
 use tauri_plugin_typegen::generator::TypeScriptGenerator;
 use tauri_plugin_typegen::models::{CommandInfo, ParameterInfo, StructInfo};
+use tempfile::TempDir;
 
 fn create_sample_commands() -> Vec<CommandInfo> {
     vec![
@@ -10,14 +10,12 @@ fn create_sample_commands() -> Vec<CommandInfo> {
             name: "greet".to_string(),
             file_path: "test_file.rs".to_string(),
             line_number: 10,
-            parameters: vec![
-                ParameterInfo {
-                    name: "name".to_string(),
-                    rust_type: "String".to_string(),
-                    typescript_type: "string".to_string(),
-                    is_optional: false,
-                },
-            ],
+            parameters: vec![ParameterInfo {
+                name: "name".to_string(),
+                rust_type: "String".to_string(),
+                typescript_type: "string".to_string(),
+                is_optional: false,
+            }],
             return_type: "string".to_string(),
             is_async: true,
         },
@@ -45,7 +43,9 @@ fn test_generator_creates_all_files() {
     let discovered_structs = create_empty_structs();
 
     let mut generator = TypeScriptGenerator::new(Some("zod".to_string()));
-    let generated_files = generator.generate_models(&commands, &discovered_structs, output_path).unwrap();
+    let generated_files = generator
+        .generate_models(&commands, &discovered_structs, output_path)
+        .unwrap();
 
     assert_eq!(generated_files.len(), 4);
     assert!(generated_files.contains(&"types.ts".to_string()));
@@ -69,7 +69,9 @@ fn test_generator_without_validation_library() {
     let discovered_structs = create_empty_structs();
 
     let mut generator = TypeScriptGenerator::new(Some("none".to_string()));
-    let generated_files = generator.generate_models(&commands, &discovered_structs, output_path).unwrap();
+    let generated_files = generator
+        .generate_models(&commands, &discovered_structs, output_path)
+        .unwrap();
 
     // Should generate 3 files (no schemas.ts)
     assert_eq!(generated_files.len(), 3);
@@ -86,7 +88,9 @@ fn test_types_file_generation() {
     let discovered_structs = create_empty_structs();
 
     let mut generator = TypeScriptGenerator::new(None);
-    generator.generate_models(&commands, &discovered_structs, output_path).unwrap();
+    generator
+        .generate_models(&commands, &discovered_structs, output_path)
+        .unwrap();
 
     let types_content = fs::read_to_string(temp_dir.path().join("types.ts")).unwrap();
 
@@ -107,7 +111,9 @@ fn test_zod_schemas_generation() {
     let discovered_structs = create_empty_structs();
 
     let mut generator = TypeScriptGenerator::new(Some("zod".to_string()));
-    generator.generate_models(&commands, &discovered_structs, output_path).unwrap();
+    generator
+        .generate_models(&commands, &discovered_structs, output_path)
+        .unwrap();
 
     let schemas_content = fs::read_to_string(temp_dir.path().join("schemas.ts")).unwrap();
 
@@ -129,7 +135,9 @@ fn test_yup_schemas_generation() {
     let discovered_structs = create_empty_structs();
 
     let mut generator = TypeScriptGenerator::new(Some("yup".to_string()));
-    generator.generate_models(&commands, &discovered_structs, output_path).unwrap();
+    generator
+        .generate_models(&commands, &discovered_structs, output_path)
+        .unwrap();
 
     let schemas_content = fs::read_to_string(temp_dir.path().join("schemas.ts")).unwrap();
 
@@ -148,7 +156,9 @@ fn test_commands_file_generation() {
     let discovered_structs = create_empty_structs();
 
     let mut generator = TypeScriptGenerator::new(Some("zod".to_string()));
-    generator.generate_models(&commands, &discovered_structs, output_path).unwrap();
+    generator
+        .generate_models(&commands, &discovered_structs, output_path)
+        .unwrap();
 
     let commands_content = fs::read_to_string(temp_dir.path().join("commands.ts")).unwrap();
 
@@ -177,7 +187,9 @@ fn test_commands_without_validation() {
     let discovered_structs = create_empty_structs();
 
     let mut generator = TypeScriptGenerator::new(Some("none".to_string()));
-    generator.generate_models(&commands, &discovered_structs, output_path).unwrap();
+    generator
+        .generate_models(&commands, &discovered_structs, output_path)
+        .unwrap();
 
     let commands_content = fs::read_to_string(temp_dir.path().join("commands.ts")).unwrap();
 
@@ -196,7 +208,9 @@ fn test_index_file_generation() {
     let discovered_structs = create_empty_structs();
 
     let mut generator = TypeScriptGenerator::new(None);
-    generator.generate_models(&commands, &discovered_structs, output_path).unwrap();
+    generator
+        .generate_models(&commands, &discovered_structs, output_path)
+        .unwrap();
 
     let index_content = fs::read_to_string(temp_dir.path().join("index.ts")).unwrap();
 
@@ -222,9 +236,15 @@ fn test_typescript_to_zod_type_conversion() {
     assert_eq!(generator.typescript_to_zod_type("string"), "z.string()");
     assert_eq!(generator.typescript_to_zod_type("number"), "z.number()");
     assert_eq!(generator.typescript_to_zod_type("boolean"), "z.boolean()");
-    assert_eq!(generator.typescript_to_zod_type("string[]"), "z.array(z.string())");
-    assert_eq!(generator.typescript_to_zod_type("string | null"), "z.string().nullable()");
-    assert_eq!(generator.typescript_to_zod_type("CustomType"), "z.any()");
+    assert_eq!(
+        generator.typescript_to_zod_type("string[]"),
+        "z.array(z.string())"
+    );
+    assert_eq!(
+        generator.typescript_to_zod_type("string | null"),
+        "z.string().nullable()"
+    );
+    assert_eq!(generator.typescript_to_zod_type("CustomType"), "z.lazy(() => z.any()) /* CustomType - define schema separately if needed */");
 }
 
 #[test]
@@ -234,9 +254,18 @@ fn test_typescript_to_yup_type_conversion() {
     assert_eq!(generator.typescript_to_yup_type("string"), "yup.string()");
     assert_eq!(generator.typescript_to_yup_type("number"), "yup.number()");
     assert_eq!(generator.typescript_to_yup_type("boolean"), "yup.boolean()");
-    assert_eq!(generator.typescript_to_yup_type("string[]"), "yup.array().of(yup.string())");
-    assert_eq!(generator.typescript_to_yup_type("string | null"), "yup.string().nullable()");
-    assert_eq!(generator.typescript_to_yup_type("CustomType"), "yup.mixed()");
+    assert_eq!(
+        generator.typescript_to_yup_type("string[]"),
+        "yup.array().of(yup.string())"
+    );
+    assert_eq!(
+        generator.typescript_to_yup_type("string | null"),
+        "yup.string().nullable()"
+    );
+    assert_eq!(
+        generator.typescript_to_yup_type("CustomType"),
+        "yup.mixed()"
+    );
 }
 
 #[test]
@@ -259,27 +288,25 @@ fn test_generator_with_void_return() {
     let temp_dir = TempDir::new().unwrap();
     let output_path = temp_dir.path().to_str().unwrap();
 
-    let commands = vec![
-        CommandInfo {
-            name: "delete_item".to_string(),
-            file_path: "test_file.rs".to_string(),
-            line_number: 10,
-            parameters: vec![
-                ParameterInfo {
-                    name: "id".to_string(),
-                    rust_type: "i32".to_string(),
-                    typescript_type: "number".to_string(),
-                    is_optional: false,
-                },
-            ],
-            return_type: "void".to_string(),
-            is_async: true,
-        },
-    ];
+    let commands = vec![CommandInfo {
+        name: "delete_item".to_string(),
+        file_path: "test_file.rs".to_string(),
+        line_number: 10,
+        parameters: vec![ParameterInfo {
+            name: "id".to_string(),
+            rust_type: "i32".to_string(),
+            typescript_type: "number".to_string(),
+            is_optional: false,
+        }],
+        return_type: "void".to_string(),
+        is_async: true,
+    }];
     let discovered_structs = create_empty_structs();
 
     let mut generator = TypeScriptGenerator::new(None);
-    generator.generate_models(&commands, &discovered_structs, output_path).unwrap();
+    generator
+        .generate_models(&commands, &discovered_structs, output_path)
+        .unwrap();
 
     let commands_content = fs::read_to_string(temp_dir.path().join("commands.ts")).unwrap();
     assert!(commands_content.contains("Promise<void>"));
@@ -294,7 +321,9 @@ fn test_generator_empty_commands_list() {
     let discovered_structs = create_empty_structs();
 
     let mut generator = TypeScriptGenerator::new(None);
-    let generated_files = generator.generate_models(&commands, &discovered_structs, output_path).unwrap();
+    let generated_files = generator
+        .generate_models(&commands, &discovered_structs, output_path)
+        .unwrap();
 
     // Should still generate files, just with empty content
     assert_eq!(generated_files.len(), 4);

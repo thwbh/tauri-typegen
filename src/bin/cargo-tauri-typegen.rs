@@ -1,4 +1,3 @@
-
 use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
 use tauri_plugin_typegen::analyzer::CommandAnalyzer;
@@ -50,21 +49,20 @@ fn main() {
     let args = CargoCli::parse();
 
     match args.command {
-        CargoSubcommands::TauriTypegen(typegen_args) => {
-            match typegen_args.command {
-                TypegenCommands::Generate {
-                    project_path,
-                    output_path,
-                    validation_library,
-                    verbose,
-                } => {
-                    if let Err(e) = run_generate(project_path, output_path, validation_library, verbose) {
-                        eprintln!("Error: {}", e);
-                        std::process::exit(1);
-                    }
+        CargoSubcommands::TauriTypegen(typegen_args) => match typegen_args.command {
+            TypegenCommands::Generate {
+                project_path,
+                output_path,
+                validation_library,
+                verbose,
+            } => {
+                if let Err(e) = run_generate(project_path, output_path, validation_library, verbose)
+                {
+                    eprintln!("Error: {}", e);
+                    std::process::exit(1);
                 }
             }
-        }
+        },
     }
 }
 
@@ -96,13 +94,25 @@ fn run_generate(
         let discovered_structs = analyzer.get_discovered_structs();
         println!("🏗️  Found {} struct definitions:", discovered_structs.len());
         for (name, struct_info) in discovered_structs {
-            let struct_type = if struct_info.is_enum { "enum" } else { "struct" };
-            println!("  - {} ({}) with {} fields", name, struct_type, struct_info.fields.len());
+            let struct_type = if struct_info.is_enum {
+                "enum"
+            } else {
+                "struct"
+            };
+            println!(
+                "  - {} ({}) with {} fields",
+                name,
+                struct_type,
+                struct_info.fields.len()
+            );
             if verbose {
                 for field in &struct_info.fields {
                     let visibility = if field.is_public { "pub" } else { "private" };
                     let optional = if field.is_optional { "?" } else { "" };
-                    println!("    • {}{}: {} ({})", field.name, optional, field.typescript_type, visibility);
+                    println!(
+                        "    • {}{}: {} ({})",
+                        field.name, optional, field.typescript_type, visibility
+                    );
                 }
             }
         }
@@ -127,19 +137,33 @@ fn run_generate(
 
     // Generate TypeScript models
     if verbose {
-        println!("🚀 Generating TypeScript models with {} validation...", validation.as_ref().unwrap());
+        println!(
+            "🚀 Generating TypeScript models with {} validation...",
+            validation.as_ref().unwrap()
+        );
     }
 
     let mut generator = TypeScriptGenerator::new(validation);
-    let generated_files = generator.generate_models(&commands, analyzer.get_discovered_structs(), &output_path.to_string_lossy())?;
+    let generated_files = generator.generate_models(
+        &commands,
+        analyzer.get_discovered_structs(),
+        &output_path.to_string_lossy(),
+    )?;
 
-    println!("✅ Successfully generated {} files for {} commands:", generated_files.len(), commands.len());
+    println!(
+        "✅ Successfully generated {} files for {} commands:",
+        generated_files.len(),
+        commands.len()
+    );
     for file in &generated_files {
         println!("  📄 {}/{}", output_path.display(), file);
     }
 
     println!("\n💡 Usage in your frontend:");
-    println!("  import {{ createUser, getUsers }} from '{}/index'", output_path.display());
+    println!(
+        "  import {{ createUser, getUsers }} from '{}/index'",
+        output_path.display()
+    );
 
     Ok(())
 }

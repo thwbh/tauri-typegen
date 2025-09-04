@@ -1,11 +1,10 @@
-
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
-use tempfile::TempDir;
 use tauri_plugin_typegen::analyzer::CommandAnalyzer;
 use tauri_plugin_typegen::generator::TypeScriptGenerator;
-use tauri_plugin_typegen::models::{CommandInfo, ParameterInfo, StructInfo, FieldInfo};
+use tauri_plugin_typegen::models::{CommandInfo, FieldInfo, ParameterInfo, StructInfo};
+use tempfile::TempDir;
 
 // Helper function to create a test Rust file with mixed content
 fn create_test_rust_file_with_unused_types(temp_dir: &TempDir) -> std::path::PathBuf {
@@ -75,14 +74,12 @@ fn create_sample_commands_with_unused_structs() -> Vec<CommandInfo> {
             name: "create_user".to_string(),
             file_path: "test_file.rs".to_string(),
             line_number: 10,
-            parameters: vec![
-                ParameterInfo {
-                    name: "request".to_string(),
-                    rust_type: "CreateUserRequest".to_string(),
-                    typescript_type: "CreateUserRequest".to_string(),
-                    is_optional: false,
-                },
-            ],
+            parameters: vec![ParameterInfo {
+                name: "request".to_string(),
+                rust_type: "CreateUserRequest".to_string(),
+                typescript_type: "CreateUserRequest".to_string(),
+                is_optional: false,
+            }],
             return_type: "User".to_string(),
             is_async: true,
         },
@@ -101,102 +98,111 @@ fn create_sample_structs_with_unused() -> HashMap<String, StructInfo> {
     let mut structs = HashMap::new();
 
     // Used structs (should be included)
-    structs.insert("User".to_string(), StructInfo {
-        name: "User".to_string(),
-        fields: vec![
-            FieldInfo {
-                name: "id".to_string(),
-                rust_type: "i32".to_string(),
-                typescript_type: "number".to_string(),
-                is_optional: false,
-                is_public: true,
-            },
-            FieldInfo {
-                name: "name".to_string(),
-                rust_type: "String".to_string(),
-                typescript_type: "string".to_string(),
-                is_optional: false,
-                is_public: true,
-            },
-            FieldInfo {
-                name: "email".to_string(),
-                rust_type: "Option<String>".to_string(),
-                typescript_type: "string | null".to_string(),
-                is_optional: true,
-                is_public: true,
-            },
-        ],
-        file_path: "test_file.rs".to_string(),
-        is_enum: false,
-    });
+    structs.insert(
+        "User".to_string(),
+        StructInfo {
+            name: "User".to_string(),
+            fields: vec![
+                FieldInfo {
+                    name: "id".to_string(),
+                    rust_type: "i32".to_string(),
+                    typescript_type: "number".to_string(),
+                    is_optional: false,
+                    is_public: true,
+                },
+                FieldInfo {
+                    name: "name".to_string(),
+                    rust_type: "String".to_string(),
+                    typescript_type: "string".to_string(),
+                    is_optional: false,
+                    is_public: true,
+                },
+                FieldInfo {
+                    name: "email".to_string(),
+                    rust_type: "Option<String>".to_string(),
+                    typescript_type: "string | null".to_string(),
+                    is_optional: true,
+                    is_public: true,
+                },
+            ],
+            file_path: "test_file.rs".to_string(),
+            is_enum: false,
+        },
+    );
 
-    structs.insert("CreateUserRequest".to_string(), StructInfo {
-        name: "CreateUserRequest".to_string(),
-        fields: vec![
-            FieldInfo {
-                name: "name".to_string(),
-                rust_type: "String".to_string(),
-                typescript_type: "string".to_string(),
-                is_optional: false,
-                is_public: true,
-            },
-            FieldInfo {
-                name: "email".to_string(),
-                rust_type: "Option<String>".to_string(),
-                typescript_type: "string | null".to_string(),
-                is_optional: true,
-                is_public: true,
-            },
-        ],
-        file_path: "test_file.rs".to_string(),
-        is_enum: false,
-    });
+    structs.insert(
+        "CreateUserRequest".to_string(),
+        StructInfo {
+            name: "CreateUserRequest".to_string(),
+            fields: vec![
+                FieldInfo {
+                    name: "name".to_string(),
+                    rust_type: "String".to_string(),
+                    typescript_type: "string".to_string(),
+                    is_optional: false,
+                    is_public: true,
+                },
+                FieldInfo {
+                    name: "email".to_string(),
+                    rust_type: "Option<String>".to_string(),
+                    typescript_type: "string | null".to_string(),
+                    is_optional: true,
+                    is_public: true,
+                },
+            ],
+            file_path: "test_file.rs".to_string(),
+            is_enum: false,
+        },
+    );
 
     // Unused structs (should NOT be included)
-    structs.insert("sqlite3_pcache_methods".to_string(), StructInfo {
-        name: "sqlite3_pcache_methods".to_string(),
-        fields: vec![
-            FieldInfo {
+    structs.insert(
+        "sqlite3_pcache_methods".to_string(),
+        StructInfo {
+            name: "sqlite3_pcache_methods".to_string(),
+            fields: vec![FieldInfo {
                 name: "iVersion".to_string(),
                 rust_type: "i32".to_string(),
                 typescript_type: "number".to_string(),
                 is_optional: false,
                 is_public: true,
-            },
-        ],
-        file_path: "test_file.rs".to_string(),
-        is_enum: false,
-    });
+            }],
+            file_path: "test_file.rs".to_string(),
+            is_enum: false,
+        },
+    );
 
-    structs.insert("UnusedStruct".to_string(), StructInfo {
-        name: "UnusedStruct".to_string(),
-        fields: vec![
-            FieldInfo {
+    structs.insert(
+        "UnusedStruct".to_string(),
+        StructInfo {
+            name: "UnusedStruct".to_string(),
+            fields: vec![FieldInfo {
                 name: "unused_field".to_string(),
                 rust_type: "String".to_string(),
                 typescript_type: "string".to_string(),
                 is_optional: false,
                 is_public: true,
-            },
-        ],
-        file_path: "test_file.rs".to_string(),
-        is_enum: false,
-    });
+            }],
+            file_path: "test_file.rs".to_string(),
+            is_enum: false,
+        },
+    );
 
-    structs.insert("AnotherUnusedStruct".to_string(), StructInfo {
-        name: "AnotherUnusedStruct".to_string(),
-        fields: vec![
-            FieldInfo {
+    structs.insert(
+        "AnotherUnusedStruct".to_string(),
+        StructInfo {
+            name: "AnotherUnusedStruct".to_string(),
+            fields: vec![FieldInfo {
                 name: "data".to_string(),
                 rust_type: "Vec<i32>".to_string(),
                 typescript_type: "number[]".to_string(),
                 is_optional: false,
                 is_public: true,
-            },
-        ],
-        file_path: "test_file.rs".to_string(),
-        is_enum: false,
-    });
+            }],
+            file_path: "test_file.rs".to_string(),
+            is_enum: false,
+        },
+    );
 
     structs
 }
@@ -210,7 +216,9 @@ fn test_only_generates_types_used_by_commands() {
     let all_discovered_structs = create_sample_structs_with_unused();
 
     let mut generator = TypeScriptGenerator::new(None);
-    generator.generate_models(&commands, &all_discovered_structs, output_path).unwrap();
+    generator
+        .generate_models(&commands, &all_discovered_structs, output_path)
+        .unwrap();
 
     let types_content = fs::read_to_string(temp_dir.path().join("types.ts")).unwrap();
 
@@ -292,7 +300,9 @@ fn test_integration_with_real_analyzer() {
     let _file_path = create_test_rust_file_with_unused_types(&temp_dir);
 
     let mut analyzer = CommandAnalyzer::new();
-    let commands = analyzer.analyze_project(&temp_dir.path().to_string_lossy()).unwrap();
+    let commands = analyzer
+        .analyze_project(&temp_dir.path().to_string_lossy())
+        .unwrap();
 
     // Should find the two commands
     assert_eq!(commands.len(), 2);
@@ -306,8 +316,13 @@ fn test_integration_with_real_analyzer() {
     fs::create_dir_all(&output_path).unwrap();
 
     let mut generator = TypeScriptGenerator::new(None);
-    generator.generate_models(&commands, analyzer.get_discovered_structs(),
-                              &output_path.to_string_lossy()).unwrap();
+    generator
+        .generate_models(
+            &commands,
+            analyzer.get_discovered_structs(),
+            &output_path.to_string_lossy(),
+        )
+        .unwrap();
 
     let types_content = fs::read_to_string(output_path.join("types.ts")).unwrap();
 
@@ -331,7 +346,9 @@ fn test_type_filtering_with_validation_library() {
 
     // Test with Zod validation
     let mut generator = TypeScriptGenerator::new(Some("zod".to_string()));
-    generator.generate_models(&commands, &all_discovered_structs, output_path).unwrap();
+    generator
+        .generate_models(&commands, &all_discovered_structs, output_path)
+        .unwrap();
 
     let types_content = fs::read_to_string(temp_dir.path().join("types.ts")).unwrap();
     let schemas_content = fs::read_to_string(temp_dir.path().join("schemas.ts")).unwrap();
@@ -360,7 +377,9 @@ fn test_empty_commands_generates_no_unnecessary_types() {
     let all_discovered_structs = create_sample_structs_with_unused();
 
     let mut generator = TypeScriptGenerator::new(None);
-    generator.generate_models(&commands, &all_discovered_structs, output_path).unwrap();
+    generator
+        .generate_models(&commands, &all_discovered_structs, output_path)
+        .unwrap();
 
     let types_content = fs::read_to_string(temp_dir.path().join("types.ts")).unwrap();
 
