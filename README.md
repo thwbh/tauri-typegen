@@ -110,6 +110,7 @@ Add generation to your build scripts:
     "tauri:build": "npm run generate-types && tauri build"
   }
 }
+```
 
 ## Usage Examples
 
