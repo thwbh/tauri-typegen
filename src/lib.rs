@@ -1,5 +1,5 @@
 // Core library modules for the CLI tool
-pub mod analyzer;
+pub mod analysis;
 pub mod build;
 pub mod cli;
 pub mod commands;

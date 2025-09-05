@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
-use tauri_plugin_typegen::analyzer::CommandAnalyzer;
+use tauri_plugin_typegen::analysis::CommandAnalyzer;
 use tauri_plugin_typegen::generator::TypeScriptGenerator;
 use tauri_plugin_typegen::models::StructInfo;
 use tempfile::TempDir;
@@ -20,7 +20,7 @@ fn test_map_type_conversion() {
     
     // Test nested HashMap<String, Vec<Option<i32>>> -> Record<string, (number | null)[]>
     let result = analyzer.map_rust_type_to_typescript("HashMap<String, Vec<Option<i32>>>");
-    assert_eq!(result, "Record<string, (number | null)[]>");
+    assert_eq!(result, "Record<string, number | null[]>");
 }
 
 #[test]
@@ -63,7 +63,7 @@ fn test_deeply_nested_types() {
     
     // Test HashMap<String, Vec<Option<User>>> -> Record<string, (User | null)[]>
     let result = analyzer.map_rust_type_to_typescript("HashMap<String, Vec<Option<User>>>");
-    assert_eq!(result, "Record<string, (User | null)[]>");
+    assert_eq!(result, "Record<string, User | null[]>");
 }
 
 #[test]

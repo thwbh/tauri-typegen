@@ -1,4 +1,4 @@
-use crate::analyzer::CommandAnalyzer;
+use crate::analysis::CommandAnalyzer;
 use crate::generators::{VanillaTypeScriptGenerator, ZodGenerator};
 use crate::models::{CommandInfo, StructInfo};
 use std::collections::HashMap;
@@ -10,7 +10,7 @@ pub struct TypeScriptGenerator {
 impl TypeScriptGenerator {
     pub fn new(validation_library: Option<String>) -> Self {
         Self {
-            validation_library: validation_library.unwrap_or_else(|| "zod".to_string()),
+            validation_library: validation_library.unwrap_or_else(|| "none".to_string()),
         }
     }
 

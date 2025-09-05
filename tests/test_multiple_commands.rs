@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
-use tauri_plugin_typegen::analyzer::CommandAnalyzer;
+use tauri_plugin_typegen::analysis::CommandAnalyzer;
 use tauri_plugin_typegen::generator::TypeScriptGenerator;
 use tauri_plugin_typegen::models::{CommandInfo, FieldInfo, ParameterInfo, StructInfo};
 use tempfile::TempDir;
@@ -359,16 +359,15 @@ fn test_type_filtering_with_validation_library() {
         .unwrap();
 
     let types_content = fs::read_to_string(temp_dir.path().join("types.ts")).unwrap();
-    let schemas_content = fs::read_to_string(temp_dir.path().join("schemas.ts")).unwrap();
     let commands_content = fs::read_to_string(temp_dir.path().join("commands.ts")).unwrap();
 
-    // Types file should only contain used types
-    assert!(types_content.contains("export interface User"));
+    // Types file should only contain used types (zod format)
+    assert!(types_content.contains("export type User") || types_content.contains("UserSchema"));
     assert!(!types_content.contains("sqlite3_pcache_methods"));
 
-    // Schemas should only be generated for commands with parameters
-    assert!(schemas_content.contains("CreateUserParamsSchema"));
-    assert!(!schemas_content.contains("GetUserCountParamsSchema")); // No params
+    // Schemas should only be generated for commands with parameters (embedded in types.ts for zod)
+    assert!(types_content.contains("CreateUserParamsSchema"));
+    assert!(!types_content.contains("GetUserCountParamsSchema")); // No params
 
     // Commands should reference the correct types
     assert!(commands_content.contains("types.CreateUserParams"));

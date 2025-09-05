@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
-use tauri_plugin_typegen::analyzer::CommandAnalyzer;
+use tauri_plugin_typegen::analysis::CommandAnalyzer;
 use tauri_plugin_typegen::generator::TypeScriptGenerator;
 use tauri_plugin_typegen::models::{CommandInfo, ParameterInfo, StructInfo};
 use tempfile::TempDir;
@@ -48,15 +48,13 @@ fn test_generator_creates_all_files() {
         .generate_models(&commands, &discovered_structs, output_path, &CommandAnalyzer::new())
         .unwrap();
 
-    assert_eq!(generated_files.len(), 4);
+    assert_eq!(generated_files.len(), 3);
     assert!(generated_files.contains(&"types.ts".to_string()));
-    assert!(generated_files.contains(&"schemas.ts".to_string()));
     assert!(generated_files.contains(&"commands.ts".to_string()));
     assert!(generated_files.contains(&"index.ts".to_string()));
 
     // Verify files exist
     assert!(temp_dir.path().join("types.ts").exists());
-    assert!(temp_dir.path().join("schemas.ts").exists());
     assert!(temp_dir.path().join("commands.ts").exists());
     assert!(temp_dir.path().join("index.ts").exists());
 }
@@ -95,7 +93,7 @@ fn test_types_file_generation() {
 
     let types_content = fs::read_to_string(temp_dir.path().join("types.ts")).unwrap();
 
-    // Should contain parameter interfaces for commands with parameters
+    // Should contain parameter interfaces for commands with parameters (vanilla TypeScript)
     assert!(types_content.contains("export interface GreetParams"));
     assert!(types_content.contains("name: string;"));
 
@@ -104,7 +102,7 @@ fn test_types_file_generation() {
 }
 
 #[test]
-fn test_zod_schemas_generation() {
+fn test_zod_schemas_in_types_file() {
     let temp_dir = TempDir::new().unwrap();
     let output_path = temp_dir.path().to_str().unwrap();
 
@@ -116,15 +114,16 @@ fn test_zod_schemas_generation() {
         .generate_models(&commands, &discovered_structs, output_path, &CommandAnalyzer::new())
         .unwrap();
 
-    let schemas_content = fs::read_to_string(temp_dir.path().join("schemas.ts")).unwrap();
+    let types_content = fs::read_to_string(temp_dir.path().join("types.ts")).unwrap();
 
-    assert!(schemas_content.contains("import { z } from 'zod';"));
-    assert!(schemas_content.contains("GreetParamsSchema"));
-    assert!(schemas_content.contains("z.object({"));
-    assert!(schemas_content.contains("name: z.string()"));
+    // Schemas are now embedded in types.ts file
+    assert!(types_content.contains("import { z } from 'zod';"));
+    assert!(types_content.contains("GreetParamsSchema"));
+    assert!(types_content.contains("z.object({"));
+    assert!(types_content.contains("name: z.string()"));
 
     // Should not generate schema for commands without parameters
-    assert!(!schemas_content.contains("GetUserCountParamsSchema"));
+    assert!(!types_content.contains("GetUserCountParamsSchema"));
 }
 
 #[test]
@@ -165,14 +164,13 @@ fn test_commands_file_generation() {
     let commands_content = fs::read_to_string(temp_dir.path().join("commands.ts")).unwrap();
 
     assert!(commands_content.contains("import { invoke } from '@tauri-apps/api/core';"));
-    assert!(commands_content.contains("import * as schemas from './schemas';"));
-    assert!(commands_content.contains("import type * as types from './types';"));
+    assert!(commands_content.contains("import * as types from './types';"));
 
     // Check specific command functions
     assert!(commands_content.contains("export async function greet"));
     assert!(commands_content.contains("params: types.GreetParams"));
     assert!(commands_content.contains("Promise<string>"));
-    assert!(commands_content.contains("schemas.GreetParamsSchema.parse(params)"));
+    assert!(commands_content.contains("types.GreetParamsSchema.parse(params)"));
     assert!(commands_content.contains("invoke('greet'"));
 
     // Check command without parameters
@@ -217,7 +215,6 @@ fn test_index_file_generation() {
     let index_content = fs::read_to_string(temp_dir.path().join("index.ts")).unwrap();
 
     assert!(index_content.contains("export * from './types';"));
-    assert!(index_content.contains("export * from './schemas';"));
     assert!(index_content.contains("export * from './commands';"));
 }
 
@@ -320,7 +317,7 @@ fn test_generator_empty_commands_list() {
         .unwrap();
 
     // Should still generate files, just with empty content
-    assert_eq!(generated_files.len(), 4);
+    assert_eq!(generated_files.len(), 3);
 
     let types_content = fs::read_to_string(temp_dir.path().join("types.ts")).unwrap();
     // Should contain header but no interfaces

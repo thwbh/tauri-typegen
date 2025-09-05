@@ -1,4 +1,4 @@
-use crate::analyzer::CommandAnalyzer;
+use crate::analysis::CommandAnalyzer;
 use crate::generator::TypeScriptGenerator;
 use crate::models::*;
 use crate::Result;

@@ -1,7 +1,7 @@
 use clap::{Args, Parser, Subcommand};
 use std::fs;
 use std::path::PathBuf;
-use tauri_plugin_typegen::analyzer::CommandAnalyzer;
+use tauri_plugin_typegen::analysis::CommandAnalyzer;
 use tauri_plugin_typegen::generator::TypeScriptGenerator;
 
 #[derive(Parser)]

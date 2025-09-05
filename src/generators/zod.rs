@@ -1,4 +1,4 @@
-use crate::analyzer::CommandAnalyzer;
+use crate::analysis::CommandAnalyzer;
 use crate::models::{CommandInfo, StructInfo, ValidatorAttributes, LengthConstraint, RangeConstraint};
 use std::collections::{HashMap, HashSet};
 use std::fs;
