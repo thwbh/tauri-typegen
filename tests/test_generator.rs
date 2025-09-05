@@ -134,17 +134,18 @@ fn test_yup_schemas_generation() {
     let commands = create_sample_commands();
     let discovered_structs = create_empty_structs();
 
+    // Yup support removed - should fall back to vanilla generator
     let mut generator = TypeScriptGenerator::new(Some("yup".to_string()));
-    generator
+    let generated_files = generator
         .generate_models(&commands, &discovered_structs, output_path)
         .unwrap();
 
-    let schemas_content = fs::read_to_string(temp_dir.path().join("schemas.ts")).unwrap();
-
-    assert!(schemas_content.contains("import * as yup from 'yup';"));
-    assert!(schemas_content.contains("GreetParamsSchema"));
-    assert!(schemas_content.contains("yup.object({"));
-    assert!(schemas_content.contains("name: yup.string()"));
+    // Should generate vanilla files (no schemas.ts for yup)
+    assert_eq!(generated_files.len(), 3);
+    assert!(generated_files.contains(&"types.ts".to_string()));
+    assert!(generated_files.contains(&"commands.ts".to_string()));
+    assert!(generated_files.contains(&"index.ts".to_string()));
+    assert!(!generated_files.contains(&"schemas.ts".to_string()));
 }
 
 #[test]
@@ -251,21 +252,13 @@ fn test_typescript_to_zod_type_conversion() {
 fn test_typescript_to_yup_type_conversion() {
     let generator = TypeScriptGenerator::new(None);
 
-    assert_eq!(generator.typescript_to_yup_type("string"), "yup.string()");
-    assert_eq!(generator.typescript_to_yup_type("number"), "yup.number()");
-    assert_eq!(generator.typescript_to_yup_type("boolean"), "yup.boolean()");
-    assert_eq!(
-        generator.typescript_to_yup_type("string[]"),
-        "yup.array().of(yup.string())"
-    );
-    assert_eq!(
-        generator.typescript_to_yup_type("string | null"),
-        "yup.string().nullable()"
-    );
-    assert_eq!(
-        generator.typescript_to_yup_type("CustomType"),
-        "yup.mixed()"
-    );
+    // Yup support has been removed - all types return the removed message
+    assert!(generator.typescript_to_yup_type("string").contains("yup support removed"));
+    assert!(generator.typescript_to_yup_type("number").contains("yup support removed"));
+    assert!(generator.typescript_to_yup_type("boolean").contains("yup support removed"));
+    assert!(generator.typescript_to_yup_type("string[]").contains("yup support removed"));
+    assert!(generator.typescript_to_yup_type("string | null").contains("yup support removed"));
+    assert!(generator.typescript_to_yup_type("CustomType").contains("yup support removed"));
 }
 
 #[test]

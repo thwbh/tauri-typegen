@@ -36,7 +36,7 @@ enum TypegenCommands {
         #[arg(short = 'o', long = "output-path", default_value = "./src/generated")]
         output_path: PathBuf,
 
-        /// Validation library to use (zod, yup, or none)
+        /// Validation library to use (zod or none)
         #[arg(short = 'v', long = "validation", default_value = "zod")]
         validation_library: String,
 
@@ -136,9 +136,9 @@ fn run_generate(
 
     // Validate validation library
     let validation = match validation_library.as_str() {
-        "zod" | "yup" | "none" => Some(validation_library),
+        "zod" | "none" => Some(validation_library),
         _ => {
-            return Err("Invalid validation library. Use 'zod', 'yup', or 'none'".into());
+            return Err("Invalid validation library. Use 'zod' or 'none'".into());
         }
     };
 

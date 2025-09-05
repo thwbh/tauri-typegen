@@ -85,9 +85,9 @@ pub fn generate_from_config(
 
     // Validate validation library
     let validation = match config.validation_library.as_str() {
-        "zod" | "yup" | "none" => Some(config.validation_library.clone()),
+        "zod" | "none" => Some(config.validation_library.clone()),
         _ => {
-            return Err("Invalid validation library. Use 'zod', 'yup', or 'none'".into());
+            return Err("Invalid validation library. Use 'zod' or 'none'".into());
         }
     };
 

@@ -197,34 +197,6 @@ async fn test_generate_models_without_validation() {
     assert!(!response.generated_files.contains(&"schemas.ts".to_string()));
 }
 
-#[tokio::test]
-async fn test_generate_models_yup_validation() {
-    let temp_dir = create_test_project_with_commands();
-    let project_path = temp_dir.path().to_str().unwrap().to_string();
-    let output_path = temp_dir
-        .path()
-        .join("generated")
-        .to_str()
-        .unwrap()
-        .to_string();
-
-    let request = GenerateModelsRequest {
-        project_path,
-        output_path: Some(output_path.clone()),
-        validation_library: Some("yup".to_string()),
-    };
-
-    let result = generate_models(request).await;
-    assert!(result.is_ok());
-
-    let response = result.unwrap();
-    assert_eq!(response.generated_files.len(), 4);
-
-    // Verify Yup schemas are generated
-    let schemas_content = fs::read_to_string(temp_dir.path().join("generated/schemas.ts")).unwrap();
-    assert!(schemas_content.contains("import * as yup from 'yup';"));
-    assert!(schemas_content.contains("yup.object({"));
-}
 
 #[tokio::test]
 async fn test_generate_models_invalid_project_path() {

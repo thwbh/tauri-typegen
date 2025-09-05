@@ -173,13 +173,13 @@ fn test_zod_schema_generation_for_tuples() {
 fn test_yup_schema_generation_for_maps() {
     let generator = TypeScriptGenerator::new(Some("yup".to_string()));
     
-    // Test Record<string, string>
+    // Test Record<string, string> - yup support removed
     let schema = generator.typescript_to_yup_type("Record<string, string>");
-    assert!(schema.contains("yup.object()"));
+    assert!(schema.contains("yup support removed"));
     
-    // Test Record arrays
+    // Test Record arrays - yup support removed
     let schema = generator.typescript_to_yup_type("Record<string, number>[]");
-    assert!(schema.contains("yup.array()"));
+    assert!(schema.contains("yup support removed"));
 }
 
 #[test]
