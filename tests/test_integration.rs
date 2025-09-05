@@ -204,6 +204,7 @@ fn test_full_pipeline_complex_project() {
             &commands,
             analyzer.get_discovered_structs(),
             output_path.to_str().unwrap(),
+            &analyzer,
         )
         .unwrap();
 
@@ -295,6 +296,7 @@ fn test_full_pipeline_with_yup() {
             &commands,
             analyzer.get_discovered_structs(),
             output_path.to_str().unwrap(),
+            &analyzer,
         )
         .unwrap();
 
@@ -326,6 +328,7 @@ fn test_full_pipeline_without_validation() {
             &commands,
             analyzer.get_discovered_structs(),
             output_path.to_str().unwrap(),
+            &analyzer,
         )
         .unwrap();
 
@@ -405,6 +408,7 @@ fn test_generated_content_syntax_valid() {
             &commands,
             analyzer.get_discovered_structs(),
             output_path.to_str().unwrap(),
+            &analyzer,
         )
         .unwrap();
 

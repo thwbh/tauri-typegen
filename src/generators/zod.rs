@@ -1,3 +1,4 @@
+use crate::analyzer::CommandAnalyzer;
 use crate::models::{CommandInfo, StructInfo, ValidatorAttributes, LengthConstraint, RangeConstraint};
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -21,6 +22,7 @@ impl ZodGenerator {
         commands: &[CommandInfo],
         discovered_structs: &HashMap<String, StructInfo>,
         output_path: &str,
+        analyzer: &CommandAnalyzer,
     ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
         let mut generated_files = Vec::new();
 
@@ -31,7 +33,7 @@ impl ZodGenerator {
         self.collect_custom_types(commands);
 
         // Generate types file (with schemas and inferred types combined)
-        let types_content = self.generate_types_file(commands, discovered_structs)?;
+        let types_content = self.generate_types_file(commands, discovered_structs, analyzer)?;
         let types_file_path = format!("{}/types.ts", output_path);
         fs::create_dir_all(output_path)?;
         fs::write(&types_file_path, types_content)?;
@@ -72,6 +74,7 @@ impl ZodGenerator {
         &self,
         commands: &[CommandInfo],
         discovered_structs: &HashMap<String, StructInfo>,
+        analyzer: &CommandAnalyzer,
     ) -> Result<String, Box<dyn std::error::Error>> {
         let mut content = String::new();
 
@@ -94,8 +97,9 @@ impl ZodGenerator {
         let mut all_types: HashSet<String> = used_types.clone();
         self.discover_nested_dependencies(&used_types, discovered_structs, &mut all_types);
 
-        // Generate schemas for discovered structs
-        for type_name in &all_types {
+        // Generate schemas for discovered structs in topological order
+        let sorted_types = analyzer.topological_sort_types(&all_types);
+        for type_name in &sorted_types {
             if let Some(struct_info) = discovered_structs.get(type_name) {
                 if struct_info.is_enum {
                     content.push_str(&self.generate_enum_schema(struct_info));
@@ -122,6 +126,7 @@ impl ZodGenerator {
         &self,
         commands: &[CommandInfo],
         discovered_structs: &HashMap<String, StructInfo>,
+        analyzer: &CommandAnalyzer,
     ) -> Result<String, Box<dyn std::error::Error>> {
         let mut content = String::new();
 
@@ -132,7 +137,7 @@ impl ZodGenerator {
         content.push_str("import { z } from 'zod';\n\n");
 
         // Generate schemas first
-        content.push_str(&self.generate_schemas_in_types_file(commands, discovered_structs)?);
+        content.push_str(&self.generate_schemas_in_types_file(commands, discovered_structs, analyzer)?);
         
         // Then generate inferred types
         content.push_str(&self.generate_inferred_types(commands, discovered_structs)?);
@@ -144,6 +149,7 @@ impl ZodGenerator {
         &self,
         commands: &[CommandInfo],
         discovered_structs: &HashMap<String, StructInfo>,
+        analyzer: &CommandAnalyzer,
     ) -> Result<String, Box<dyn std::error::Error>> {
         let mut content = String::new();
         
@@ -160,8 +166,9 @@ impl ZodGenerator {
         let mut all_types: HashSet<String> = used_types.clone();
         self.discover_nested_dependencies(&used_types, discovered_structs, &mut all_types);
 
-        // Generate schemas for discovered structs
-        for type_name in &all_types {
+        // Generate schemas for discovered structs in topological order
+        let sorted_types = analyzer.topological_sort_types(&all_types);
+        for type_name in &sorted_types {
             if let Some(struct_info) = discovered_structs.get(type_name) {
                 if struct_info.is_enum {
                     content.push_str(&self.generate_enum_schema(struct_info));

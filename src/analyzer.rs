@@ -966,6 +966,51 @@ impl CommandAnalyzer {
     pub fn get_dependency_graph(&self) -> &TypeDependencyGraph {
         &self.dependency_graph
     }
+
+    /// Sort types topologically to ensure dependencies are declared before being used
+    pub fn topological_sort_types(&self, types: &HashSet<String>) -> Vec<String> {
+        let mut sorted = Vec::new();
+        let mut visited = HashSet::new();
+        let mut visiting = HashSet::new();
+        
+        for type_name in types {
+            if !visited.contains(type_name) {
+                self.topological_visit(type_name, &mut sorted, &mut visited, &mut visiting);
+            }
+        }
+        
+        sorted
+    }
+    
+    fn topological_visit(
+        &self, 
+        type_name: &str, 
+        sorted: &mut Vec<String>, 
+        visited: &mut HashSet<String>, 
+        visiting: &mut HashSet<String>
+    ) {
+        if visited.contains(type_name) {
+            return;
+        }
+        
+        if visiting.contains(type_name) {
+            // Circular dependency detected - skip to avoid infinite loop
+            return;
+        }
+        
+        visiting.insert(type_name.to_string());
+        
+        // Visit all dependencies first
+        if let Some(deps) = self.dependency_graph.dependencies.get(type_name) {
+            for dep in deps {
+                self.topological_visit(dep, sorted, visited, visiting);
+            }
+        }
+        
+        visiting.remove(type_name);
+        visited.insert(type_name.to_string());
+        sorted.push(type_name.to_string());
+    }
     
     /// Generate a text-based visualization of the dependency graph
     pub fn visualize_dependencies(&self, commands: &[CommandInfo]) -> String {

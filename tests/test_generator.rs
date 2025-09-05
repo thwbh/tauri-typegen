@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
+use tauri_plugin_typegen::analyzer::CommandAnalyzer;
 use tauri_plugin_typegen::generator::TypeScriptGenerator;
 use tauri_plugin_typegen::models::{CommandInfo, ParameterInfo, StructInfo};
 use tempfile::TempDir;
@@ -44,7 +45,7 @@ fn test_generator_creates_all_files() {
 
     let mut generator = TypeScriptGenerator::new(Some("zod".to_string()));
     let generated_files = generator
-        .generate_models(&commands, &discovered_structs, output_path)
+        .generate_models(&commands, &discovered_structs, output_path, &CommandAnalyzer::new())
         .unwrap();
 
     assert_eq!(generated_files.len(), 4);
@@ -70,7 +71,7 @@ fn test_generator_without_validation_library() {
 
     let mut generator = TypeScriptGenerator::new(Some("none".to_string()));
     let generated_files = generator
-        .generate_models(&commands, &discovered_structs, output_path)
+        .generate_models(&commands, &discovered_structs, output_path, &CommandAnalyzer::new())
         .unwrap();
 
     // Should generate 3 files (no schemas.ts)
@@ -89,7 +90,7 @@ fn test_types_file_generation() {
 
     let mut generator = TypeScriptGenerator::new(None);
     generator
-        .generate_models(&commands, &discovered_structs, output_path)
+        .generate_models(&commands, &discovered_structs, output_path, &CommandAnalyzer::new())
         .unwrap();
 
     let types_content = fs::read_to_string(temp_dir.path().join("types.ts")).unwrap();
@@ -112,7 +113,7 @@ fn test_zod_schemas_generation() {
 
     let mut generator = TypeScriptGenerator::new(Some("zod".to_string()));
     generator
-        .generate_models(&commands, &discovered_structs, output_path)
+        .generate_models(&commands, &discovered_structs, output_path, &CommandAnalyzer::new())
         .unwrap();
 
     let schemas_content = fs::read_to_string(temp_dir.path().join("schemas.ts")).unwrap();
@@ -137,7 +138,7 @@ fn test_yup_schemas_generation() {
     // Yup support removed - should fall back to vanilla generator
     let mut generator = TypeScriptGenerator::new(Some("yup".to_string()));
     let generated_files = generator
-        .generate_models(&commands, &discovered_structs, output_path)
+        .generate_models(&commands, &discovered_structs, output_path, &CommandAnalyzer::new())
         .unwrap();
 
     // Should generate vanilla files (no schemas.ts for yup)
@@ -158,7 +159,7 @@ fn test_commands_file_generation() {
 
     let mut generator = TypeScriptGenerator::new(Some("zod".to_string()));
     generator
-        .generate_models(&commands, &discovered_structs, output_path)
+        .generate_models(&commands, &discovered_structs, output_path, &CommandAnalyzer::new())
         .unwrap();
 
     let commands_content = fs::read_to_string(temp_dir.path().join("commands.ts")).unwrap();
@@ -189,7 +190,7 @@ fn test_commands_without_validation() {
 
     let mut generator = TypeScriptGenerator::new(Some("none".to_string()));
     generator
-        .generate_models(&commands, &discovered_structs, output_path)
+        .generate_models(&commands, &discovered_structs, output_path, &CommandAnalyzer::new())
         .unwrap();
 
     let commands_content = fs::read_to_string(temp_dir.path().join("commands.ts")).unwrap();
@@ -210,7 +211,7 @@ fn test_index_file_generation() {
 
     let mut generator = TypeScriptGenerator::new(None);
     generator
-        .generate_models(&commands, &discovered_structs, output_path)
+        .generate_models(&commands, &discovered_structs, output_path, &CommandAnalyzer::new())
         .unwrap();
 
     let index_content = fs::read_to_string(temp_dir.path().join("index.ts")).unwrap();
@@ -298,7 +299,7 @@ fn test_generator_with_void_return() {
 
     let mut generator = TypeScriptGenerator::new(None);
     generator
-        .generate_models(&commands, &discovered_structs, output_path)
+        .generate_models(&commands, &discovered_structs, output_path, &CommandAnalyzer::new())
         .unwrap();
 
     let commands_content = fs::read_to_string(temp_dir.path().join("commands.ts")).unwrap();
@@ -315,7 +316,7 @@ fn test_generator_empty_commands_list() {
 
     let mut generator = TypeScriptGenerator::new(None);
     let generated_files = generator
-        .generate_models(&commands, &discovered_structs, output_path)
+        .generate_models(&commands, &discovered_structs, output_path, &CommandAnalyzer::new())
         .unwrap();
 
     // Should still generate files, just with empty content

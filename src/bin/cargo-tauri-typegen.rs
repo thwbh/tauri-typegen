@@ -155,6 +155,7 @@ fn run_generate(
         &commands,
         analyzer.get_discovered_structs(),
         &output_path.to_string_lossy(),
+        &analyzer,
     )?;
 
     println!(

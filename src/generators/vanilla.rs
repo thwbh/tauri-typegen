@@ -1,3 +1,4 @@
+use crate::analyzer::CommandAnalyzer;
 use crate::models::{CommandInfo, StructInfo};
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -21,6 +22,7 @@ impl VanillaTypeScriptGenerator {
         commands: &[CommandInfo],
         discovered_structs: &HashMap<String, StructInfo>,
         output_path: &str,
+        _analyzer: &CommandAnalyzer,
     ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
         let mut generated_files = Vec::new();
 

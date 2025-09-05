@@ -108,6 +108,7 @@ fn create_sample_structs_with_unused() -> HashMap<String, StructInfo> {
                     typescript_type: "number".to_string(),
                     is_optional: false,
                     is_public: true,
+                    validator_attributes: None,
                 },
                 FieldInfo {
                     name: "name".to_string(),
@@ -115,6 +116,7 @@ fn create_sample_structs_with_unused() -> HashMap<String, StructInfo> {
                     typescript_type: "string".to_string(),
                     is_optional: false,
                     is_public: true,
+                    validator_attributes: None,
                 },
                 FieldInfo {
                     name: "email".to_string(),
@@ -122,6 +124,7 @@ fn create_sample_structs_with_unused() -> HashMap<String, StructInfo> {
                     typescript_type: "string | null".to_string(),
                     is_optional: true,
                     is_public: true,
+                    validator_attributes: None,
                 },
             ],
             file_path: "test_file.rs".to_string(),
@@ -140,6 +143,7 @@ fn create_sample_structs_with_unused() -> HashMap<String, StructInfo> {
                     typescript_type: "string".to_string(),
                     is_optional: false,
                     is_public: true,
+                    validator_attributes: None,
                 },
                 FieldInfo {
                     name: "email".to_string(),
@@ -147,6 +151,7 @@ fn create_sample_structs_with_unused() -> HashMap<String, StructInfo> {
                     typescript_type: "string | null".to_string(),
                     is_optional: true,
                     is_public: true,
+                    validator_attributes: None,
                 },
             ],
             file_path: "test_file.rs".to_string(),
@@ -165,6 +170,7 @@ fn create_sample_structs_with_unused() -> HashMap<String, StructInfo> {
                 typescript_type: "number".to_string(),
                 is_optional: false,
                 is_public: true,
+                validator_attributes: None,
             }],
             file_path: "test_file.rs".to_string(),
             is_enum: false,
@@ -181,6 +187,7 @@ fn create_sample_structs_with_unused() -> HashMap<String, StructInfo> {
                 typescript_type: "string".to_string(),
                 is_optional: false,
                 is_public: true,
+                validator_attributes: None,
             }],
             file_path: "test_file.rs".to_string(),
             is_enum: false,
@@ -197,6 +204,7 @@ fn create_sample_structs_with_unused() -> HashMap<String, StructInfo> {
                 typescript_type: "number[]".to_string(),
                 is_optional: false,
                 is_public: true,
+                validator_attributes: None,
             }],
             file_path: "test_file.rs".to_string(),
             is_enum: false,
@@ -216,7 +224,7 @@ fn test_only_generates_types_used_by_commands() {
 
     let mut generator = TypeScriptGenerator::new(None);
     generator
-        .generate_models(&commands, &all_discovered_structs, output_path)
+        .generate_models(&commands, &all_discovered_structs, output_path, &CommandAnalyzer::new())
         .unwrap();
 
     let types_content = fs::read_to_string(temp_dir.path().join("types.ts")).unwrap();
@@ -320,6 +328,7 @@ fn test_integration_with_real_analyzer() {
             &commands,
             analyzer.get_discovered_structs(),
             &output_path.to_string_lossy(),
+            &analyzer,
         )
         .unwrap();
 
@@ -346,7 +355,7 @@ fn test_type_filtering_with_validation_library() {
     // Test with Zod validation
     let mut generator = TypeScriptGenerator::new(Some("zod".to_string()));
     generator
-        .generate_models(&commands, &all_discovered_structs, output_path)
+        .generate_models(&commands, &all_discovered_structs, output_path, &CommandAnalyzer::new())
         .unwrap();
 
     let types_content = fs::read_to_string(temp_dir.path().join("types.ts")).unwrap();
@@ -377,7 +386,7 @@ fn test_empty_commands_generates_no_unnecessary_types() {
 
     let mut generator = TypeScriptGenerator::new(None);
     generator
-        .generate_models(&commands, &all_discovered_structs, output_path)
+        .generate_models(&commands, &all_discovered_structs, output_path, &CommandAnalyzer::new())
         .unwrap();
 
     let types_content = fs::read_to_string(temp_dir.path().join("types.ts")).unwrap();

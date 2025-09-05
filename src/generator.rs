@@ -1,3 +1,4 @@
+use crate::analyzer::CommandAnalyzer;
 use crate::generators::{VanillaTypeScriptGenerator, ZodGenerator};
 use crate::models::{CommandInfo, StructInfo};
 use std::collections::HashMap;
@@ -18,20 +19,21 @@ impl TypeScriptGenerator {
         commands: &[CommandInfo],
         discovered_structs: &HashMap<String, StructInfo>,
         output_path: &str,
+        analyzer: &CommandAnalyzer,
     ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
         match self.validation_library.as_str() {
             "zod" => {
                 let mut generator = ZodGenerator::new();
-                generator.generate_models(commands, discovered_structs, output_path)
+                generator.generate_models(commands, discovered_structs, output_path, analyzer)
             }
             "none" => {
                 let mut generator = VanillaTypeScriptGenerator::new();
-                generator.generate_models(commands, discovered_structs, output_path)
+                generator.generate_models(commands, discovered_structs, output_path, analyzer)
             }
             _ => {
                 // For other validation libraries, fall back to vanilla
                 let mut generator = VanillaTypeScriptGenerator::new();
-                generator.generate_models(commands, discovered_structs, output_path)
+                generator.generate_models(commands, discovered_structs, output_path, analyzer)
             }
         }
     }

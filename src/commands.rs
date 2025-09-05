@@ -37,7 +37,7 @@ pub async fn generate_models(payload: GenerateModelsRequest) -> Result<GenerateM
         .unwrap_or_else(|| format!("{}/generated", payload.project_path));
 
     let generated_files = generator
-        .generate_models(&commands, analyzer.get_discovered_structs(), &output_path)
+        .generate_models(&commands, analyzer.get_discovered_structs(), &output_path, &analyzer)
         .map_err(|e| crate::Error::CodeGeneration(e.to_string()))?;
 
     Ok(GenerateModelsResponse {

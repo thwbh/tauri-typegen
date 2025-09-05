@@ -228,7 +228,7 @@ fn test_full_generation_with_complex_types() {
     
     let mut generator = TypeScriptGenerator::new(Some("zod".to_string()));
     let generated_files = generator
-        .generate_models(&commands, discovered_structs, output_path.to_str().unwrap())
+        .generate_models(&commands, discovered_structs, output_path.to_str().unwrap(), &CommandAnalyzer::new())
         .unwrap();
     
     // Check that all expected files were generated

@@ -104,6 +104,7 @@ pub fn generate_from_config(
         &commands,
         analyzer.get_discovered_structs(),
         &config.output_path,
+        &analyzer,
     )?;
 
     if verbose {
