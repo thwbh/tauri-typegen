@@ -233,9 +233,12 @@ fn test_full_generation_with_complex_types() {
     
     // Check that all expected files were generated
     assert!(generated_files.contains(&"types.ts".to_string()));
-    assert!(generated_files.contains(&"schemas.ts".to_string()));
+    // schemas.ts is not generated for zod - schemas are embedded in types.ts
     assert!(generated_files.contains(&"commands.ts".to_string()));
     assert!(generated_files.contains(&"index.ts".to_string()));
+    
+    // Should have 3 files for zod validation
+    assert_eq!(generated_files.len(), 3);
     
     // Check that the files actually exist and contain expected content
     let types_content = fs::read_to_string(output_path.join("types.ts")).unwrap();

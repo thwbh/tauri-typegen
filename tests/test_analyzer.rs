@@ -19,7 +19,7 @@ fn create_test_project(files: &[(&str, &str)]) -> TempDir {
 
 #[test]
 fn test_analyzer_finds_commands_in_sample_file() {
-    let analyzer = CommandAnalyzer::new();
+    let mut analyzer = CommandAnalyzer::new();
     let fixture_path = Path::new("tests/fixtures/sample_commands.rs");
 
     let commands = analyzer.analyze_file(fixture_path).unwrap();
@@ -41,7 +41,7 @@ fn test_analyzer_finds_commands_in_sample_file() {
 
 #[test]
 fn test_analyzer_extracts_command_details() {
-    let analyzer = CommandAnalyzer::new();
+    let mut analyzer = CommandAnalyzer::new();
     let fixture_path = Path::new("tests/fixtures/sample_commands.rs");
 
     let commands = analyzer.analyze_file(fixture_path).unwrap();
@@ -75,7 +75,7 @@ fn test_analyzer_extracts_command_details() {
 
 #[test]
 fn test_analyzer_handles_complex_parameters() {
-    let analyzer = CommandAnalyzer::new();
+    let mut analyzer = CommandAnalyzer::new();
     let fixture_path = Path::new("tests/fixtures/sample_commands.rs");
 
     let commands = analyzer.analyze_file(fixture_path).unwrap();
@@ -106,7 +106,7 @@ fn test_analyzer_handles_complex_parameters() {
 
 #[test]
 fn test_analyzer_handles_no_parameters() {
-    let analyzer = CommandAnalyzer::new();
+    let mut analyzer = CommandAnalyzer::new();
     let fixture_path = Path::new("tests/fixtures/sample_commands.rs");
 
     let commands = analyzer.analyze_file(fixture_path).unwrap();
@@ -123,7 +123,7 @@ fn test_analyzer_handles_no_parameters() {
 
 #[test]
 fn test_analyzer_handles_empty_file() {
-    let analyzer = CommandAnalyzer::new();
+    let mut analyzer = CommandAnalyzer::new();
     let fixture_path = Path::new("tests/fixtures/empty_file.rs");
 
     let commands = analyzer.analyze_file(fixture_path).unwrap();
@@ -132,7 +132,7 @@ fn test_analyzer_handles_empty_file() {
 
 #[test]
 fn test_analyzer_handles_invalid_syntax() {
-    let analyzer = CommandAnalyzer::new();
+    let mut analyzer = CommandAnalyzer::new();
     let fixture_path = Path::new("tests/fixtures/invalid_syntax.rs");
 
     // Should handle syntax errors gracefully and return empty results
@@ -190,7 +190,7 @@ fn test_analyzer_project_analysis() {
 
 #[test]
 fn test_type_mappings() {
-    let analyzer = CommandAnalyzer::new();
+    let mut analyzer = CommandAnalyzer::new();
 
     // Test basic type mappings
     assert_eq!(analyzer.map_rust_type_to_typescript("String"), "string");

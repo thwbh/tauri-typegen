@@ -1,4 +1,5 @@
 use clap::{Args, Parser, Subcommand};
+use std::fs;
 use std::path::PathBuf;
 use tauri_plugin_typegen::analyzer::CommandAnalyzer;
 use tauri_plugin_typegen::generator::TypeScriptGenerator;
@@ -42,6 +43,10 @@ enum TypegenCommands {
         /// Verbose output
         #[arg(long, action = clap::ArgAction::SetTrue)]
         verbose: bool,
+
+        /// Generate dependency graph visualization
+        #[arg(long, action = clap::ArgAction::SetTrue)]
+        visualize_deps: bool,
     },
 }
 
@@ -55,8 +60,9 @@ fn main() {
                 output_path,
                 validation_library,
                 verbose,
+                visualize_deps,
             } => {
-                if let Err(e) = run_generate(project_path, output_path, validation_library, verbose)
+                if let Err(e) = run_generate(project_path, output_path, validation_library, verbose, visualize_deps)
                 {
                     eprintln!("Error: {}", e);
                     std::process::exit(1);
@@ -71,6 +77,7 @@ fn run_generate(
     output_path: PathBuf,
     validation_library: String,
     verbose: bool,
+    visualize_deps: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if verbose {
         println!("🔍 Analyzing Tauri commands in: {}", project_path.display());
@@ -157,6 +164,26 @@ fn run_generate(
     );
     for file in &generated_files {
         println!("  📄 {}/{}", output_path.display(), file);
+    }
+
+    // Generate dependency visualization if requested
+    if visualize_deps {
+        println!("\n🌐 Generating dependency visualization...");
+        
+        let text_viz = analyzer.visualize_dependencies(&commands);
+        let viz_file_path = output_path.join("dependency-graph.txt");
+        fs::write(&viz_file_path, text_viz)?;
+        println!("  📄 {}", viz_file_path.display());
+        
+        let dot_viz = analyzer.generate_dot_graph(&commands);
+        let dot_file_path = output_path.join("dependency-graph.dot");
+        fs::write(&dot_file_path, dot_viz)?;
+        println!("  📄 {}", dot_file_path.display());
+        
+        println!("\n💡 Visualization generated:");
+        println!("  • Text format: {}", viz_file_path.display());
+        println!("  • DOT format: {} (use with Graphviz: dot -Tpng {} -o graph.png)", 
+            dot_file_path.display(), dot_file_path.display());
     }
 
     println!("\n💡 Usage in your frontend:");

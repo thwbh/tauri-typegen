@@ -133,12 +133,12 @@ async fn test_generate_models_success() {
     // Should generate files for found commands
     assert!(response.commands_found > 0);
     assert!(response.types_generated > 0);
-    assert_eq!(response.generated_files.len(), 4); // types, schemas, commands, index
+    assert_eq!(response.generated_files.len(), 3); // types (with zod schemas), commands, index
 
     // Verify files were created
     let output_dir = temp_dir.path().join("generated");
     assert!(output_dir.join("types.ts").exists());
-    assert!(output_dir.join("schemas.ts").exists());
+    // schemas.ts is not generated for zod - schemas are in types.ts
     assert!(output_dir.join("commands.ts").exists());
     assert!(output_dir.join("index.ts").exists());
 }

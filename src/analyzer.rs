@@ -2,13 +2,39 @@ use crate::models::{CommandInfo, FieldInfo, ParameterInfo, StructInfo};
 use quote::ToTokens;
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::path::Path;
-use syn::{Attribute, FnArg, ItemEnum, ItemFn, ItemStruct, PatType, ReturnType, Type, Visibility};
+use std::path::{Path, PathBuf};
+use syn::{Attribute, FnArg, ItemEnum, ItemFn, ItemStruct, PatType, ReturnType, Type, Visibility, File as SynFile};
 use walkdir::WalkDir;
+
+/// Cache entry for a parsed Rust file
+#[derive(Debug, Clone)]
+struct ParsedFile {
+    /// The parsed AST
+    ast: SynFile,
+    /// File path for reference
+    path: PathBuf,
+    // Last modified time for cache invalidation (if needed later)
+    // modified: std::time::SystemTime,
+}
+
+/// Dependency graph for lazy type resolution
+#[derive(Debug, Default)]
+struct TypeDependencyGraph {
+    /// Maps type name to the files where it's defined
+    type_definitions: HashMap<String, PathBuf>,
+    /// Maps type name to types it depends on
+    dependencies: HashMap<String, HashSet<String>>,
+    /// Maps type name to its resolved StructInfo
+    resolved_types: HashMap<String, StructInfo>,
+}
 
 pub struct CommandAnalyzer {
     type_mappings: HashMap<String, String>,
     discovered_structs: HashMap<String, StructInfo>,
+    /// Cache of parsed ASTs to avoid re-parsing files
+    ast_cache: HashMap<PathBuf, ParsedFile>,
+    /// Dependency graph for efficient type resolution
+    dependency_graph: TypeDependencyGraph,
 }
 
 impl CommandAnalyzer {
@@ -45,6 +71,8 @@ impl CommandAnalyzer {
         Self {
             type_mappings,
             discovered_structs: HashMap::new(),
+            ast_cache: HashMap::new(),
+            dependency_graph: TypeDependencyGraph::default(),
         }
     }
 
@@ -52,96 +80,43 @@ impl CommandAnalyzer {
         &mut self,
         project_path: &str,
     ) -> Result<Vec<CommandInfo>, Box<dyn std::error::Error>> {
+        // Single pass: Parse all Rust files and cache ASTs
+        self.parse_and_cache_all_files(project_path)?;
+        
+        // Extract commands from cached ASTs
         let mut commands = Vec::new();
         let mut type_names_to_discover = HashSet::new();
-
-        // First pass: Find all commands and collect type names
-        for entry in WalkDir::new(project_path) {
-            let entry = entry?;
-            if entry.file_type().is_file() {
-                if let Some(extension) = entry.path().extension() {
-                    if extension == "rs" {
-                        println!("🔍 Scanning file: {}", entry.path().display());
-
-                        // Analyze commands in this file
-                        let file_commands = self.analyze_file(entry.path())?;
-
-                        // Collect type names from command parameters and return types
-                        for cmd in &file_commands {
-                            for param in &cmd.parameters {
-                                self.extract_type_names(
-                                    &param.rust_type,
-                                    &mut type_names_to_discover,
-                                );
-                            }
-                            self.extract_type_names(&cmd.return_type, &mut type_names_to_discover);
-                        }
-
-                        commands.extend(file_commands);
-
-                        // Also discover all structs in this file for completeness
-                        if let Err(e) = self.discover_types_in_file(entry.path()) {
-                            eprintln!(
-                                "Warning: Failed to discover types in {}: {}",
-                                entry.path().display(),
-                                e
-                            );
-                        }
+        
+        // First, collect all the files we need to process
+        let file_paths: Vec<PathBuf> = self.ast_cache.keys().cloned().collect();
+        
+        for file_path in file_paths {
+            if let Some(parsed_file) = self.ast_cache.get(&file_path).cloned() {
+                println!("🔍 Analyzing file: {}", parsed_file.path.display());
+                
+                // Extract commands from this file's AST
+                let file_commands = self.extract_commands_from_ast(&parsed_file.ast, &parsed_file.path)?;
+                
+                // Collect type names from command parameters and return types
+                for cmd in &file_commands {
+                    for param in &cmd.parameters {
+                        self.extract_type_names(&param.rust_type, &mut type_names_to_discover);
                     }
+                    self.extract_type_names(&cmd.return_type, &mut type_names_to_discover);
                 }
+                
+                commands.extend(file_commands);
+                
+                // Build type definition index from this file
+                self.index_type_definitions(&parsed_file.ast, &parsed_file.path);
             }
         }
-
+        
         println!("🔍 Type names to discover: {:?}", type_names_to_discover);
-
-        // Second pass: Discover specific types that are referenced by commands
-        for entry in WalkDir::new(project_path) {
-            let entry = entry?;
-            if entry.file_type().is_file() {
-                if let Some(extension) = entry.path().extension() {
-                    if extension == "rs" {
-                        if let Err(e) = self
-                            .discover_specific_types_in_file(entry.path(), &type_names_to_discover)
-                        {
-                            eprintln!(
-                                "Warning: Failed to discover specific types in {}: {}",
-                                entry.path().display(),
-                                e
-                            );
-                        }
-                    }
-                }
-            }
-        }
         
-        // Third pass: Recursively discover nested types used by discovered structs
-        let mut additional_types = HashSet::new();
-        self.discover_nested_dependencies(&mut additional_types);
+        // Lazy type resolution: Resolve types on demand using dependency graph
+        self.resolve_types_lazily(&type_names_to_discover)?;
         
-        if !additional_types.is_empty() {
-            println!("🔍 Additional nested types to discover: {:?}", additional_types);
-            
-            // Fourth pass: Discover these nested types
-            for entry in WalkDir::new(project_path) {
-                let entry = entry?;
-                if entry.file_type().is_file() {
-                    if let Some(extension) = entry.path().extension() {
-                        if extension == "rs" {
-                            if let Err(e) = self
-                                .discover_specific_types_in_file(entry.path(), &additional_types)
-                            {
-                                eprintln!(
-                                    "Warning: Failed to discover nested types in {}: {}",
-                                    entry.path().display(),
-                                    e
-                                );
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
         println!(
             "🏗️  Discovered {} structs total",
             self.discovered_structs.len()
@@ -151,6 +126,158 @@ impl CommandAnalyzer {
         }
 
         Ok(commands)
+    }
+
+    /// Parse and cache all Rust files in a single traversal
+    fn parse_and_cache_all_files(&mut self, project_path: &str) -> Result<(), Box<dyn std::error::Error>> {
+        for entry in WalkDir::new(project_path) {
+            let entry = entry?;
+            if entry.file_type().is_file() {
+                if let Some(extension) = entry.path().extension() {
+                    if extension == "rs" {
+                        let file_path = entry.path().to_path_buf();
+                        
+                        // Skip if already cached (in case of duplicate paths)
+                        if self.ast_cache.contains_key(&file_path) {
+                            continue;
+                        }
+                        
+                        // Parse and cache the AST
+                        match self.parse_and_cache_file(&file_path) {
+                            Ok(_) => {
+                                println!("📁 Cached AST for: {}", file_path.display());
+                            }
+                            Err(e) => {
+                                eprintln!("⚠️  Failed to parse {}: {}", file_path.display(), e);
+                                // Continue with other files even if one fails
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        println!("🗂️  Cached {} ASTs", self.ast_cache.len());
+        Ok(())
+    }
+    
+    /// Parse a single file and add it to the cache
+    fn parse_and_cache_file(&mut self, file_path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+        let content = fs::read_to_string(file_path)?;
+        let ast = syn::parse_file(&content)?;
+        
+        let parsed_file = ParsedFile {
+            ast,
+            path: file_path.clone(),
+        };
+        
+        self.ast_cache.insert(file_path.clone(), parsed_file);
+        Ok(())
+    }
+    
+    /// Extract commands from a cached AST (replaces analyze_file)
+    fn extract_commands_from_ast(
+        &self,
+        ast: &SynFile,
+        file_path: &PathBuf,
+    ) -> Result<Vec<CommandInfo>, Box<dyn std::error::Error>> {
+        let mut commands = Vec::new();
+
+        for item in &ast.items {
+            if let syn::Item::Fn(func) = item {
+                if self.is_tauri_command(func) {
+                    if let Some(command_info) = self.extract_command_info(func, file_path) {
+                        commands.push(command_info);
+                    }
+                }
+            }
+        }
+
+        Ok(commands)
+    }
+    
+    /// Build an index of type definitions from an AST
+    fn index_type_definitions(&mut self, ast: &SynFile, file_path: &PathBuf) {
+        for item in &ast.items {
+            match item {
+                syn::Item::Struct(item_struct) => {
+                    if self.should_include_struct(item_struct) {
+                        let struct_name = item_struct.ident.to_string();
+                        self.dependency_graph.type_definitions.insert(struct_name, file_path.clone());
+                    }
+                }
+                syn::Item::Enum(item_enum) => {
+                    if self.should_include_enum(item_enum) {
+                        let enum_name = item_enum.ident.to_string();
+                        self.dependency_graph.type_definitions.insert(enum_name, file_path.clone());
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    
+    /// Lazily resolve types using the dependency graph
+    fn resolve_types_lazily(&mut self, initial_types: &HashSet<String>) -> Result<(), Box<dyn std::error::Error>> {
+        let mut types_to_resolve: Vec<String> = initial_types.iter().cloned().collect();
+        let mut resolved_types = HashSet::new();
+        
+        while let Some(type_name) = types_to_resolve.pop() {
+            // Skip if already resolved
+            if resolved_types.contains(&type_name) || self.discovered_structs.contains_key(&type_name) {
+                continue;
+            }
+            
+            // Try to resolve this type
+            if let Some(file_path) = self.dependency_graph.type_definitions.get(&type_name).cloned() {
+                if let Some(parsed_file) = self.ast_cache.get(&file_path) {
+                    // Find and parse the specific type from the cached AST
+                    if let Some(struct_info) = self.extract_type_from_ast(&parsed_file.ast, &type_name, &file_path) {
+                        // Collect dependencies of this type
+                        let mut type_dependencies = HashSet::new();
+                        for field in &struct_info.fields {
+                            self.extract_type_names(&field.rust_type, &mut type_dependencies);
+                        }
+                        
+                        // Add dependencies to the resolution queue
+                        for dep_type in &type_dependencies {
+                            if !resolved_types.contains(dep_type) 
+                                && !self.discovered_structs.contains_key(dep_type) 
+                                && self.dependency_graph.type_definitions.contains_key(dep_type) {
+                                types_to_resolve.push(dep_type.clone());
+                            }
+                        }
+                        
+                        // Store the resolved type
+                        self.dependency_graph.dependencies.insert(type_name.clone(), type_dependencies);
+                        self.discovered_structs.insert(type_name.clone(), struct_info);
+                        resolved_types.insert(type_name);
+                    }
+                }
+            }
+        }
+        
+        Ok(())
+    }
+    
+    /// Extract a specific type from a cached AST
+    fn extract_type_from_ast(&self, ast: &SynFile, type_name: &str, file_path: &PathBuf) -> Option<StructInfo> {
+        for item in &ast.items {
+            match item {
+                syn::Item::Struct(item_struct) => {
+                    if item_struct.ident.to_string() == type_name && self.should_include_struct(item_struct) {
+                        return self.parse_struct(item_struct, file_path);
+                    }
+                }
+                syn::Item::Enum(item_enum) => {
+                    if item_enum.ident.to_string() == type_name && self.should_include_enum(item_enum) {
+                        return self.parse_enum(item_enum, file_path);
+                    }
+                }
+                _ => {}
+            }
+        }
+        None
     }
 
     pub fn extract_type_names(&self, rust_type: &str, type_names: &mut HashSet<String>) {
@@ -239,84 +366,8 @@ impl CommandAnalyzer {
         }
     }
 
-    fn discover_specific_types_in_file(
-        &mut self,
-        file_path: &Path,
-        target_types: &HashSet<String>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let content = fs::read_to_string(file_path)?;
-        let syntax = match syn::parse_file(&content) {
-            Ok(syntax) => syntax,
-            Err(e) => {
-                eprintln!("Warning: Failed to parse {}: {}", file_path.display(), e);
-                return Ok(()); // Skip files with syntax errors
-            }
-        };
-
-        for item in syntax.items {
-            match item {
-                syn::Item::Struct(item_struct) => {
-                    let struct_name = item_struct.ident.to_string();
-                    if target_types.contains(&struct_name)
-                        && self.should_include_struct(&item_struct)
-                    {
-                        if let Some(struct_info) = self.parse_struct(&item_struct, file_path) {
-                            self.discovered_structs.insert(struct_name, struct_info);
-                        }
-                    }
-                }
-                syn::Item::Enum(item_enum) => {
-                    let enum_name = item_enum.ident.to_string();
-                    if target_types.contains(&enum_name) && self.should_include_enum(&item_enum) {
-                        if let Some(enum_info) = self.parse_enum(&item_enum, file_path) {
-                            self.discovered_structs.insert(enum_name, enum_info);
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        Ok(())
-    }
-
-    fn discover_types_in_file(
-        &mut self,
-        file_path: &Path,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let content = fs::read_to_string(file_path)?;
-        let syntax = match syn::parse_file(&content) {
-            Ok(syntax) => syntax,
-            Err(e) => {
-                eprintln!("Warning: Failed to parse {}: {}", file_path.display(), e);
-                return Ok(()); // Skip files with syntax errors
-            }
-        };
-
-        for item in syntax.items {
-            match item {
-                syn::Item::Struct(item_struct) => {
-                    if self.should_include_struct(&item_struct) {
-                        if let Some(struct_info) = self.parse_struct(&item_struct, file_path) {
-                            let struct_name = item_struct.ident.to_string();
-                            self.discovered_structs.insert(struct_name, struct_info);
-                        }
-                    }
-                }
-                syn::Item::Enum(item_enum) => {
-                    if self.should_include_enum(&item_enum) {
-                        if let Some(enum_info) = self.parse_enum(&item_enum, file_path) {
-                            let enum_name = item_enum.ident.to_string();
-                            self.discovered_structs.insert(enum_name, enum_info);
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        Ok(())
-    }
+    // Note: discover_specific_types_in_file and discover_types_in_file methods
+    // have been removed as they're replaced by the optimized AST caching system
 
     fn should_include_struct(&self, item_struct: &ItemStruct) -> bool {
         // Check if struct has Serialize or Deserialize derive
@@ -357,7 +408,7 @@ impl CommandAnalyzer {
         }
     }
 
-    fn parse_struct(&self, item_struct: &ItemStruct, file_path: &Path) -> Option<StructInfo> {
+    fn parse_struct(&self, item_struct: &ItemStruct, file_path: &PathBuf) -> Option<StructInfo> {
         let mut fields = Vec::new();
 
         match &item_struct.fields {
@@ -385,7 +436,7 @@ impl CommandAnalyzer {
         })
     }
 
-    fn parse_enum(&self, item_enum: &ItemEnum, file_path: &Path) -> Option<StructInfo> {
+    fn parse_enum(&self, item_enum: &ItemEnum, file_path: &PathBuf) -> Option<StructInfo> {
         let mut fields = Vec::new();
 
         for variant in &item_enum.variants {
@@ -460,31 +511,28 @@ impl CommandAnalyzer {
         })
     }
 
+    /// Analyze a single file for Tauri commands (backward compatibility for tests)
     pub fn analyze_file(
-        &self,
-        file_path: &Path,
+        &mut self,
+        file_path: &std::path::Path,
     ) -> Result<Vec<CommandInfo>, Box<dyn std::error::Error>> {
-        let content = fs::read_to_string(file_path)?;
-        let syntax = match syn::parse_file(&content) {
-            Ok(syntax) => syntax,
-            Err(e) => {
-                eprintln!("Warning: Failed to parse {}: {}", file_path.display(), e);
-                return Ok(vec![]); // Return empty vector for files with syntax errors
-            }
-        };
-        let mut commands = Vec::new();
-
-        for item in syntax.items {
-            if let syn::Item::Fn(func) = item {
-                if self.is_tauri_command(&func) {
-                    if let Some(command_info) = self.extract_command_info(&func, file_path) {
-                        commands.push(command_info);
-                    }
+        let path_buf = file_path.to_path_buf();
+        
+        // Parse and cache this single file - handle syntax errors gracefully
+        match self.parse_and_cache_file(&path_buf) {
+            Ok(_) => {
+                // Extract commands from the cached AST
+                if let Some(parsed_file) = self.ast_cache.get(&path_buf) {
+                    self.extract_commands_from_ast(&parsed_file.ast, &path_buf)
+                } else {
+                    Ok(vec![])
                 }
             }
+            Err(_) => {
+                // Return empty vector for files with syntax errors (backward compatibility)
+                Ok(vec![])
+            }
         }
-
-        Ok(commands)
     }
 
     fn is_tauri_command(&self, func: &ItemFn) -> bool {
@@ -496,7 +544,7 @@ impl CommandAnalyzer {
         })
     }
 
-    fn extract_command_info(&self, func: &ItemFn, file_path: &Path) -> Option<CommandInfo> {
+    fn extract_command_info(&self, func: &ItemFn, file_path: &PathBuf) -> Option<CommandInfo> {
         let name = func.sig.ident.to_string();
         let parameters = self.extract_parameters(&func.sig.inputs);
         let return_type = self.extract_return_type(&func.sig.output);
@@ -744,17 +792,154 @@ impl CommandAnalyzer {
         &self.discovered_structs
     }
     
-    // Discover nested type dependencies from already discovered structs
-    fn discover_nested_dependencies(&self, additional_types: &mut HashSet<String>) {
-        for (_, struct_info) in &self.discovered_structs {
-            for field in &struct_info.fields {
-                self.extract_type_names_recursive(&field.rust_type, additional_types);
+    /// Get the dependency graph for visualization
+    pub fn get_dependency_graph(&self) -> &TypeDependencyGraph {
+        &self.dependency_graph
+    }
+    
+    /// Generate a text-based visualization of the dependency graph
+    pub fn visualize_dependencies(&self, commands: &[CommandInfo]) -> String {
+        let mut output = String::new();
+        
+        output.push_str("🌐 Type Dependency Graph\n");
+        output.push_str("======================\n\n");
+        
+        // Show command entry points
+        output.push_str("📋 Command Entry Points:\n");
+        for cmd in commands {
+            output.push_str(&format!("• {} ({}:{})\n", cmd.name, 
+                cmd.file_path.split('/').last().unwrap_or(&cmd.file_path), 
+                cmd.line_number));
+            
+            // Show parameter types
+            for param in &cmd.parameters {
+                let clean_type = self.clean_type_name(&param.rust_type);
+                output.push_str(&format!("  ├─ {}: {} → {}\n", 
+                    param.name, clean_type, param.typescript_type));
+            }
+            
+            // Show return type
+            let clean_return = self.clean_type_name(&cmd.return_type);
+            output.push_str(&format!("  └─ returns: {} → {}\n", 
+                clean_return, cmd.return_type));
+        }
+        
+        output.push_str("\n🏗️  Discovered Types:\n");
+        for (type_name, struct_info) in &self.discovered_structs {
+            let type_kind = if struct_info.is_enum { "enum" } else { "struct" };
+            let file_name = struct_info.file_path.split('/').last().unwrap_or(&struct_info.file_path);
+            
+            output.push_str(&format!("• {} ({}) - {} fields - defined in {}\n", 
+                type_name, type_kind, struct_info.fields.len(), file_name));
+                
+            // Show field dependencies
+            if let Some(deps) = self.dependency_graph.dependencies.get(type_name) {
+                if !deps.is_empty() {
+                    output.push_str("  └─ depends on: ");
+                    let dep_list: Vec<String> = deps.iter().cloned().collect();
+                    output.push_str(&dep_list.join(", "));
+                    output.push_str("\n");
+                }
             }
         }
         
-        // Remove types we already have
-        for existing_type in self.discovered_structs.keys() {
-            additional_types.remove(existing_type);
+        // Show dependency chains
+        output.push_str("\n🔗 Dependency Chains:\n");
+        let mut visited = HashSet::new();
+        for type_name in self.discovered_structs.keys() {
+            if !visited.contains(type_name) {
+                self.show_dependency_chain(type_name, &mut output, &mut visited, 0);
+            }
+        }
+        
+        output.push_str("\n📊 Summary:\n");
+        output.push_str(&format!("• {} commands analyzed\n", commands.len()));
+        output.push_str(&format!("• {} types discovered\n", self.discovered_structs.len()));
+        output.push_str(&format!("• {} files with type definitions\n", 
+            self.dependency_graph.type_definitions.values().collect::<HashSet<_>>().len()));
+        
+        output
+    }
+    
+    fn clean_type_name<'a>(&self, rust_type: &'a str) -> &'a str {
+        // Remove common wrapper types for cleaner display
+        if let Some(inner) = rust_type.strip_prefix("Result<") {
+            if let Some(comma_pos) = inner.find(',') {
+                return inner[..comma_pos].trim();
+            }
+        }
+        if let Some(inner) = rust_type.strip_prefix("Option<") {
+            if let Some(suffix_pos) = inner.rfind('>') {
+                return inner[..suffix_pos].trim();
+            }
+        }
+        rust_type
+    }
+    
+    fn show_dependency_chain(&self, type_name: &str, output: &mut String, visited: &mut HashSet<String>, depth: usize) {
+        if visited.contains(type_name) || depth > 10 {
+            return;
+        }
+        visited.insert(type_name.to_string());
+        
+        let indent = "  ".repeat(depth);
+        output.push_str(&format!("{}├─ {}\n", indent, type_name));
+        
+        if let Some(deps) = self.dependency_graph.dependencies.get(type_name) {
+            for dep in deps {
+                self.show_dependency_chain(dep, output, visited, depth + 1);
+            }
         }
     }
+    
+    /// Generate a DOT graph format for advanced visualization tools
+    pub fn generate_dot_graph(&self, commands: &[CommandInfo]) -> String {
+        let mut dot = String::new();
+        dot.push_str("digraph TypeDependencies {\n");
+        dot.push_str("  rankdir=TB;\n");
+        dot.push_str("  node [shape=box, style=rounded];\n\n");
+        
+        // Command nodes
+        dot.push_str("  // Commands\n");
+        for cmd in commands {
+            dot.push_str(&format!("  \"cmd_{}\" [label=\"{}\\n(command)\", color=blue, style=\"filled,rounded\"];\n", 
+                cmd.name, cmd.name));
+        }
+        
+        // Type nodes
+        dot.push_str("\n  // Types\n");
+        for (type_name, struct_info) in &self.discovered_structs {
+            let color = if struct_info.is_enum { "orange" } else { "lightgreen" };
+            dot.push_str(&format!("  \"{}\" [label=\"{}\\n({} fields)\", color={}, style=\"filled,rounded\"];\n", 
+                type_name, type_name, struct_info.fields.len(), color));
+        }
+        
+        // Command to type edges
+        dot.push_str("\n  // Command dependencies\n");
+        for cmd in commands {
+            for param in &cmd.parameters {
+                let clean_type = self.clean_type_name(&param.rust_type);
+                if self.discovered_structs.contains_key(clean_type) {
+                    dot.push_str(&format!("  \"cmd_{}\" -> \"{}\" [label=\"{}\", color=blue];\n", 
+                        cmd.name, clean_type, param.name));
+                }
+            }
+        }
+        
+        // Type to type edges
+        dot.push_str("\n  // Type dependencies\n");
+        for (type_name, deps) in &self.dependency_graph.dependencies {
+            for dep in deps {
+                if self.discovered_structs.contains_key(dep) {
+                    dot.push_str(&format!("  \"{}\" -> \"{}\" [color=gray];\n", type_name, dep));
+                }
+            }
+        }
+        
+        dot.push_str("}\n");
+        dot
+    }
+    
+    // Note: discover_nested_dependencies method removed - replaced by the
+    // lazy type resolution system that handles dependencies more efficiently
 }
