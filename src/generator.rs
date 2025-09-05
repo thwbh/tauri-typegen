@@ -1,19 +1,15 @@
+use crate::generators::{VanillaTypeScriptGenerator, ZodGenerator};
 use crate::models::{CommandInfo, StructInfo};
-use std::collections::{HashMap, HashSet};
-use std::fs;
+use std::collections::HashMap;
 
 pub struct TypeScriptGenerator {
     validation_library: String,
-    custom_types: HashSet<String>,
-    known_structs: HashMap<String, StructInfo>,
 }
 
 impl TypeScriptGenerator {
     pub fn new(validation_library: Option<String>) -> Self {
         Self {
             validation_library: validation_library.unwrap_or_else(|| "zod".to_string()),
-            custom_types: HashSet::new(),
-            known_structs: HashMap::new(),
         }
     }
 
@@ -23,514 +19,108 @@ impl TypeScriptGenerator {
         discovered_structs: &HashMap<String, StructInfo>,
         output_path: &str,
     ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
-        let mut generated_files = Vec::new();
-
-        // Store known structs for schema generation
-        self.known_structs = discovered_structs.clone();
-
-        // Collect all custom types
-        self.collect_custom_types(commands);
-
-        // Generate types file with proper struct definitions
-        let types_content = self.generate_types_file(commands, discovered_structs)?;
-        let types_file_path = format!("{}/types.ts", output_path);
-        fs::create_dir_all(output_path)?;
-        fs::write(&types_file_path, types_content)?;
-        generated_files.push("types.ts".to_string());
-
-        // Generate validation schemas only for non-zod libraries (yup, etc.)
-        // For zod, schemas are already in types.ts
-        if self.validation_library != "none" && self.validation_library != "zod" {
-            let schemas_content = self.generate_validation_schemas(commands)?;
-            let schemas_file_path = format!("{}/schemas.ts", output_path);
-            fs::write(&schemas_file_path, schemas_content)?;
-            generated_files.push("schemas.ts".to_string());
-        }
-
-        // Generate command bindings
-        let bindings_content = self.generate_command_bindings(commands)?;
-        let bindings_file_path = format!("{}/commands.ts", output_path);
-        fs::write(&bindings_file_path, bindings_content)?;
-        generated_files.push("commands.ts".to_string());
-
-        // Generate index file
-        let index_content = self.generate_index_file(&generated_files)?;
-        let index_file_path = format!("{}/index.ts", output_path);
-        fs::write(&index_file_path, index_content)?;
-        generated_files.push("index.ts".to_string());
-
-        Ok(generated_files)
-    }
-
-    fn collect_custom_types(&mut self, commands: &[CommandInfo]) {
-        for command in commands {
-            // Collect types from parameters
-            for param in &command.parameters {
-                if self.is_custom_type(&param.typescript_type) {
-                    self.custom_types.insert(param.typescript_type.clone());
-                }
+        match self.validation_library.as_str() {
+            "zod" => {
+                let mut generator = ZodGenerator::new();
+                generator.generate_models(commands, discovered_structs, output_path)
             }
-
-            // Collect type from return type
-            if self.is_custom_type(&command.return_type) {
-                self.custom_types.insert(command.return_type.clone());
+            "none" => {
+                let mut generator = VanillaTypeScriptGenerator::new();
+                generator.generate_models(commands, discovered_structs, output_path)
+            }
+            "yup" => {
+                // For yup, use vanilla generator but with schemas generation
+                let mut generator = VanillaTypeScriptGenerator::new();
+                let mut generated_files = generator.generate_models(commands, discovered_structs, output_path)?;
+                
+                // Generate additional schemas file for yup
+                let yup_schemas = self.generate_yup_schemas(commands, output_path)?;
+                generated_files.push("schemas.ts".to_string());
+                
+                Ok(generated_files)
+            }
+            _ => {
+                // For other validation libraries, fall back to vanilla
+                let mut generator = VanillaTypeScriptGenerator::new();
+                generator.generate_models(commands, discovered_structs, output_path)
             }
         }
     }
 
-    fn generate_types_file(
+    // Helper methods for testing - delegate to appropriate generator
+    pub fn to_pascal_case(&self, s: &str) -> String {
+        match self.validation_library.as_str() {
+            "zod" => {
+                let generator = ZodGenerator::new();
+                generator.to_pascal_case(s)
+            }
+            _ => {
+                let generator = VanillaTypeScriptGenerator::new();
+                generator.to_pascal_case(s)
+            }
+        }
+    }
+
+    pub fn to_camel_case(&self, s: &str) -> String {
+        match self.validation_library.as_str() {
+            "zod" => {
+                let generator = ZodGenerator::new();
+                generator.to_camel_case(s)
+            }
+            _ => {
+                let generator = VanillaTypeScriptGenerator::new();
+                generator.to_camel_case(s)
+            }
+        }
+    }
+
+    pub fn collect_referenced_types(&self, rust_type: &str, used_types: &mut std::collections::HashSet<String>) {
+        match self.validation_library.as_str() {
+            "zod" => {
+                let generator = ZodGenerator::new();
+                generator.collect_referenced_types(rust_type, used_types)
+            }
+            _ => {
+                let generator = VanillaTypeScriptGenerator::new();
+                generator.collect_referenced_types(rust_type, used_types)
+            }
+        }
+    }
+
+    pub fn typescript_to_zod_type(&self, ts_type: &str) -> String {
+        let generator = ZodGenerator::new();
+        generator.typescript_to_zod_type(ts_type)
+    }
+
+    pub fn typescript_to_yup_type(&self, ts_type: &str) -> String {
+        self.typescript_to_yup_type_impl(ts_type)
+    }
+
+    fn generate_yup_schemas(
         &self,
         commands: &[CommandInfo],
-        discovered_structs: &HashMap<String, StructInfo>,
-    ) -> Result<String, Box<dyn std::error::Error>> {
-        let mut content = String::new();
-
-        content.push_str(&format!(
-            "/**\n * Auto-generated TypeScript types for Tauri commands\n * Generated by tauri-plugin-typegen\n * Do not edit manually - regenerate using: cargo tauri-typegen generate\n */\n\n"
-        ));
-
-        if self.validation_library == "zod" {
-            // For zod, we generate schema-first and infer types
-            content.push_str("import { z } from 'zod';\n\n");
-            
-            // Generate schemas first
-            content.push_str(&self.generate_schemas_in_types_file(commands, discovered_structs)?);
-            
-            // Then generate inferred types
-            content.push_str(&self.generate_inferred_types(commands, discovered_structs)?);
-        } else {
-            // For 'none' validator, generate traditional TypeScript interfaces
-            content.push_str(&self.generate_traditional_types(commands, discovered_structs)?);
-        }
-
-        Ok(content)
-    }
-
-    fn generate_traditional_types(
-        &self,
-        commands: &[CommandInfo],
-        discovered_structs: &HashMap<String, StructInfo>,
-    ) -> Result<String, Box<dyn std::error::Error>> {
-        let mut content = String::new();
-
-        // Collect only the types actually used by commands
-        let mut used_types = HashSet::new();
-
-        for command in commands {
-            // Collect types from parameters
-            for param in &command.parameters {
-                self.collect_referenced_types(&param.rust_type, &mut used_types);
-            }
-
-            // Collect type from return type
-            self.collect_referenced_types(&command.return_type, &mut used_types);
-        }
-
-        // Generate interfaces for all discovered types (both used and nested)
-        let mut all_types: HashSet<String> = used_types.clone();
-        
-        // Add nested types that are referenced by the used types
-        // This ensures we generate types that are used transitively
-        self.discover_nested_dependencies(&used_types, discovered_structs, &mut all_types);
-        
-        for type_name in &all_types {
-            if let Some(struct_info) = discovered_structs.get(type_name) {
-                if struct_info.is_enum {
-                    content.push_str(&self.generate_enum_type(struct_info));
-                } else {
-                    content.push_str(&self.generate_interface_type(struct_info));
-                }
-                content.push_str("\n");
-            }
-        }
-
-        // Generate parameter interfaces for each command
-        for command in commands {
-            if !command.parameters.is_empty() {
-                let params_interface = self.generate_params_interface(command);
-                content.push_str(&params_interface);
-                content.push_str("\n");
-            }
-        }
-
-        Ok(content)
-    }
-
-    fn generate_schemas_in_types_file(
-        &self,
-        commands: &[CommandInfo],
-        discovered_structs: &HashMap<String, StructInfo>,
-    ) -> Result<String, Box<dyn std::error::Error>> {
-        let mut content = String::new();
-        
-        // Collect all types used by commands
-        let mut used_types = HashSet::new();
-        for command in commands {
-            for param in &command.parameters {
-                self.collect_referenced_types(&param.rust_type, &mut used_types);
-            }
-            self.collect_referenced_types(&command.return_type, &mut used_types);
-        }
-
-        // Add nested dependencies
-        let mut all_types: HashSet<String> = used_types.clone();
-        self.discover_nested_dependencies(&used_types, discovered_structs, &mut all_types);
-
-        // Generate schemas for discovered structs
-        for type_name in &all_types {
-            if let Some(struct_info) = discovered_structs.get(type_name) {
-                if struct_info.is_enum {
-                    content.push_str(&self.generate_enum_schema(struct_info));
-                } else {
-                    content.push_str(&self.generate_struct_schema(struct_info));
-                }
-                content.push_str("\n");
-            }
-        }
-
-        // Generate parameter schemas for commands
-        for command in commands {
-            if !command.parameters.is_empty() {
-                let schema = self.generate_params_schema(command);
-                content.push_str(&schema);
-                content.push_str("\n");
-            }
-        }
-
-        Ok(content)
-    }
-
-    fn generate_inferred_types(
-        &self,
-        commands: &[CommandInfo],
-        discovered_structs: &HashMap<String, StructInfo>,
-    ) -> Result<String, Box<dyn std::error::Error>> {
-        let mut content = String::new();
-        
-        // Collect all types used by commands
-        let mut used_types = HashSet::new();
-        for command in commands {
-            for param in &command.parameters {
-                self.collect_referenced_types(&param.rust_type, &mut used_types);
-            }
-            self.collect_referenced_types(&command.return_type, &mut used_types);
-        }
-
-        // Add nested dependencies
-        let mut all_types: HashSet<String> = used_types.clone();
-        self.discover_nested_dependencies(&used_types, discovered_structs, &mut all_types);
-
-        // Generate inferred types from schemas
-        for type_name in &all_types {
-            if discovered_structs.contains_key(type_name) {
-                content.push_str(&format!(
-                    "export type {} = z.infer<typeof {}Schema>;\n\n",
-                    type_name, type_name
-                ));
-            }
-        }
-
-        // Generate parameter types for commands
-        for command in commands {
-            if !command.parameters.is_empty() {
-                let params_type_name = format!("{}Params", self.to_pascal_case(&command.name));
-                content.push_str(&format!(
-                    "export type {} = z.infer<typeof {}Schema>;\n\n",
-                    params_type_name, params_type_name
-                ));
-            }
-        }
-
-        Ok(content)
-    }
-
-    fn generate_struct_schema(&self, struct_info: &StructInfo) -> String {
-        let mut content = format!("export const {}Schema = z.object({{\n", struct_info.name);
-
-        for field in &struct_info.fields {
-            if field.is_public {
-                let field_name = self.to_camel_case(&field.name);
-                let zod_type = self.typescript_to_zod_type(&field.typescript_type);
-                let optional_suffix = if field.is_optional { ".optional()" } else { "" };
-                content.push_str(&format!(
-                    "  {}: {}{},\n",
-                    field_name, zod_type, optional_suffix
-                ));
-            }
-        }
-
-        content.push_str("});\n");
-        content
-    }
-
-    fn generate_enum_schema(&self, struct_info: &StructInfo) -> String {
-        let variants: Vec<String> = struct_info
-            .fields
-            .iter()
-            .map(|field| format!("\"{}\"", field.name))
-            .collect();
-
-        if variants.is_empty() {
-            format!("export const {}Schema = z.never();\n", struct_info.name)
-        } else {
-            format!(
-                "export const {}Schema = z.enum([{}]);\n",
-                struct_info.name,
-                variants.join(", ")
-            )
-        }
-    }
-
-    fn generate_params_schema(&self, command: &CommandInfo) -> String {
-        let schema_name = format!("{}ParamsSchema", self.to_pascal_case(&command.name));
-        let mut content = format!("export const {} = z.object({{\n", schema_name);
-
-        for param in &command.parameters {
-            let param_name = self.to_camel_case(&param.name);
-            let zod_type = self.typescript_to_zod_type(&param.typescript_type);
-            let optional_suffix = if param.is_optional { ".optional()" } else { "" };
-            content.push_str(&format!(
-                "  {}: {}{},\n",
-                param_name, zod_type, optional_suffix
-            ));
-        }
-
-        content.push_str("});\n");
-        content
-    }
-
-    // Helper method to recursively collect referenced types
-    pub fn collect_referenced_types(&self, rust_type: &str, used_types: &mut HashSet<String>) {
-        let rust_type = rust_type.trim();
-        
-        // Handle Result<T, E> - extract both T and E
-        if rust_type.starts_with("Result<") {
-            if let Some(inner) = rust_type
-                .strip_prefix("Result<")
-                .and_then(|s| s.strip_suffix(">"))
-            {
-                if let Some(comma_pos) = inner.find(',') {
-                    let ok_type = inner[..comma_pos].trim();
-                    let err_type = inner[comma_pos + 1..].trim();
-                    self.collect_referenced_types(ok_type, used_types);
-                    self.collect_referenced_types(err_type, used_types);
-                }
-            }
-            return;
-        }
-
-        // Handle Option<T> - extract T
-        if rust_type.starts_with("Option<") {
-            if let Some(inner) = rust_type
-                .strip_prefix("Option<")
-                .and_then(|s| s.strip_suffix(">"))
-            {
-                self.collect_referenced_types(inner.trim(), used_types);
-            }
-            return;
-        }
-
-        // Handle Vec<T> - extract T
-        if rust_type.starts_with("Vec<") {
-            if let Some(inner) = rust_type
-                .strip_prefix("Vec<")
-                .and_then(|s| s.strip_suffix(">"))
-            {
-                self.collect_referenced_types(inner.trim(), used_types);
-            }
-            return;
-        }
-        
-        // Handle HashMap<K, V> and BTreeMap<K, V> - extract K and V
-        if rust_type.starts_with("HashMap<") || rust_type.starts_with("BTreeMap<") {
-            let prefix = if rust_type.starts_with("HashMap<") { "HashMap<" } else { "BTreeMap<" };
-            if let Some(inner) = rust_type
-                .strip_prefix(prefix)
-                .and_then(|s| s.strip_suffix(">"))
-            {
-                if let Some(comma_pos) = inner.find(',') {
-                    let key_type = inner[..comma_pos].trim();
-                    let value_type = inner[comma_pos + 1..].trim();
-                    self.collect_referenced_types(key_type, used_types);
-                    self.collect_referenced_types(value_type, used_types);
-                }
-            }
-            return;
-        }
-        
-        // Handle HashSet<T> and BTreeSet<T> - extract T
-        if rust_type.starts_with("HashSet<") || rust_type.starts_with("BTreeSet<") {
-            let prefix = if rust_type.starts_with("HashSet<") { "HashSet<" } else { "BTreeSet<" };
-            if let Some(inner) = rust_type
-                .strip_prefix(prefix)
-                .and_then(|s| s.strip_suffix(">"))
-            {
-                self.collect_referenced_types(inner.trim(), used_types);
-            }
-            return;
-        }
-        
-        // Handle tuple types like (T, U, V)
-        if rust_type.starts_with('(') && rust_type.ends_with(')') && rust_type != "()" {
-            let inner = &rust_type[1..rust_type.len()-1];
-            for part in inner.split(',') {
-                self.collect_referenced_types(part.trim(), used_types);
-            }
-            return;
-        }
-
-        // Handle references
-        if rust_type.starts_with("&") {
-            let without_ref = rust_type.trim_start_matches('&');
-            self.collect_referenced_types(without_ref, used_types);
-            return;
-        }
-
-        // Skip primitive types
-        if matches!(
-            rust_type,
-            "String"
-                | "str"
-                | "i32"
-                | "i64"
-                | "f32"
-                | "f64"
-                | "bool"
-                | "usize"
-                | "isize"
-                | "u32"
-                | "u64"
-                | "()"
-                | "u8"
-                | "i8"
-                | "u16"
-                | "i16"
-                | "u128"
-                | "i128"
-        ) {
-            return;
-        }
-
-        // This is a custom type - add it to the set
-        if !rust_type.is_empty() && rust_type.chars().next().map_or(false, char::is_alphabetic) {
-            used_types.insert(rust_type.to_string());
-        }
-    }
-
-    fn generate_interface_type(&self, struct_info: &StructInfo) -> String {
-        let mut content = String::new();
-
-        content.push_str(&format!("export interface {} {{\n", struct_info.name));
-
-        for field in &struct_info.fields {
-            if field.is_public {
-                let optional_marker = if field.is_optional { "?" } else { "" };
-                let field_name = self.to_camel_case(&field.name);
-                content.push_str(&format!(
-                    "  {}{}: {};\n",
-                    field_name, optional_marker, field.typescript_type
-                ));
-            }
-        }
-
-        content.push_str("}\n");
-        content
-    }
-
-    fn generate_enum_type(&self, struct_info: &StructInfo) -> String {
-        let mut content = String::new();
-
-        // For now, represent enums as union types
-        content.push_str(&format!("export type {} = ", struct_info.name));
-
-        let variants: Vec<String> = struct_info
-            .fields
-            .iter()
-            .map(|field| format!("\"{}\"", field.name))
-            .collect();
-
-        if variants.is_empty() {
-            content.push_str("never");
-        } else {
-            content.push_str(&variants.join(" | "));
-        }
-
-        content.push_str(";\n");
-        content
-    }
-
-    fn generate_params_interface(&self, command: &CommandInfo) -> String {
-        let interface_name = format!("{}Params", self.to_pascal_case(&command.name));
-        let mut content = format!("export interface {} {{\n", interface_name);
-
-        for param in &command.parameters {
-            let optional_marker = if param.is_optional { "?" } else { "" };
-            let param_name = self.to_camel_case(&param.name);
-            content.push_str(&format!(
-                "  {}{}: {};\n",
-                param_name, optional_marker, param.typescript_type
-            ));
-        }
-
-        content.push_str("}\n");
-        content
-    }
-
-    fn generate_validation_schemas(
-        &self,
-        commands: &[CommandInfo],
-    ) -> Result<String, Box<dyn std::error::Error>> {
+        output_path: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let mut content = String::new();
 
         content.push_str(&format!(
             "/**\n * Auto-generated validation schemas for Tauri commands\n * Generated by tauri-plugin-typegen\n * Do not edit manually - regenerate using: cargo tauri-typegen generate\n */\n\n"
         ));
 
-        match self.validation_library.as_str() {
-            "zod" => {
-                content.push_str("import { z } from 'zod';\n\n");
+        content.push_str("import * as yup from 'yup';\n\n");
 
-                for command in commands {
-                    if !command.parameters.is_empty() {
-                        let schema = self.generate_zod_schema(command);
-                        content.push_str(&schema);
-                        content.push_str("\n");
-                    }
-                }
+        for command in commands {
+            if !command.parameters.is_empty() {
+                let schema = self.generate_yup_schema(command);
+                content.push_str(&schema);
+                content.push_str("\n");
             }
-            "yup" => {
-                content.push_str("import * as yup from 'yup';\n\n");
-
-                for command in commands {
-                    if !command.parameters.is_empty() {
-                        let schema = self.generate_yup_schema(command);
-                        content.push_str(&schema);
-                        content.push_str("\n");
-                    }
-                }
-            }
-            _ => {}
         }
 
-        Ok(content)
-    }
-
-    fn generate_zod_schema(&self, command: &CommandInfo) -> String {
-        let schema_name = format!("{}ParamsSchema", self.to_pascal_case(&command.name));
-        let mut content = format!("export const {} = z.object({{\n", schema_name);
-
-        for param in &command.parameters {
-            let param_name = self.to_camel_case(&param.name);
-            let zod_type = self.typescript_to_zod_type(&param.typescript_type);
-            let optional_suffix = if param.is_optional { ".optional()" } else { "" };
-            content.push_str(&format!(
-                "  {}: {}{},\n",
-                param_name, zod_type, optional_suffix
-            ));
-        }
-
-        content.push_str("});\n");
-        content
+        let schemas_file_path = format!("{}/schemas.ts", output_path);
+        std::fs::write(&schemas_file_path, content)?;
+        
+        Ok(())
     }
 
     fn generate_yup_schema(&self, command: &CommandInfo) -> String {
@@ -539,7 +129,7 @@ impl TypeScriptGenerator {
 
         for param in &command.parameters {
             let param_name = self.to_camel_case(&param.name);
-            let yup_type = self.typescript_to_yup_type(&param.typescript_type);
+            let yup_type = self.typescript_to_yup_type_impl(&param.typescript_type);
             content.push_str(&format!("  {}: {},\n", param_name, yup_type));
         }
 
@@ -547,292 +137,15 @@ impl TypeScriptGenerator {
         content
     }
 
-    fn generate_command_bindings(
-        &self,
-        commands: &[CommandInfo],
-    ) -> Result<String, Box<dyn std::error::Error>> {
-        let mut content = String::new();
-
-        content.push_str(&format!(
-            "/**\n * Auto-generated command bindings for Tauri commands\n * Generated by tauri-plugin-typegen\n * Do not edit manually - regenerate using: cargo tauri-typegen generate\n */\n\n"
-        ));
-
-        content.push_str("import { invoke } from '@tauri-apps/api/core';\n");
-
-        if self.validation_library == "zod" {
-            // For zod, import schemas and types from types.ts
-            content.push_str("import * as types from './types';\n\n");
-        } else if self.validation_library != "none" {
-            // For other validation libraries, import from separate files
-            content.push_str("import * as schemas from './schemas';\n");
-            content.push_str("import type * as types from './types';\n\n");
-        } else {
-            // For no validation, only import types
-            content.push_str("import type * as types from './types';\n\n");
-        }
-
-        for command in commands {
-            let binding = self.generate_command_binding(command);
-            content.push_str(&binding);
-            content.push_str("\n");
-        }
-
-        Ok(content)
-    }
-
-    fn generate_command_binding(&self, command: &CommandInfo) -> String {
-        let function_name = self.to_camel_case(&command.name);
-        let return_type = self.format_return_type(&command.return_type);
-
-        let mut content = String::new();
-
-        if command.parameters.is_empty() {
-            // No parameters
-            content.push_str(&format!(
-                "export async function {}(): Promise<{}> {{\n  return invoke('{}');\n}}\n",
-                function_name, return_type, command.name
-            ));
-        } else {
-            // Has parameters
-            let params_type = format!("types.{}Params", self.to_pascal_case(&command.name));
-
-            content.push_str(&format!(
-                "export async function {}(params: {}): Promise<{}> {{\n",
-                function_name, params_type, return_type
-            ));
-
-            if self.validation_library == "zod" {
-                let schema_name = format!("types.{}ParamsSchema", self.to_pascal_case(&command.name));
-                content.push_str(&format!(
-                    "  const validatedParams = {}.parse(params);\n  return invoke('{}', validatedParams);\n",
-                    schema_name,
-                    command.name
-                ));
-            } else if self.validation_library != "none" {
-                let schema_name = format!("schemas.{}ParamsSchema", self.to_pascal_case(&command.name));
-                content.push_str(&format!(
-                    "  const validatedParams = {}.parse(params);\n  return invoke('{}', validatedParams);\n",
-                    schema_name,
-                    command.name
-                ));
-            } else {
-                content.push_str(&format!("  return invoke('{}', params);\n", command.name));
-            }
-
-            content.push_str("}\n");
-        }
-
-        content
-    }
-    
-    fn format_return_type(&self, return_type: &str) -> String {
-        // If it's a primitive type, return as-is
-        if matches!(
-            return_type,
-            "string" | "number" | "boolean" | "void" | "any" | "unknown" | "null" | "undefined"
-        ) {
-            return return_type.to_string();
-        }
-        
-        // If it ends with [] (array), handle the inner type
-        if return_type.ends_with("[]") {
-            let inner_type = &return_type[..return_type.len() - 2];
-            let formatted_inner = self.format_return_type(inner_type);
-            return format!("{}[]", formatted_inner);
-        }
-        
-        // If it contains | (union type), handle each part
-        if return_type.contains(" | ") {
-            let parts: Vec<String> = return_type
-                .split(" | ")
-                .map(|part| self.format_return_type(part.trim()))
-                .collect();
-            return parts.join(" | ");
-        }
-        
-        // Otherwise, it's a custom type - prefix with types.
-        format!("types.{}", return_type)
-    }
-
-    fn generate_index_file(
-        &self,
-        generated_files: &[String],
-    ) -> Result<String, Box<dyn std::error::Error>> {
-        let mut content = String::new();
-
-        content.push_str(&format!(
-            "/**\n * Auto-generated TypeScript bindings for Tauri commands\n * Generated by tauri-plugin-typegen\n * Do not edit manually - regenerate using: cargo tauri-typegen generate\n */\n\n"
-        ));
-
-        for file in generated_files {
-            if file != "index.ts" {
-                let module_name = file.strip_suffix(".ts").unwrap_or(file);
-                content.push_str(&format!("export * from './{}';\n", module_name));
-            }
-        }
-
-        Ok(content)
-    }
-
-    pub fn to_pascal_case(&self, s: &str) -> String {
-        s.split('_')
-            .map(|word| {
-                let mut chars = word.chars();
-                match chars.next() {
-                    None => String::new(),
-                    Some(first) => first.to_uppercase().chain(chars).collect(),
-                }
-            })
-            .collect()
-    }
-
-    pub fn to_camel_case(&self, s: &str) -> String {
-        let pascal = self.to_pascal_case(s);
-        let mut chars = pascal.chars();
-        match chars.next() {
-            None => String::new(),
-            Some(first) => first.to_lowercase().chain(chars).collect(),
-        }
-    }
-
-    fn generate_zod_object_schema_for_struct(&self, struct_info: &StructInfo) -> String {
-        if struct_info.fields.is_empty() {
-            return "z.object({})".to_string();
-        }
-        
-        let mut field_schemas = Vec::new();
-        for field in &struct_info.fields {
-            let field_name = &field.name;
-            let field_type_schema = self.typescript_to_zod_type(&field.typescript_type);
-            
-            let optional_suffix = if field.is_optional {
-                ".optional()"
-            } else {
-                ""
-            };
-            
-            field_schemas.push(format!("  {}: {}{}", field_name, field_type_schema, optional_suffix));
-        }
-        
-        format!("z.object({{\n{}\n}})", field_schemas.join(",\n"))
-    }
-
-    fn discover_nested_dependencies(
-        &self,
-        initial_types: &HashSet<String>,
-        discovered_structs: &HashMap<String, StructInfo>,
-        all_types: &mut HashSet<String>
-    ) {
-        let mut to_process: Vec<String> = initial_types.iter().cloned().collect();
-        let mut processed: HashSet<String> = HashSet::new();
-        
-        while let Some(type_name) = to_process.pop() {
-            if processed.contains(&type_name) {
-                continue;
-            }
-            processed.insert(type_name.clone());
-            
-            if let Some(struct_info) = discovered_structs.get(&type_name) {
-                for field in &struct_info.fields {
-                    let mut nested_types = HashSet::new();
-                    self.collect_referenced_types(&field.typescript_type, &mut nested_types);
-                    
-                    for nested_type in nested_types {
-                        if !all_types.contains(&nested_type) && discovered_structs.contains_key(&nested_type) {
-                            all_types.insert(nested_type.clone());
-                            to_process.push(nested_type);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    pub fn typescript_to_zod_type(&self, ts_type: &str) -> String {
-        // Handle arrays first (before nullable check)
-        if ts_type.ends_with("[]") {
-            let item_type = &ts_type[..ts_type.len() - 2];
-            // Remove parentheses if they exist around the item type
-            let item_type = if item_type.starts_with('(') && item_type.ends_with(')') {
-                &item_type[1..item_type.len()-1]
-            } else {
-                item_type
-            };
-            return format!("z.array({})", self.typescript_to_zod_type(item_type));
-        }
-        
-        // Handle tuple types [T, U, V] - BEFORE nullable types
-        if ts_type.starts_with('[') && ts_type.ends_with(']') {
-            // Check if this is a nullable tuple (entire tuple is nullable)
-            if ts_type.ends_with("] | null") {
-                // This is handled by the nullable check below
-            } else {
-                // This is a regular tuple, possibly with nullable elements inside
-                let inner = &ts_type[1..ts_type.len()-1];
-                let types: Vec<String> = inner
-                    .split(',')
-                    .map(|part| self.typescript_to_zod_type(part.trim()))
-                    .collect();
-                return format!("z.tuple([{}])", types.join(", "));
-            }
-        }
-        
-        // Handle nullable types
+    fn typescript_to_yup_type_impl(&self, ts_type: &str) -> String {
         if ts_type.contains(" | null") {
             let base_type = ts_type.replace(" | null", "");
-            return format!("{}.nullable()", self.typescript_to_zod_type(&base_type));
-        }
-        
-        // Handle Record<K, V> types (from HashMap/BTreeMap)
-        if ts_type.starts_with("Record<") {
-            if let Some(inner) = ts_type.strip_prefix("Record<").and_then(|s| s.strip_suffix(">")) {
-                if let Some(comma_pos) = inner.find(',') {
-                    let key_type = inner[..comma_pos].trim();
-                    let value_type = inner[comma_pos + 1..].trim();
-                    let key_schema = self.typescript_to_zod_type(key_type);
-                    let value_schema = self.typescript_to_zod_type(value_type);
-                    return format!("z.record({}, {})", key_schema, value_schema);
-                }
-            }
-            return "z.record(z.string(), z.any())".to_string();
-        }
-
-        match ts_type {
-            "string" => "z.string()".to_string(),
-            "number" => "z.number()".to_string(),
-            "boolean" => "z.boolean()".to_string(),
-            "void" => "z.void()".to_string(),
-            _ => {
-                // For custom types, check if we know the struct definition
-                if let Some(struct_info) = self.known_structs.get(ts_type) {
-                    if struct_info.is_enum {
-                        // Generate enum schema
-                        let variants: Vec<String> = struct_info.fields.iter()
-                            .map(|field| format!("\"{}\"" , field.name))
-                            .collect();
-                        format!("z.enum([{}])", variants.join(", "))
-                    } else {
-                        // Generate object schema for struct
-                        self.generate_zod_object_schema_for_struct(struct_info)
-                    }
-                } else {
-                    // Unknown custom type - could be a forward reference or missing struct
-                    // For now, use lazy validation to avoid circular dependency issues
-                    format!("z.lazy(() => z.any()) /* {} - define schema separately if needed */", ts_type)
-                }
-            }
-        }
-    }
-
-    pub fn typescript_to_yup_type(&self, ts_type: &str) -> String {
-        if ts_type.contains(" | null") {
-            let base_type = ts_type.replace(" | null", "");
-            return format!("{}.nullable()", self.typescript_to_yup_type(&base_type));
+            return format!("{}.nullable()", self.typescript_to_yup_type_impl(&base_type));
         }
 
         if ts_type.ends_with("[]") {
             let item_type = &ts_type[..ts_type.len() - 2];
-            return format!("yup.array().of({})", self.typescript_to_yup_type(item_type));
+            return format!("yup.array().of({})", self.typescript_to_yup_type_impl(item_type));
         }
         
         // Handle Record<K, V> types (from HashMap/BTreeMap)
@@ -840,7 +153,7 @@ impl TypeScriptGenerator {
             if let Some(inner) = ts_type.strip_prefix("Record<").and_then(|s| s.strip_suffix(">")) {
                 if let Some(comma_pos) = inner.find(',') {
                     let value_type = inner[comma_pos + 1..].trim();
-                    let value_schema = self.typescript_to_yup_type(value_type);
+                    let value_schema = self.typescript_to_yup_type_impl(value_type);
                     return format!("yup.object().test('record', 'Invalid record', (value) => {{ if (!value) return true; return Object.values(value).every(v => {}.isValidSync(v)); }})", value_schema);
                 }
             }
@@ -852,7 +165,7 @@ impl TypeScriptGenerator {
             let inner = &ts_type[1..ts_type.len()-1];
             let types: Vec<String> = inner
                 .split(',')
-                .map(|part| self.typescript_to_yup_type(part.trim()))
+                .map(|part| self.typescript_to_yup_type_impl(part.trim()))
                 .collect();
             return format!("yup.tuple([{}])", types.join(", "));
         }
@@ -867,10 +180,15 @@ impl TypeScriptGenerator {
     }
 
     pub fn is_custom_type(&self, ts_type: &str) -> bool {
-        !matches!(
-            ts_type,
-            "string" | "number" | "boolean" | "void" | "any" | "unknown" | "null" | "undefined"
-        ) && !ts_type.ends_with("[]")
-            && !ts_type.contains(" | ")
+        match self.validation_library.as_str() {
+            "zod" => {
+                let generator = ZodGenerator::new();
+                generator.is_custom_type(ts_type)
+            }
+            _ => {
+                let generator = VanillaTypeScriptGenerator::new();
+                generator.is_custom_type(ts_type)
+            }
+        }
     }
 }

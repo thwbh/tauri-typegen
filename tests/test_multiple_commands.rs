@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
 use tauri_plugin_typegen::analyzer::CommandAnalyzer;
 use tauri_plugin_typegen::generator::TypeScriptGenerator;
 use tauri_plugin_typegen::models::{CommandInfo, FieldInfo, ParameterInfo, StructInfo};

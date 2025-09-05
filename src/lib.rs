@@ -5,6 +5,7 @@ pub mod cli;
 pub mod commands;
 mod error;
 pub mod generator;
+pub mod generators;
 pub mod models;
 
 pub use error::{Error, Result};

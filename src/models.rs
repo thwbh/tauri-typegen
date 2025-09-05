@@ -78,4 +78,31 @@ pub struct FieldInfo {
     pub typescript_type: String,
     pub is_optional: bool,
     pub is_public: bool,
+    pub validator_attributes: Option<ValidatorAttributes>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ValidatorAttributes {
+    pub length: Option<LengthConstraint>,
+    pub range: Option<RangeConstraint>,
+    pub email: bool,
+    pub url: bool,
+    pub custom_message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LengthConstraint {
+    pub min: Option<u64>,
+    pub max: Option<u64>,
+    pub message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RangeConstraint {
+    pub min: Option<f64>,
+    pub max: Option<f64>,
+    pub message: Option<String>,
 }

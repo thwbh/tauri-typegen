@@ -242,13 +242,13 @@ fn test_full_generation_with_complex_types() {
     
     // Check that the files actually exist and contain expected content
     let types_content = fs::read_to_string(output_path.join("types.ts")).unwrap();
-    assert!(types_content.contains("Record<string, string>"));
-    assert!(types_content.contains("string[]"));
-    assert!(types_content.contains("[string, number"));
+    assert!(types_content.contains("Record<string, string>") || types_content.contains("z.record"));
+    assert!(types_content.contains("string[]") || types_content.contains("z.array"));
+    assert!(types_content.contains("[string, number") || types_content.contains("z.tuple"));
     
-    let schemas_content = fs::read_to_string(output_path.join("schemas.ts")).unwrap();
-    assert!(schemas_content.contains("z.record("));
-    assert!(schemas_content.contains("z.array("));
+    // For zod, schemas are embedded in types.ts
+    assert!(types_content.contains("z.record("));
+    assert!(types_content.contains("z.array("));
     
     let commands_content = fs::read_to_string(output_path.join("commands.ts")).unwrap();
     assert!(commands_content.contains("createUserWithMetadata"));
