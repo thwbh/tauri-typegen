@@ -66,13 +66,13 @@ impl TypeDependencyGraph {
         let mut sorted = Vec::new();
         let mut visited = HashSet::new();
         let mut visiting = HashSet::new();
-        
+
         for type_name in types {
             if !visited.contains(type_name) {
                 self.topological_visit(type_name, &mut sorted, &mut visited, &mut visiting);
             }
         }
-        
+
         sorted
     }
 
@@ -86,23 +86,26 @@ impl TypeDependencyGraph {
     ) {
         // Check for cycles
         if visiting.contains(type_name) {
-            eprintln!("Warning: Circular dependency detected involving type: {}", type_name);
+            eprintln!(
+                "Warning: Circular dependency detected involving type: {}",
+                type_name
+            );
             return;
         }
-        
+
         if visited.contains(type_name) {
             return;
         }
-        
+
         visiting.insert(type_name.to_string());
-        
+
         // Visit dependencies first
         if let Some(deps) = self.dependencies.get(type_name) {
             for dep in deps {
                 self.topological_visit(dep, sorted, visited, visiting);
             }
         }
-        
+
         visiting.remove(type_name);
         visited.insert(type_name.to_string());
         sorted.push(type_name.to_string());
@@ -113,24 +116,37 @@ impl TypeDependencyGraph {
         let mut output = String::new();
         output.push_str("🌐 Type Dependency Graph\n");
         output.push_str("======================\n\n");
-        
+
         // Show command entry points
         output.push_str("📋 Command Entry Points:\n");
         for cmd in entry_commands {
-            output.push_str(&format!("• {} ({}:{})\n", cmd.name, cmd.file_path, cmd.line_number));
-            
+            output.push_str(&format!(
+                "• {} ({}:{})\n",
+                cmd.name, cmd.file_path, cmd.line_number
+            ));
+
             // Show parameters
             for param in &cmd.parameters {
-                output.push_str(&format!("  ├─ {}: {} → {}\n", param.name, param.rust_type, param.typescript_type));
+                output.push_str(&format!(
+                    "  ├─ {}: {} → {}\n",
+                    param.name, param.rust_type, param.typescript_type
+                ));
             }
-            
+
             // Show return type
-            output.push_str(&format!("  └─ returns: {} → {}\n", cmd.return_type, cmd.return_type));
+            output.push_str(&format!(
+                "  └─ returns: {} → {}\n",
+                cmd.return_type, cmd.return_type
+            ));
         }
-        
+
         output.push_str("\n🏗️  Discovered Types:\n");
         for (type_name, struct_info) in &self.resolved_types {
-            let type_kind = if struct_info.is_enum { "enum" } else { "struct" };
+            let type_kind = if struct_info.is_enum {
+                "enum"
+            } else {
+                "struct"
+            };
             output.push_str(&format!(
                 "• {} ({}) - {} fields - defined in {}\n",
                 type_name,
@@ -138,7 +154,7 @@ impl TypeDependencyGraph {
                 struct_info.fields.len(),
                 struct_info.file_path
             ));
-            
+
             // Show dependencies
             if let Some(deps) = self.dependencies.get(type_name) {
                 if !deps.is_empty() {
@@ -147,20 +163,20 @@ impl TypeDependencyGraph {
                 }
             }
         }
-        
+
         // Show dependency chains
         output.push_str("\n🔗 Dependency Chains:\n");
         for type_name in self.resolved_types.keys() {
             self.show_dependency_chain(type_name, &mut output, 0);
         }
-        
+
         output.push_str(&format!(
             "\n📊 Summary:\n• {} commands analyzed\n• {} types discovered\n• {} files with type definitions\n",
             entry_commands.len(),
             self.resolved_types.len(),
             self.type_definitions.len()
         ));
-        
+
         output
     }
 
@@ -168,10 +184,11 @@ impl TypeDependencyGraph {
     fn show_dependency_chain(&self, type_name: &str, output: &mut String, indent: usize) {
         let indent_str = "  ".repeat(indent);
         output.push_str(&format!("{}├─ {}\n", indent_str, type_name));
-        
+
         if let Some(deps) = self.dependencies.get(type_name) {
             for dep in deps {
-                if indent < 3 { // Prevent too deep recursion in visualization
+                if indent < 3 {
+                    // Prevent too deep recursion in visualization
                     self.show_dependency_chain(dep, output, indent + 1);
                 }
             }
@@ -188,7 +205,10 @@ impl TypeDependencyGraph {
 
         // Add command nodes
         for command in commands {
-            output.push_str(&format!("  \"{}\" [color=blue, style=filled, fillcolor=lightblue];\n", command.name));
+            output.push_str(&format!(
+                "  \"{}\" [color=blue, style=filled, fillcolor=lightblue];\n",
+                command.name
+            ));
         }
 
         // Add type nodes
@@ -200,11 +220,17 @@ impl TypeDependencyGraph {
         for command in commands {
             for param in &command.parameters {
                 if self.resolved_types.contains_key(&param.rust_type) {
-                    output.push_str(&format!("  \"{}\" -> \"{}\" [label=\"param\"];\n", command.name, param.rust_type));
+                    output.push_str(&format!(
+                        "  \"{}\" -> \"{}\" [label=\"param\"];\n",
+                        command.name, param.rust_type
+                    ));
                 }
             }
             if self.resolved_types.contains_key(&command.return_type) {
-                output.push_str(&format!("  \"{}\" -> \"{}\" [label=\"return\"];\n", command.name, command.return_type));
+                output.push_str(&format!(
+                    "  \"{}\" -> \"{}\" [label=\"return\"];\n",
+                    command.name, command.return_type
+                ));
             }
         }
 

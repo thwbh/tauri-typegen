@@ -229,8 +229,14 @@ fn test_full_pipeline_complex_project() {
     assert!(types_content.contains("z.string()") || types_content.contains("z.number()"));
     // Verify custom type schemas are generated (zod format)
     assert!(types_content.contains("UserSchema") || types_content.contains("export type User"));
-    assert!(types_content.contains("CreateUserRequestSchema") || types_content.contains("export type CreateUserRequest"));
-    assert!(types_content.contains("AnalyticsDataSchema") || types_content.contains("export type AnalyticsData"));
+    assert!(
+        types_content.contains("CreateUserRequestSchema")
+            || types_content.contains("export type CreateUserRequest")
+    );
+    assert!(
+        types_content.contains("AnalyticsDataSchema")
+            || types_content.contains("export type AnalyticsData")
+    );
 
     // Verify schemas are embedded in types.ts (Zod)
     assert!(types_content.contains("import { z } from 'zod';"));
@@ -238,7 +244,11 @@ fn test_full_pipeline_complex_project() {
     assert!(types_content.contains("z.object({"));
     // Verify that parameter schemas exist (flexible check)
     assert!(types_content.contains("ExportDataParamsSchema"));
-    assert!(types_content.contains("z.string()") || types_content.contains("z.number()") || types_content.contains("z.boolean()"));
+    assert!(
+        types_content.contains("z.string()")
+            || types_content.contains("z.number()")
+            || types_content.contains("z.boolean()")
+    );
 
     // Verify commands.ts
     assert!(commands_content.contains("import { invoke } from '@tauri-apps/api/core';"));
@@ -292,9 +302,8 @@ fn test_full_pipeline_with_yup() {
 
     assert_eq!(generated_files.len(), 3);
 
-
     let types_content = fs::read_to_string(output_path.join("types.ts")).unwrap();
-    
+
     // Yup support has been removed, should fall back to vanilla TypeScript
     assert!(!types_content.contains("import * as yup from 'yup';"));
     assert!(!types_content.contains("yup.object({"));

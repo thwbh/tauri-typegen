@@ -37,14 +37,20 @@ pub async fn create_user(request: CreateUserRequest) -> Result<String, String> {
 
     // Analyze the file
     let mut analyzer = CommandAnalyzer::new();
-    let commands = analyzer.analyze_project(temp_dir.path().to_str().unwrap()).unwrap();
+    let commands = analyzer
+        .analyze_project(temp_dir.path().to_str().unwrap())
+        .unwrap();
     let discovered_structs = analyzer.get_discovered_structs();
 
     // Check that validator attributes were parsed
     let create_user_request = discovered_structs.get("CreateUserRequest").unwrap();
-    
+
     // Test name field with length constraint
-    let name_field = create_user_request.fields.iter().find(|f| f.name == "name").unwrap();
+    let name_field = create_user_request
+        .fields
+        .iter()
+        .find(|f| f.name == "name")
+        .unwrap();
     assert!(name_field.validator_attributes.is_some());
     let name_attrs = name_field.validator_attributes.as_ref().unwrap();
     assert!(name_attrs.length.is_some());
@@ -53,13 +59,21 @@ pub async fn create_user(request: CreateUserRequest) -> Result<String, String> {
     assert_eq!(length_constraint.max, Some(50));
 
     // Test email field with email constraint
-    let email_field = create_user_request.fields.iter().find(|f| f.name == "email").unwrap();
+    let email_field = create_user_request
+        .fields
+        .iter()
+        .find(|f| f.name == "email")
+        .unwrap();
     assert!(email_field.validator_attributes.is_some());
     let email_attrs = email_field.validator_attributes.as_ref().unwrap();
     assert!(email_attrs.email);
 
     // Test age field with range constraint
-    let age_field = create_user_request.fields.iter().find(|f| f.name == "age").unwrap();
+    let age_field = create_user_request
+        .fields
+        .iter()
+        .find(|f| f.name == "age")
+        .unwrap();
     assert!(age_field.validator_attributes.is_some());
     let age_attrs = age_field.validator_attributes.as_ref().unwrap();
     assert!(age_attrs.range.is_some());
@@ -103,24 +117,33 @@ pub async fn create_product(data: ProductData) -> Result<String, String> {
 
     // Analyze and generate
     let mut analyzer = CommandAnalyzer::new();
-    let commands = analyzer.analyze_project(temp_dir.path().to_str().unwrap()).unwrap();
+    let commands = analyzer
+        .analyze_project(temp_dir.path().to_str().unwrap())
+        .unwrap();
     let discovered_structs = analyzer.get_discovered_structs();
 
     let mut generator = BindingsGenerator::new(Some("zod".to_string()));
-    generator.generate_models(&commands, discovered_structs, output_dir.to_str().unwrap(), &CommandAnalyzer::new()).unwrap();
+    generator
+        .generate_models(
+            &commands,
+            discovered_structs,
+            output_dir.to_str().unwrap(),
+            &CommandAnalyzer::new(),
+        )
+        .unwrap();
 
     // Read the generated types file
     let types_content = fs::read_to_string(output_dir.join("types.ts")).unwrap();
-    
+
     // Check that the zod schema includes validator constraints
     println!("Generated types content:\n{}", types_content);
-    
+
     // Should contain length constraints for name field
     assert!(types_content.contains("z.string().min(1).max(100)"));
-    
-    // Should contain email validation for contact_email field  
+
+    // Should contain email validation for contact_email field
     assert!(types_content.contains("z.string().email()"));
-    
+
     // Should contain range constraints for price field
     assert!(types_content.contains("z.number().min(0.01).max(999.99)"));
 }
@@ -162,26 +185,35 @@ pub async fn update_profile(profile: UserProfile) -> Result<String, String> {
 
     // Analyze and generate
     let mut analyzer = CommandAnalyzer::new();
-    let commands = analyzer.analyze_project(temp_dir.path().to_str().unwrap()).unwrap();
+    let commands = analyzer
+        .analyze_project(temp_dir.path().to_str().unwrap())
+        .unwrap();
     let discovered_structs = analyzer.get_discovered_structs();
 
     let mut generator = BindingsGenerator::new(Some("zod".to_string()));
-    generator.generate_models(&commands, discovered_structs, output_dir.to_str().unwrap(), &CommandAnalyzer::new()).unwrap();
+    generator
+        .generate_models(
+            &commands,
+            discovered_structs,
+            output_dir.to_str().unwrap(),
+            &CommandAnalyzer::new(),
+        )
+        .unwrap();
 
     // Read the generated types file
     let types_content = fs::read_to_string(output_dir.join("types.ts")).unwrap();
-    
+
     println!("Generated types content:\n{}", types_content);
-    
+
     // Test that optional fields with validation have correct hierarchy
     // Should be: z.string().max(500).optional() NOT z.string().optional().max(500)
     assert!(types_content.contains("z.string().max(500).optional()"));
     assert!(!types_content.contains("z.string().optional().max(500)"));
-    
+
     // Should be: z.number().min(1).max(120).optional() NOT z.number().optional().min(1).max(120)
     assert!(types_content.contains("z.number().min(1).max(120).optional()"));
     assert!(!types_content.contains("z.number().optional().min(1).max(120)"));
-    
+
     // Should be: z.string().email().optional() NOT z.string().optional().email()
     assert!(types_content.contains("z.string().email().optional()"));
     assert!(!types_content.contains("z.string().optional().email()"));

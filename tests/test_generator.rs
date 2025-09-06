@@ -45,7 +45,12 @@ fn test_generator_creates_all_files() {
 
     let mut generator = BindingsGenerator::new(Some("zod".to_string()));
     let generated_files = generator
-        .generate_models(&commands, &discovered_structs, output_path, &CommandAnalyzer::new())
+        .generate_models(
+            &commands,
+            &discovered_structs,
+            output_path,
+            &CommandAnalyzer::new(),
+        )
         .unwrap();
 
     assert_eq!(generated_files.len(), 3);
@@ -69,7 +74,12 @@ fn test_generator_without_validation_library() {
 
     let mut generator = BindingsGenerator::new(Some("none".to_string()));
     let generated_files = generator
-        .generate_models(&commands, &discovered_structs, output_path, &CommandAnalyzer::new())
+        .generate_models(
+            &commands,
+            &discovered_structs,
+            output_path,
+            &CommandAnalyzer::new(),
+        )
         .unwrap();
 
     // Should generate 3 files (no schemas.ts)
@@ -88,7 +98,12 @@ fn test_types_file_generation() {
 
     let mut generator = BindingsGenerator::new(None);
     generator
-        .generate_models(&commands, &discovered_structs, output_path, &CommandAnalyzer::new())
+        .generate_models(
+            &commands,
+            &discovered_structs,
+            output_path,
+            &CommandAnalyzer::new(),
+        )
         .unwrap();
 
     let types_content = fs::read_to_string(temp_dir.path().join("types.ts")).unwrap();
@@ -111,7 +126,12 @@ fn test_zod_schemas_in_types_file() {
 
     let mut generator = BindingsGenerator::new(Some("zod".to_string()));
     generator
-        .generate_models(&commands, &discovered_structs, output_path, &CommandAnalyzer::new())
+        .generate_models(
+            &commands,
+            &discovered_structs,
+            output_path,
+            &CommandAnalyzer::new(),
+        )
         .unwrap();
 
     let types_content = fs::read_to_string(temp_dir.path().join("types.ts")).unwrap();
@@ -137,7 +157,12 @@ fn test_yup_schemas_generation() {
     // Yup support removed - should fall back to vanilla generator
     let mut generator = BindingsGenerator::new(Some("yup".to_string()));
     let generated_files = generator
-        .generate_models(&commands, &discovered_structs, output_path, &CommandAnalyzer::new())
+        .generate_models(
+            &commands,
+            &discovered_structs,
+            output_path,
+            &CommandAnalyzer::new(),
+        )
         .unwrap();
 
     // Should generate vanilla files (no schemas.ts for yup)
@@ -158,7 +183,12 @@ fn test_commands_file_generation() {
 
     let mut generator = BindingsGenerator::new(Some("zod".to_string()));
     generator
-        .generate_models(&commands, &discovered_structs, output_path, &CommandAnalyzer::new())
+        .generate_models(
+            &commands,
+            &discovered_structs,
+            output_path,
+            &CommandAnalyzer::new(),
+        )
         .unwrap();
 
     let commands_content = fs::read_to_string(temp_dir.path().join("commands.ts")).unwrap();
@@ -188,7 +218,12 @@ fn test_commands_without_validation() {
 
     let mut generator = BindingsGenerator::new(Some("none".to_string()));
     generator
-        .generate_models(&commands, &discovered_structs, output_path, &CommandAnalyzer::new())
+        .generate_models(
+            &commands,
+            &discovered_structs,
+            output_path,
+            &CommandAnalyzer::new(),
+        )
         .unwrap();
 
     let commands_content = fs::read_to_string(temp_dir.path().join("commands.ts")).unwrap();
@@ -209,7 +244,12 @@ fn test_index_file_generation() {
 
     let mut generator = BindingsGenerator::new(None);
     generator
-        .generate_models(&commands, &discovered_structs, output_path, &CommandAnalyzer::new())
+        .generate_models(
+            &commands,
+            &discovered_structs,
+            output_path,
+            &CommandAnalyzer::new(),
+        )
         .unwrap();
 
     let index_content = fs::read_to_string(temp_dir.path().join("index.ts")).unwrap();
@@ -243,7 +283,10 @@ fn test_typescript_to_zod_type_conversion() {
         generator.typescript_to_zod_type("string | null"),
         "z.string().nullable()"
     );
-    assert_eq!(generator.typescript_to_zod_type("CustomType"), "z.lazy(() => z.any()) /* CustomType - define schema separately if needed */");
+    assert_eq!(
+        generator.typescript_to_zod_type("CustomType"),
+        "z.lazy(() => z.any()) /* CustomType - define schema separately if needed */"
+    );
 }
 
 #[test]
@@ -251,12 +294,24 @@ fn test_typescript_to_yup_type_conversion() {
     let generator = BindingsGenerator::new(None);
 
     // Yup support has been removed - all types return the removed message
-    assert!(generator.typescript_to_yup_type("string").contains("yup support removed"));
-    assert!(generator.typescript_to_yup_type("number").contains("yup support removed"));
-    assert!(generator.typescript_to_yup_type("boolean").contains("yup support removed"));
-    assert!(generator.typescript_to_yup_type("string[]").contains("yup support removed"));
-    assert!(generator.typescript_to_yup_type("string | null").contains("yup support removed"));
-    assert!(generator.typescript_to_yup_type("CustomType").contains("yup support removed"));
+    assert!(generator
+        .typescript_to_yup_type("string")
+        .contains("yup support removed"));
+    assert!(generator
+        .typescript_to_yup_type("number")
+        .contains("yup support removed"));
+    assert!(generator
+        .typescript_to_yup_type("boolean")
+        .contains("yup support removed"));
+    assert!(generator
+        .typescript_to_yup_type("string[]")
+        .contains("yup support removed"));
+    assert!(generator
+        .typescript_to_yup_type("string | null")
+        .contains("yup support removed"));
+    assert!(generator
+        .typescript_to_yup_type("CustomType")
+        .contains("yup support removed"));
 }
 
 #[test]
@@ -296,7 +351,12 @@ fn test_generator_with_void_return() {
 
     let mut generator = BindingsGenerator::new(None);
     generator
-        .generate_models(&commands, &discovered_structs, output_path, &CommandAnalyzer::new())
+        .generate_models(
+            &commands,
+            &discovered_structs,
+            output_path,
+            &CommandAnalyzer::new(),
+        )
         .unwrap();
 
     let commands_content = fs::read_to_string(temp_dir.path().join("commands.ts")).unwrap();
@@ -313,7 +373,12 @@ fn test_generator_empty_commands_list() {
 
     let mut generator = BindingsGenerator::new(None);
     let generated_files = generator
-        .generate_models(&commands, &discovered_structs, output_path, &CommandAnalyzer::new())
+        .generate_models(
+            &commands,
+            &discovered_structs,
+            output_path,
+            &CommandAnalyzer::new(),
+        )
         .unwrap();
 
     // Should still generate files, just with empty content

@@ -224,7 +224,12 @@ fn test_only_generates_types_used_by_commands() {
 
     let mut generator = BindingsGenerator::new(None);
     generator
-        .generate_models(&commands, &all_discovered_structs, output_path, &CommandAnalyzer::new())
+        .generate_models(
+            &commands,
+            &all_discovered_structs,
+            output_path,
+            &CommandAnalyzer::new(),
+        )
         .unwrap();
 
     let types_content = fs::read_to_string(temp_dir.path().join("types.ts")).unwrap();
@@ -355,7 +360,12 @@ fn test_type_filtering_with_validation_library() {
     // Test with Zod validation
     let mut generator = BindingsGenerator::new(Some("zod".to_string()));
     generator
-        .generate_models(&commands, &all_discovered_structs, output_path, &CommandAnalyzer::new())
+        .generate_models(
+            &commands,
+            &all_discovered_structs,
+            output_path,
+            &CommandAnalyzer::new(),
+        )
         .unwrap();
 
     let types_content = fs::read_to_string(temp_dir.path().join("types.ts")).unwrap();
@@ -385,7 +395,12 @@ fn test_empty_commands_generates_no_unnecessary_types() {
 
     let mut generator = BindingsGenerator::new(None);
     generator
-        .generate_models(&commands, &all_discovered_structs, output_path, &CommandAnalyzer::new())
+        .generate_models(
+            &commands,
+            &all_discovered_structs,
+            output_path,
+            &CommandAnalyzer::new(),
+        )
         .unwrap();
 
     let types_content = fs::read_to_string(temp_dir.path().join("types.ts")).unwrap();

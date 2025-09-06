@@ -1,11 +1,9 @@
-
-
 use crate::analysis::CommandAnalyzer;
 use crate::generators::base::BaseBindingsGenerator as GeneratorTrait;
-use crate::models::{CommandInfo, StructInfo};
-use std::collections::HashMap;
 use crate::generators::TypeScriptBindingsGenerator;
 use crate::generators::ZodBindingsGenerator;
+use crate::models::{CommandInfo, StructInfo};
+use std::collections::HashMap;
 
 pub struct BindingsGenerator {
     validation_library: String,
@@ -69,7 +67,11 @@ impl BindingsGenerator {
         }
     }
 
-    pub fn collect_referenced_types(&self, rust_type: &str, used_types: &mut std::collections::HashSet<String>) {
+    pub fn collect_referenced_types(
+        &self,
+        rust_type: &str,
+        used_types: &mut std::collections::HashSet<String>,
+    ) {
         match self.validation_library.as_str() {
             "zod" => {
                 let generator = ZodBindingsGenerator::new();

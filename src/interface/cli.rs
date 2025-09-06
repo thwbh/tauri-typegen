@@ -1,6 +1,6 @@
+use crate::interface::config::GenerateConfig;
 use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
-use crate::interface::config::GenerateConfig;
 
 #[derive(Parser)]
 #[command(name = "cargo")]
@@ -84,7 +84,9 @@ impl From<&TypegenCommands> for GenerateConfig {
                 visualize_deps: Some(*visualize_deps),
                 ..Default::default()
             },
-            TypegenCommands::Init { validation_library, .. } => GenerateConfig {
+            TypegenCommands::Init {
+                validation_library, ..
+            } => GenerateConfig {
                 validation_library: validation_library.clone(),
                 ..Default::default()
             },

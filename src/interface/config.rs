@@ -20,35 +20,35 @@ pub struct GenerateConfig {
     /// Path to the Tauri project source directory
     #[serde(default = "default_project_path")]
     pub project_path: String,
-    
+
     /// Output path for generated TypeScript files
     #[serde(default = "default_output_path")]
     pub output_path: String,
-    
+
     /// Validation library to use ('zod' or 'none')
     #[serde(default = "default_validation_library")]
     pub validation_library: String,
-    
+
     /// Enable verbose output
     #[serde(default)]
     pub verbose: Option<bool>,
-    
+
     /// Generate dependency graph visualization
     #[serde(default)]
     pub visualize_deps: Option<bool>,
-    
+
     /// Include private struct fields in generation
     #[serde(default)]
     pub include_private: Option<bool>,
-    
+
     /// Custom type mappings
     #[serde(default)]
     pub type_mappings: Option<std::collections::HashMap<String, String>>,
-    
+
     /// File patterns to exclude from analysis
     #[serde(default)]
     pub exclude_patterns: Option<Vec<String>>,
-    
+
     /// File patterns to include in analysis (overrides excludes)
     #[serde(default)]
     pub include_patterns: Option<Vec<String>>,
@@ -112,30 +112,41 @@ impl GenerateConfig {
                 if let Some(output_path) = typegen.get("outputPath").and_then(|v| v.as_str()) {
                     config.output_path = output_path.to_string();
                 }
-                if let Some(validation) = typegen.get("validationLibrary").and_then(|v| v.as_str()) {
+                if let Some(validation) = typegen.get("validationLibrary").and_then(|v| v.as_str())
+                {
                     config.validation_library = validation.to_string();
                 }
                 if let Some(verbose) = typegen.get("verbose").and_then(|v| v.as_bool()) {
                     config.verbose = Some(verbose);
                 }
-                if let Some(visualize_deps) = typegen.get("visualizeDeps").and_then(|v| v.as_bool()) {
+                if let Some(visualize_deps) = typegen.get("visualizeDeps").and_then(|v| v.as_bool())
+                {
                     config.visualize_deps = Some(visualize_deps);
                 }
-                if let Some(include_private) = typegen.get("includePrivate").and_then(|v| v.as_bool()) {
+                if let Some(include_private) =
+                    typegen.get("includePrivate").and_then(|v| v.as_bool())
+                {
                     config.include_private = Some(include_private);
                 }
                 if let Some(type_mappings) = typegen.get("typeMappings") {
-                    if let Ok(mappings) = serde_json::from_value::<std::collections::HashMap<String, String>>(type_mappings.clone()) {
+                    if let Ok(mappings) = serde_json::from_value::<
+                        std::collections::HashMap<String, String>,
+                    >(type_mappings.clone())
+                    {
                         config.type_mappings = Some(mappings);
                     }
                 }
                 if let Some(exclude_patterns) = typegen.get("excludePatterns") {
-                    if let Ok(patterns) = serde_json::from_value::<Vec<String>>(exclude_patterns.clone()) {
+                    if let Ok(patterns) =
+                        serde_json::from_value::<Vec<String>>(exclude_patterns.clone())
+                    {
                         config.exclude_patterns = Some(patterns);
                     }
                 }
                 if let Some(include_patterns) = typegen.get("includePatterns") {
-                    if let Ok(patterns) = serde_json::from_value::<Vec<String>>(include_patterns.clone()) {
+                    if let Ok(patterns) =
+                        serde_json::from_value::<Vec<String>>(include_patterns.clone())
+                    {
                         config.include_patterns = Some(patterns);
                     }
                 }
@@ -155,7 +166,6 @@ impl GenerateConfig {
 
     /// Save configuration to Tauri configuration file
     pub fn save_to_tauri_config<P: AsRef<Path>>(&self, path: P) -> Result<(), ConfigError> {
-        
         // Read existing tauri.conf.json or create new one
         let mut tauri_config = if path.as_ref().exists() {
             let content = fs::read_to_string(&path)?;
@@ -198,7 +208,11 @@ impl GenerateConfig {
         // Validate validation library
         match self.validation_library.as_str() {
             "zod" | "none" => {}
-            _ => return Err(ConfigError::InvalidValidationLibrary(self.validation_library.clone())),
+            _ => {
+                return Err(ConfigError::InvalidValidationLibrary(
+                    self.validation_library.clone(),
+                ))
+            }
         }
 
         // Validate paths exist
@@ -280,7 +294,7 @@ mod tests {
     fn test_config_validation() {
         let mut config = GenerateConfig::default();
         config.validation_library = "invalid".to_string();
-        
+
         let result = config.validate();
         assert!(result.is_err());
         if let Err(ConfigError::InvalidValidationLibrary(lib)) = result {
@@ -310,7 +324,7 @@ mod tests {
         let temp_dir = tempfile::TempDir::new().unwrap();
         let project_path = temp_dir.path().join("src-tauri");
         std::fs::create_dir_all(&project_path).unwrap();
-        
+
         let config = GenerateConfig {
             project_path: project_path.to_string_lossy().to_string(),
             output_path: "./test".to_string(),
@@ -320,7 +334,7 @@ mod tests {
 
         let temp_file = NamedTempFile::new().unwrap();
         config.save_to_file(temp_file.path()).unwrap();
-        
+
         let loaded_config = GenerateConfig::from_file(temp_file.path()).unwrap();
         assert_eq!(loaded_config.output_path, "./test");
         assert!(loaded_config.is_verbose());

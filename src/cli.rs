@@ -43,33 +43,29 @@ pub fn generate_from_config(
 
     if verbose {
         println!("📋 Found {} Tauri commands:", commands.len());
-        for cmd in &commands {
+        commands.iter().for_each(|cmd| {
             println!("  - {} ({})", cmd.name, cmd.file_path);
-        }
+        });
 
         let discovered_structs = analyzer.get_discovered_structs();
         println!("🏗️  Found {} struct definitions:", discovered_structs.len());
-        for (name, struct_info) in discovered_structs {
-            let struct_type = if struct_info.is_enum {
-                "enum"
-            } else {
-                "struct"
-            };
+        discovered_structs.iter().for_each(|(name, struct_info)| {
+            let struct_type = if struct_info.is_enum { "enum" } else { "struct" };
             println!(
                 "  - {} ({}) with {} fields",
                 name,
                 struct_type,
                 struct_info.fields.len()
             );
-            for field in &struct_info.fields {
+            struct_info.fields.iter().for_each(|field| {
                 let visibility = if field.is_public { "pub" } else { "private" };
                 let optional = if field.is_optional { "?" } else { "" };
                 println!(
                     "    • {}{}: {} ({})",
                     field.name, optional, field.typescript_type, visibility
                 );
-            }
-        }
+            });
+        });
 
         if discovered_structs.is_empty() {
             println!("  ℹ️  No custom struct definitions found in the project");
@@ -113,9 +109,9 @@ pub fn generate_from_config(
             generated_files.len(),
             commands.len()
         );
-        for file in &generated_files {
+        generated_files.iter().for_each(|file| {
             println!("  📄 {}/{}", config.output_path, file);
-        }
+        });
     }
 
     Ok(generated_files)

@@ -1,6 +1,6 @@
 pub mod file_writer;
-pub mod type_conversion;
 pub mod template_helpers;
+pub mod type_conversion;
 
 use crate::analysis::CommandAnalyzer;
 use crate::models::{CommandInfo, StructInfo};
@@ -24,7 +24,9 @@ pub trait BaseBindingsGenerator {
                 let mut chars = word.chars();
                 match chars.next() {
                     None => String::new(),
-                    Some(first) => first.to_uppercase().collect::<String>() + &chars.as_str().to_lowercase(),
+                    Some(first) => {
+                        first.to_uppercase().collect::<String>() + &chars.as_str().to_lowercase()
+                    }
                 }
             })
             .collect()
@@ -38,7 +40,8 @@ pub trait BaseBindingsGenerator {
  * Do not edit manually - regenerate using: cargo tauri-typegen generate
  */
 
-".to_string()
+"
+        .to_string()
     }
 
     /// Generate command bindings file header
@@ -49,7 +52,8 @@ pub trait BaseBindingsGenerator {
  * Do not edit manually - regenerate using: cargo tauri-typegen generate
  */
 
-".to_string()
+"
+        .to_string()
     }
 
     /// Generate index file header
@@ -60,7 +64,8 @@ pub trait BaseBindingsGenerator {
  * Do not edit manually - regenerate using: cargo tauri-typegen generate
  */
 
-".to_string()
+"
+        .to_string()
     }
 }
 
@@ -103,7 +108,11 @@ impl BaseGenerator {
     }
 
     /// Recursively collect type names from complex types
-    pub fn collect_referenced_types(&self, type_str: &str, used_types: &mut std::collections::HashSet<String>) {
+    pub fn collect_referenced_types(
+        &self,
+        type_str: &str,
+        used_types: &mut std::collections::HashSet<String>,
+    ) {
         // Handle Result<T, E>
         if let Some(inner) = self.extract_result_inner_type(type_str) {
             self.collect_referenced_types(&inner, used_types);
@@ -138,7 +147,9 @@ impl BaseGenerator {
     fn extract_result_inner_type(&self, type_str: &str) -> Option<String> {
         if type_str.starts_with("Result<") && type_str.ends_with('>') {
             let inner = &type_str[7..type_str.len() - 1];
-            inner.find(',').map(|comma_pos| inner[..comma_pos].trim().to_string())
+            inner
+                .find(',')
+                .map(|comma_pos| inner[..comma_pos].trim().to_string())
         } else {
             None
         }
@@ -163,13 +174,31 @@ impl BaseGenerator {
     }
 
     fn is_primitive_type(&self, type_str: &str) -> bool {
-        matches!(type_str, 
-            "String" | "str" | "&str" | 
-            "i8" | "i16" | "i32" | "i64" | "i128" | "isize" |
-            "u8" | "u16" | "u32" | "u64" | "u128" | "usize" |
-            "f32" | "f64" | 
-            "bool" | 
-            "()" | "number" | "string" | "boolean" | "void"
+        matches!(
+            type_str,
+            "String"
+                | "str"
+                | "&str"
+                | "i8"
+                | "i16"
+                | "i32"
+                | "i64"
+                | "i128"
+                | "isize"
+                | "u8"
+                | "u16"
+                | "u32"
+                | "u64"
+                | "u128"
+                | "usize"
+                | "f32"
+                | "f64"
+                | "bool"
+                | "()"
+                | "number"
+                | "string"
+                | "boolean"
+                | "void"
         )
     }
 }

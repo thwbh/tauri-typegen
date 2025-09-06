@@ -14,13 +14,18 @@ pub fn generate_from_config(
     config: &config::GenerateConfig,
 ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
     let logger = output::Logger::new(config.is_verbose(), false);
-    
+
     if config.is_verbose() {
-        logger.info(&format!("🔍 Analyzing Tauri commands in: {}", config.project_path));
+        logger.info(&format!(
+            "🔍 Analyzing Tauri commands in: {}",
+            config.project_path
+        ));
     }
 
     // Validate configuration
-    config.validate().map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+    config
+        .validate()
+        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
 
     // Analyze commands with struct discovery
     let mut analyzer = CommandAnalyzer::new();
@@ -33,7 +38,10 @@ pub fn generate_from_config(
         }
 
         let discovered_structs = analyzer.get_discovered_structs();
-        logger.info(&format!("🏗️  Found {} struct definitions:", discovered_structs.len()));
+        logger.info(&format!(
+            "🏗️  Found {} struct definitions:",
+            discovered_structs.len()
+        ));
         for (name, struct_info) in discovered_structs {
             let struct_type = if struct_info.is_enum {
                 "enum"

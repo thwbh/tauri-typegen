@@ -1,6 +1,6 @@
-use crate::analysis::validator_parser::ValidatorParser;
 use crate::analysis::type_resolver::TypeResolver;
-use crate::models::{StructInfo, FieldInfo};
+use crate::analysis::validator_parser::ValidatorParser;
+use crate::models::{FieldInfo, StructInfo};
 use quote::ToTokens;
 use std::path::Path;
 use syn::{Attribute, ItemEnum, ItemStruct, Type, Visibility};
@@ -56,25 +56,27 @@ impl StructParser {
     }
 
     /// Parse a Rust struct into StructInfo
-    pub fn parse_struct(&self, item_struct: &ItemStruct, file_path: &Path, type_resolver: &mut TypeResolver) -> Option<StructInfo> {
-        let mut fields = Vec::new();
-
-        match &item_struct.fields {
-            syn::Fields::Named(fields_named) => {
-                for field in &fields_named.named {
-                    if let Some(field_info) = self.parse_field(field, type_resolver) {
-                        fields.push(field_info);
-                    }
-                }
-            }
+    pub fn parse_struct(
+        &self,
+        item_struct: &ItemStruct,
+        file_path: &Path,
+        type_resolver: &mut TypeResolver,
+    ) -> Option<StructInfo> {
+        let fields = match &item_struct.fields {
+            syn::Fields::Named(fields_named) => fields_named
+                .named
+                .iter()
+                .filter_map(|field| self.parse_field(field, type_resolver))
+                .collect(),
             syn::Fields::Unnamed(_) => {
                 // Handle tuple structs if needed
                 return None;
             }
             syn::Fields::Unit => {
                 // Unit struct
+                Vec::new()
             }
-        }
+        };
 
         Some(StructInfo {
             name: item_struct.ident.to_string(),
@@ -85,59 +87,81 @@ impl StructParser {
     }
 
     /// Parse a Rust enum into StructInfo
-    pub fn parse_enum(&self, item_enum: &ItemEnum, file_path: &Path, type_resolver: &mut TypeResolver) -> Option<StructInfo> {
-        let mut fields = Vec::new();
-
-        for variant in &item_enum.variants {
-            match &variant.fields {
-                syn::Fields::Unit => {
-                    // Unit variant: Variant
-                    let field_info = FieldInfo {
-                        name: variant.ident.to_string(),
-                        rust_type: "enum_variant".to_string(),
-                        typescript_type: format!("\"{}\"", variant.ident),
-                        is_optional: false,
-                        is_public: true,
-                        validator_attributes: None,
-                    };
-                    fields.push(field_info);
-                },
-                syn::Fields::Unnamed(fields_unnamed) => {
-                    // Tuple variant: Variant(T, U)
-                    let types: Vec<String> = fields_unnamed.unnamed.iter()
-                        .map(|field| type_resolver.map_rust_type_to_typescript(&self.type_to_string(&field.ty)))
-                        .collect();
-                    let field_info = FieldInfo {
-                        name: variant.ident.to_string(),
-                        rust_type: "enum_variant_tuple".to_string(),
-                        typescript_type: format!("{{ type: \"{}\", data: [{}] }}", variant.ident, types.join(", ")),
-                        is_optional: false,
-                        is_public: true,
-                        validator_attributes: None,
-                    };
-                    fields.push(field_info);
-                },
-                syn::Fields::Named(fields_named) => {
-                    // Struct variant: Variant { field: T }
-                    let mut struct_fields = Vec::new();
-                    for field in &fields_named.named {
-                        if let Some(field_name) = &field.ident {
-                            let field_type = type_resolver.map_rust_type_to_typescript(&self.type_to_string(&field.ty));
-                            struct_fields.push(format!("{}: {}", field_name, field_type));
+    pub fn parse_enum(
+        &self,
+        item_enum: &ItemEnum,
+        file_path: &Path,
+        type_resolver: &mut TypeResolver,
+    ) -> Option<StructInfo> {
+        let fields = item_enum
+            .variants
+            .iter()
+            .map(|variant| {
+                match &variant.fields {
+                    syn::Fields::Unit => {
+                        // Unit variant: Variant
+                        FieldInfo {
+                            name: variant.ident.to_string(),
+                            rust_type: "enum_variant".to_string(),
+                            typescript_type: format!("\"{}\"", variant.ident),
+                            is_optional: false,
+                            is_public: true,
+                            validator_attributes: None,
                         }
                     }
-                    let field_info = FieldInfo {
-                        name: variant.ident.to_string(),
-                        rust_type: "enum_variant_struct".to_string(),
-                        typescript_type: format!("{{ type: \"{}\", data: {{ {} }} }}", variant.ident, struct_fields.join(", ")),
-                        is_optional: false,
-                        is_public: true,
-                        validator_attributes: None,
-                    };
-                    fields.push(field_info);
+                    syn::Fields::Unnamed(fields_unnamed) => {
+                        // Tuple variant: Variant(T, U)
+                        let types: Vec<String> = fields_unnamed
+                            .unnamed
+                            .iter()
+                            .map(|field| {
+                                type_resolver
+                                    .map_rust_type_to_typescript(&self.type_to_string(&field.ty))
+                            })
+                            .collect();
+                        FieldInfo {
+                            name: variant.ident.to_string(),
+                            rust_type: "enum_variant_tuple".to_string(),
+                            typescript_type: format!(
+                                "{{ type: \"{}\", data: [{}] }}",
+                                variant.ident,
+                                types.join(", ")
+                            ),
+                            is_optional: false,
+                            is_public: true,
+                            validator_attributes: None,
+                        }
+                    }
+                    syn::Fields::Named(fields_named) => {
+                        // Struct variant: Variant { field: T }
+                        let struct_fields: Vec<String> = fields_named
+                            .named
+                            .iter()
+                            .filter_map(|field| {
+                                field.ident.as_ref().map(|field_name| {
+                                    let field_type = type_resolver.map_rust_type_to_typescript(
+                                        &self.type_to_string(&field.ty),
+                                    );
+                                    format!("{}: {}", field_name, field_type)
+                                })
+                            })
+                            .collect();
+                        FieldInfo {
+                            name: variant.ident.to_string(),
+                            rust_type: "enum_variant_struct".to_string(),
+                            typescript_type: format!(
+                                "{{ type: \"{}\", data: {{ {} }} }}",
+                                variant.ident,
+                                struct_fields.join(", ")
+                            ),
+                            is_optional: false,
+                            is_public: true,
+                            validator_attributes: None,
+                        }
+                    }
                 }
-            }
-        }
+            })
+            .collect();
 
         Some(StructInfo {
             name: item_enum.ident.to_string(),
@@ -148,13 +172,19 @@ impl StructParser {
     }
 
     /// Parse a struct field into FieldInfo
-    fn parse_field(&self, field: &syn::Field, type_resolver: &mut TypeResolver) -> Option<FieldInfo> {
+    fn parse_field(
+        &self,
+        field: &syn::Field,
+        type_resolver: &mut TypeResolver,
+    ) -> Option<FieldInfo> {
         let name = field.ident.as_ref()?.to_string();
         let is_public = matches!(field.vis, Visibility::Public(_));
         let is_optional = self.is_optional_type(&field.ty);
         let rust_type = self.type_to_string(&field.ty);
         let typescript_type = type_resolver.map_rust_type_to_typescript(&rust_type);
-        let validator_attributes = self.validator_parser.parse_validator_attributes(&field.attrs);
+        let validator_attributes = self
+            .validator_parser
+            .parse_validator_attributes(&field.attrs);
 
         Some(FieldInfo {
             name,
@@ -184,39 +214,47 @@ impl StructParser {
         match ty {
             Type::Path(type_path) => {
                 let path = &type_path.path;
-                let segments: Vec<String> = path.segments.iter().map(|segment| {
-                    let ident = segment.ident.to_string();
-                    match &segment.arguments {
-                        syn::PathArguments::None => ident,
-                        syn::PathArguments::AngleBracketed(args) => {
-                            let generic_args: Vec<String> = args.args.iter().map(|arg| {
-                                match arg {
-                                    syn::GenericArgument::Type(t) => self.type_to_string(t),
-                                    _ => "unknown".to_string(),
-                                }
-                            }).collect();
-                            format!("{}<{}>", ident, generic_args.join(", "))
-                        },
-                        syn::PathArguments::Parenthesized(_) => ident, // Function types, not common in structs
-                    }
-                }).collect();
+                let segments: Vec<String> = path
+                    .segments
+                    .iter()
+                    .map(|segment| {
+                        let ident = segment.ident.to_string();
+                        match &segment.arguments {
+                            syn::PathArguments::None => ident,
+                            syn::PathArguments::AngleBracketed(args) => {
+                                let generic_args: Vec<String> = args
+                                    .args
+                                    .iter()
+                                    .map(|arg| match arg {
+                                        syn::GenericArgument::Type(t) => self.type_to_string(t),
+                                        _ => "unknown".to_string(),
+                                    })
+                                    .collect();
+                                format!("{}<{}>", ident, generic_args.join(", "))
+                            }
+                            syn::PathArguments::Parenthesized(_) => ident, // Function types, not common in structs
+                        }
+                    })
+                    .collect();
                 segments.join("::")
-            },
+            }
             Type::Reference(type_ref) => {
                 format!("&{}", self.type_to_string(&type_ref.elem))
-            },
+            }
             Type::Tuple(type_tuple) => {
-                let elements: Vec<String> = type_tuple.elems.iter()
+                let elements: Vec<String> = type_tuple
+                    .elems
+                    .iter()
                     .map(|elem| self.type_to_string(elem))
                     .collect();
                 format!("({})", elements.join(", "))
-            },
+            }
             Type::Array(type_array) => {
                 format!("[{}; _]", self.type_to_string(&type_array.elem))
-            },
+            }
             Type::Slice(type_slice) => {
                 format!("[{}]", self.type_to_string(&type_slice.elem))
-            },
+            }
             _ => "unknown".to_string(),
         }
     }

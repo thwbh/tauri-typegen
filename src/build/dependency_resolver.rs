@@ -88,24 +88,23 @@ impl DependencyResolver {
         // If "from" uses "to", then "to" should be processed before "from"
         // So we create an edge from "to" to "from" for the topological sort
         for dep in &self.dependencies {
-            adjacency
-                .get_mut(&dep.to)
-                .unwrap()
-                .push(dep.from.clone());
-            
+            adjacency.get_mut(&dep.to).unwrap().push(dep.from.clone());
+
             *in_degree.get_mut(&dep.from).unwrap() += 1;
         }
 
         // Topological sort using Kahn's algorithm
-        let mut queue = VecDeque::new();
+        let mut queue: VecDeque<_> = in_degree
+            .iter()
+            .filter_map(|(node, &degree)| {
+                if degree == 0 {
+                    Some(node.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
         let mut result = Vec::new();
-
-        // Find all nodes with no incoming edges
-        for (node, &degree) in &in_degree {
-            if degree == 0 {
-                queue.push_back(node.clone());
-            }
-        }
 
         while let Some(node) = queue.pop_front() {
             result.push(node.clone());
@@ -124,7 +123,8 @@ impl DependencyResolver {
 
         // Check for circular dependencies
         if result.len() != self.nodes.len() {
-            let remaining: Vec<String> = self.nodes
+            let remaining: Vec<String> = self
+                .nodes
                 .iter()
                 .filter(|n| !result.contains(n))
                 .map(|n| n.name.clone())
@@ -185,7 +185,7 @@ impl DependencyResolver {
                 DependencyNodeType::Type => ("circle", "lightgray"),
                 DependencyNodeType::Module => ("folder", "lightcoral"),
             };
-            
+
             dot.push_str(&format!(
                 "    \"{}\" [shape={}, fillcolor={}, style=filled];\n",
                 node.name, shape, color
@@ -203,7 +203,7 @@ impl DependencyResolver {
                 DependencyType::Import => "bold",
                 DependencyType::Generic => "double",
             };
-            
+
             dot.push_str(&format!(
                 "    \"{}\" -> \"{}\" [style={}];\n",
                 dep.from.name, dep.to.name, style
@@ -224,7 +224,7 @@ impl DependencyResolver {
             let dependents = self.get_dependents_of(node);
 
             output.push_str(&format!("{} ({:?})\n", node.name, node.node_type));
-            
+
             if !deps.is_empty() {
                 output.push_str("  Dependencies:\n");
                 for dep in deps {
@@ -234,7 +234,7 @@ impl DependencyResolver {
                     ));
                 }
             }
-            
+
             if !dependents.is_empty() {
                 output.push_str("  Dependents:\n");
                 for dep in dependents {
@@ -244,7 +244,7 @@ impl DependencyResolver {
                     ));
                 }
             }
-            
+
             output.push('\n');
         }
 
@@ -254,14 +254,14 @@ impl DependencyResolver {
     /// Group nodes by their type for organized code generation
     pub fn group_by_type(&self) -> HashMap<DependencyNodeType, Vec<DependencyNode>> {
         let mut groups = HashMap::new();
-        
+
         for node in &self.nodes {
             groups
                 .entry(node.node_type.clone())
                 .or_insert_with(Vec::new)
                 .push(node.clone());
         }
-        
+
         groups
     }
 
@@ -271,19 +271,24 @@ impl DependencyResolver {
         self.calculate_depth(node, &mut visited)
     }
 
-    fn calculate_depth(&self, node: &DependencyNode, visited: &mut HashSet<DependencyNode>) -> usize {
+    fn calculate_depth(
+        &self,
+        node: &DependencyNode,
+        visited: &mut HashSet<DependencyNode>,
+    ) -> usize {
         if visited.contains(node) {
             return 0; // Avoid infinite recursion on cycles
         }
-        
+
         visited.insert(node.clone());
-        
-        let max_child_depth = self.get_dependencies_for(node)
+
+        let max_child_depth = self
+            .get_dependencies_for(node)
             .iter()
             .map(|dep| self.calculate_depth(&dep.to, visited))
             .max()
             .unwrap_or(0);
-        
+
         visited.remove(node);
         max_child_depth + 1
     }
@@ -310,13 +315,13 @@ mod tests {
     #[test]
     fn test_simple_dependency_resolution() {
         let mut resolver = DependencyResolver::new();
-        
+
         let node_a = create_test_node("A", DependencyNodeType::Struct);
         let node_b = create_test_node("B", DependencyNodeType::Struct);
-        
+
         resolver.add_node(node_a.clone());
         resolver.add_node(node_b.clone());
-        
+
         // B depends on A (B uses A), so A must be processed before B
         // In our system: "from" uses "to", which means "to" should come first
         resolver.add_dependency(Dependency {
@@ -324,23 +329,27 @@ mod tests {
             to: node_a.clone(),
             dependency_type: DependencyType::Direct,
         });
-        
+
         let order = resolver.resolve_build_order().unwrap();
         assert_eq!(order.len(), 2);
-        
+
         // A should come before B since B depends on A
         let a_pos = order.iter().position(|n| n.name == "A").unwrap();
         let b_pos = order.iter().position(|n| n.name == "B").unwrap();
-        assert!(a_pos < b_pos, "A should come before B, but got order: {:?}", order.iter().map(|n| &n.name).collect::<Vec<_>>());
+        assert!(
+            a_pos < b_pos,
+            "A should come before B, but got order: {:?}",
+            order.iter().map(|n| &n.name).collect::<Vec<_>>()
+        );
     }
 
     #[test]
     fn test_circular_dependency_detection() {
         let mut resolver = DependencyResolver::new();
-        
+
         let node_a = create_test_node("A", DependencyNodeType::Struct);
         let node_b = create_test_node("B", DependencyNodeType::Struct);
-        
+
         resolver.add_node(node_a.clone());
         resolver.add_node(node_b.clone());
         resolver.add_dependency(Dependency {
@@ -353,7 +362,7 @@ mod tests {
             to: node_a.clone(),
             dependency_type: DependencyType::Direct,
         });
-        
+
         let result = resolver.resolve_build_order();
         assert!(result.is_err());
         if let Err(DependencyError::CircularDependency(_)) = result {
@@ -366,17 +375,17 @@ mod tests {
     #[test]
     fn test_complex_dependency_chain() {
         let mut resolver = DependencyResolver::new();
-        
+
         let node_a = create_test_node("A", DependencyNodeType::Struct);
         let node_b = create_test_node("B", DependencyNodeType::Struct);
         let node_c = create_test_node("C", DependencyNodeType::Struct);
         let node_d = create_test_node("D", DependencyNodeType::Command);
-        
+
         resolver.add_node(node_a.clone());
         resolver.add_node(node_b.clone());
         resolver.add_node(node_c.clone());
         resolver.add_node(node_d.clone());
-        
+
         // D depends on C, C depends on B, B depends on A
         resolver.add_dependency(Dependency {
             from: node_d.clone(),
@@ -393,17 +402,17 @@ mod tests {
             to: node_a.clone(),
             dependency_type: DependencyType::Direct,
         });
-        
+
         let order = resolver.resolve_build_order().unwrap();
         assert_eq!(order.len(), 4);
-        
+
         // Verify ordering: A -> B -> C -> D
         let positions: HashMap<String, usize> = order
             .iter()
             .enumerate()
             .map(|(i, n)| (n.name.clone(), i))
             .collect();
-        
+
         assert!(positions["A"] < positions["B"]);
         assert!(positions["B"] < positions["C"]);
         assert!(positions["C"] < positions["D"]);
@@ -412,15 +421,15 @@ mod tests {
     #[test]
     fn test_dependency_depth_calculation() {
         let mut resolver = DependencyResolver::new();
-        
+
         let node_a = create_test_node("A", DependencyNodeType::Struct);
         let node_b = create_test_node("B", DependencyNodeType::Struct);
         let node_c = create_test_node("C", DependencyNodeType::Command);
-        
+
         resolver.add_node(node_a.clone());
         resolver.add_node(node_b.clone());
         resolver.add_node(node_c.clone());
-        
+
         // C -> B -> A
         resolver.add_dependency(Dependency {
             from: node_c.clone(),
@@ -432,7 +441,7 @@ mod tests {
             to: node_a.clone(),
             dependency_type: DependencyType::Direct,
         });
-        
+
         assert_eq!(resolver.get_dependency_depth(&node_a), 1); // Leaf node
         assert_eq!(resolver.get_dependency_depth(&node_b), 2); // A + itself
         assert_eq!(resolver.get_dependency_depth(&node_c), 3); // A + B + itself
@@ -441,19 +450,19 @@ mod tests {
     #[test]
     fn test_group_by_type() {
         let mut resolver = DependencyResolver::new();
-        
+
         let struct_a = create_test_node("StructA", DependencyNodeType::Struct);
         let struct_b = create_test_node("StructB", DependencyNodeType::Struct);
         let cmd_a = create_test_node("CommandA", DependencyNodeType::Command);
         let enum_a = create_test_node("EnumA", DependencyNodeType::Enum);
-        
+
         resolver.add_node(struct_a);
         resolver.add_node(struct_b);
         resolver.add_node(cmd_a);
         resolver.add_node(enum_a);
-        
+
         let groups = resolver.group_by_type();
-        
+
         assert_eq!(groups.get(&DependencyNodeType::Struct).unwrap().len(), 2);
         assert_eq!(groups.get(&DependencyNodeType::Command).unwrap().len(), 1);
         assert_eq!(groups.get(&DependencyNodeType::Enum).unwrap().len(), 1);

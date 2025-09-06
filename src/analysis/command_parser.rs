@@ -19,17 +19,18 @@ impl CommandParser {
         file_path: &Path,
         type_resolver: &mut TypeResolver,
     ) -> Result<Vec<CommandInfo>, Box<dyn std::error::Error>> {
-        let mut commands = Vec::new();
-
-        for item in &ast.items {
-            if let syn::Item::Fn(func) = item {
-                if self.is_tauri_command(func) {
-                    if let Some(command_info) = self.extract_command_info(func, file_path, type_resolver) {
-                        commands.push(command_info);
+        let commands = ast
+            .items
+            .iter()
+            .filter_map(|item| {
+                if let syn::Item::Fn(func) = item {
+                    if self.is_tauri_command(func) {
+                        return self.extract_command_info(func, file_path, type_resolver);
                     }
                 }
-            }
-        }
+                None
+            })
+            .collect();
 
         Ok(commands)
     }
@@ -45,7 +46,12 @@ impl CommandParser {
     }
 
     /// Extract command information from a function
-    fn extract_command_info(&self, func: &ItemFn, file_path: &Path, type_resolver: &mut TypeResolver) -> Option<CommandInfo> {
+    fn extract_command_info(
+        &self,
+        func: &ItemFn,
+        file_path: &Path,
+        type_resolver: &mut TypeResolver,
+    ) -> Option<CommandInfo> {
         let name = func.sig.ident.to_string();
         let parameters = self.extract_parameters(&func.sig.inputs, type_resolver);
         let return_type = self.extract_return_type(&func.sig.output, type_resolver);
@@ -70,50 +76,51 @@ impl CommandParser {
         inputs: &syn::punctuated::Punctuated<FnArg, syn::token::Comma>,
         type_resolver: &mut TypeResolver,
     ) -> Vec<ParameterInfo> {
-        let mut parameters = Vec::new();
+        inputs
+            .iter()
+            .filter_map(|input| {
+                if let FnArg::Typed(PatType { pat, ty, .. }) = input {
+                    if let syn::Pat::Ident(pat_ident) = pat.as_ref() {
+                        let name = pat_ident.ident.to_string();
+                        let rust_type = self.type_to_string(ty);
 
-        for input in inputs {
-            if let FnArg::Typed(PatType { pat, ty, .. }) = input {
-                if let syn::Pat::Ident(pat_ident) = pat.as_ref() {
-                    let name = pat_ident.ident.to_string();
-                    let rust_type = self.type_to_string(ty);
-                    
-                    // Skip Tauri-specific parameters
-                    if self.is_tauri_parameter(&name, &rust_type) {
-                        continue;
+                        // Skip Tauri-specific parameters
+                        if self.is_tauri_parameter(&name, &rust_type) {
+                            return None;
+                        }
+
+                        let typescript_type = type_resolver.map_rust_type_to_typescript(&rust_type);
+                        let is_optional = self.is_optional_type(ty);
+
+                        return Some(ParameterInfo {
+                            name,
+                            rust_type,
+                            typescript_type,
+                            is_optional,
+                        });
                     }
-                    
-                    let typescript_type = type_resolver.map_rust_type_to_typescript(&rust_type);
-                    let is_optional = self.is_optional_type(ty);
-
-                    parameters.push(ParameterInfo {
-                        name,
-                        rust_type,
-                        typescript_type,
-                        is_optional,
-                    });
                 }
-            }
-        }
-
-        parameters
+                None
+            })
+            .collect()
     }
-    
+
     /// Check if a parameter is a Tauri-specific parameter that should be skipped
     fn is_tauri_parameter(&self, name: &str, rust_type: &str) -> bool {
         // Common Tauri parameter names
         if matches!(name, "app" | "window" | "state" | "handle") {
             return true;
         }
-        
+
         // Common Tauri parameter types
-        if rust_type.contains("AppHandle") 
-            || rust_type.contains("Window") 
-            || rust_type.contains("State") 
-            || rust_type.contains("Manager") {
+        if rust_type.contains("AppHandle")
+            || rust_type.contains("Window")
+            || rust_type.contains("State")
+            || rust_type.contains("Manager")
+        {
             return true;
         }
-        
+
         false
     }
 

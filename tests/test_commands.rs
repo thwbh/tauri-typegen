@@ -196,7 +196,6 @@ async fn test_generate_models_without_validation() {
     assert!(!response.generated_files.contains(&"schemas.ts".to_string()));
 }
 
-
 #[tokio::test]
 async fn test_generate_models_invalid_project_path() {
     let request = GenerateModelsRequest {

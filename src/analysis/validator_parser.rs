@@ -1,4 +1,4 @@
-use crate::models::{ValidatorAttributes, LengthConstraint, RangeConstraint};
+use crate::models::{LengthConstraint, RangeConstraint, ValidatorAttributes};
 use quote::ToTokens;
 use syn::Attribute;
 
@@ -30,21 +30,21 @@ impl ValidatorParser {
                 if let Ok(tokens) = syn::parse2::<syn::MetaList>(attr.meta.to_token_stream()) {
                     // Convert tokens to string and do basic parsing for now
                     let tokens_str = tokens.tokens.to_string();
-                    
+
                     if tokens_str.contains("email") {
                         validator_attrs.email = true;
                     }
-                    
+
                     if tokens_str.contains("url") {
                         validator_attrs.url = true;
                     }
-                    
+
                     // Parse length constraints
                     if let Some(length_constraint) = self.parse_length_from_tokens(&tokens_str) {
                         validator_attrs.length = Some(length_constraint);
                     }
-                    
-                    // Parse range constraints  
+
+                    // Parse range constraints
                     if let Some(range_constraint) = self.parse_range_from_tokens(&tokens_str) {
                         validator_attrs.range = Some(range_constraint);
                     }
@@ -64,19 +64,19 @@ impl ValidatorParser {
         if !tokens.contains("length") {
             return None;
         }
-        
+
         let mut constraint = LengthConstraint {
             min: None,
             max: None,
             message: None,
         };
-        
+
         // Simple regex-like parsing for length(min = X, max = Y)
         if let Some(start) = tokens.find("length") {
             if let Some(paren_start) = tokens[start..].find('(') {
                 if let Some(paren_end) = tokens[start + paren_start..].find(')') {
                     let content = &tokens[start + paren_start + 1..start + paren_start + paren_end];
-                    
+
                     // Parse min = value
                     if let Some(min_pos) = content.find("min") {
                         if let Some(eq_pos) = content[min_pos..].find('=') {
@@ -94,7 +94,7 @@ impl ValidatorParser {
                             }
                         }
                     }
-                    
+
                     // Parse max = value
                     if let Some(max_pos) = content.find("max") {
                         if let Some(eq_pos) = content[max_pos..].find('=') {
@@ -115,7 +115,7 @@ impl ValidatorParser {
                 }
             }
         }
-        
+
         Some(constraint)
     }
 
@@ -124,19 +124,19 @@ impl ValidatorParser {
         if !tokens.contains("range") {
             return None;
         }
-        
+
         let mut constraint = RangeConstraint {
             min: None,
             max: None,
             message: None,
         };
-        
+
         // Simple regex-like parsing for range(min = X, max = Y)
         if let Some(start) = tokens.find("range") {
             if let Some(paren_start) = tokens[start..].find('(') {
                 if let Some(paren_end) = tokens[start + paren_start..].find(')') {
                     let content = &tokens[start + paren_start + 1..start + paren_start + paren_end];
-                    
+
                     // Parse min = value
                     if let Some(min_pos) = content.find("min") {
                         if let Some(eq_pos) = content[min_pos..].find('=') {
@@ -154,8 +154,8 @@ impl ValidatorParser {
                             }
                         }
                     }
-                    
-                    // Parse max = value  
+
+                    // Parse max = value
                     if let Some(max_pos) = content.find("max") {
                         if let Some(eq_pos) = content[max_pos..].find('=') {
                             let after_eq = &content[max_pos + eq_pos + 1..];
@@ -175,7 +175,7 @@ impl ValidatorParser {
                 }
             }
         }
-        
+
         Some(constraint)
     }
 }

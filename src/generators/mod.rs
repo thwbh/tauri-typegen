@@ -1,7 +1,7 @@
 pub mod base;
+pub mod generator;
 pub mod ts;
 pub mod zod;
-pub mod generator;
 
 pub use base::BaseBindingsGenerator;
 pub use ts::generator::TypeScriptBindingsGenerator;

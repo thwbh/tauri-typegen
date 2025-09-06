@@ -30,7 +30,7 @@ impl TypeResolver {
         type_mappings.insert("f64".to_string(), "number".to_string());
         type_mappings.insert("bool".to_string(), "boolean".to_string());
         type_mappings.insert("()".to_string(), "void".to_string());
-        
+
         // Collection type mappings
         type_mappings.insert("HashMap".to_string(), "Map".to_string());
         type_mappings.insert("BTreeMap".to_string(), "Map".to_string());
@@ -193,10 +193,7 @@ impl TypeResolver {
             if inner.trim().is_empty() {
                 return Some(vec![]);
             }
-            let types: Vec<String> = inner
-                .split(',')
-                .map(|s| s.trim().to_string())
-                .collect();
+            let types: Vec<String> = inner.split(',').map(|s| s.trim().to_string()).collect();
             Some(types)
         } else {
             None
@@ -205,14 +202,16 @@ impl TypeResolver {
 
     /// Extract inner type from reference &T
     fn extract_reference_type(&self, rust_type: &str) -> Option<String> {
-        rust_type.strip_prefix('&').map(|stripped| stripped.to_string())
+        rust_type
+            .strip_prefix('&')
+            .map(|stripped| stripped.to_string())
     }
 
     /// Parse two type parameters separated by comma (for HashMap, BTreeMap)
     fn parse_two_type_params(&self, inner: &str) -> Option<(String, String)> {
         let mut depth = 0;
         let mut comma_pos = None;
-        
+
         for (i, ch) in inner.char_indices() {
             match ch {
                 '<' => depth += 1,
@@ -224,7 +223,7 @@ impl TypeResolver {
                 _ => {}
             }
         }
-        
+
         if let Some(pos) = comma_pos {
             let key_type = inner[..pos].trim().to_string();
             let value_type = inner[pos + 1..].trim().to_string();

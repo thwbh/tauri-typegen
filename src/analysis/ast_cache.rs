@@ -34,22 +34,26 @@ impl AstCache {
     }
 
     /// Parse and cache all Rust files in the given project path
-    pub fn parse_and_cache_all_files(&mut self, project_path: &str) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn parse_and_cache_all_files(
+        &mut self,
+        project_path: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         println!("🔄 Parsing and caching all Rust files in: {}", project_path);
-        
+
         for entry in WalkDir::new(project_path) {
             let entry = entry?;
             let path = entry.path();
-            
+
             if path.is_file() && path.extension().is_some_and(|ext| ext == "rs") {
                 // Skip target directory and other build artifacts
-                if path.to_string_lossy().contains("/target/") 
-                    || path.to_string_lossy().contains("/.git/") {
+                if path.to_string_lossy().contains("/target/")
+                    || path.to_string_lossy().contains("/.git/")
+                {
                     continue;
                 }
-                
+
                 println!("📄 Parsing file: {}", path.display());
-                
+
                 let content = std::fs::read_to_string(path)?;
                 match syn::parse_file(&content) {
                     Ok(ast) => {
@@ -64,7 +68,7 @@ impl AstCache {
                 }
             }
         }
-        
+
         println!("📊 Cached {} Rust files", self.cache.len());
         Ok(())
     }
@@ -115,7 +119,10 @@ impl AstCache {
     }
 
     /// Parse a single file and add it to the cache
-    pub fn parse_and_cache_file(&mut self, file_path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn parse_and_cache_file(
+        &mut self,
+        file_path: &std::path::Path,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let content = std::fs::read_to_string(file_path)?;
         let ast = syn::parse_file(&content)?;
         let parsed_file = ParsedFile::new(ast, file_path.to_path_buf());

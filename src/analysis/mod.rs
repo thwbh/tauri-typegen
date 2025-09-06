@@ -52,12 +52,11 @@ impl CommandAnalyzer {
         self.ast_cache.parse_and_cache_all_files(project_path)?;
 
         // Extract commands from cached ASTs
+        let file_paths: Vec<PathBuf> = self.ast_cache.keys().cloned().collect();
         let mut commands = Vec::new();
         let mut type_names_to_discover = HashSet::new();
 
-        // Collect file paths from cache
-        let file_paths: Vec<PathBuf> = self.ast_cache.keys().cloned().collect();
-
+        // Process each file - using functional style where possible
         for file_path in file_paths {
             if let Some(parsed_file) = self.ast_cache.get_cloned(&file_path) {
                 println!("🔍 Analyzing file: {}", parsed_file.path.display());
@@ -69,13 +68,13 @@ impl CommandAnalyzer {
                     &mut self.type_resolver,
                 )?;
 
-                // Collect type names from command parameters and return types
-                for cmd in &file_commands {
-                    for param in &cmd.parameters {
+                // Collect type names from command parameters and return types using functional style
+                file_commands.iter().for_each(|cmd| {
+                    cmd.parameters.iter().for_each(|param| {
                         self.extract_type_names(&param.rust_type, &mut type_names_to_discover);
-                    }
+                    });
                     self.extract_type_names(&cmd.return_type, &mut type_names_to_discover);
-                }
+                });
 
                 commands.extend(file_commands);
 
@@ -175,9 +174,11 @@ impl CommandAnalyzer {
             {
                 if let Some(parsed_file) = self.ast_cache.get_cloned(&file_path) {
                     // Find and parse the specific type from the cached AST
-                    if let Some(struct_info) =
-                        self.extract_type_from_ast(&parsed_file.ast, &type_name, file_path.as_path())
-                    {
+                    if let Some(struct_info) = self.extract_type_from_ast(
+                        &parsed_file.ast,
+                        &type_name,
+                        file_path.as_path(),
+                    ) {
                         // Collect dependencies of this type
                         let mut type_dependencies = HashSet::new();
                         for field in &struct_info.fields {
@@ -188,9 +189,7 @@ impl CommandAnalyzer {
                         for dep_type in &type_dependencies {
                             if !resolved_types.contains(dep_type)
                                 && !self.discovered_structs.contains_key(dep_type)
-                                && self
-                                    .dependency_graph
-                                    .has_type_definition(dep_type)
+                                && self.dependency_graph.has_type_definition(dep_type)
                             {
                                 types_to_resolve.push(dep_type.clone());
                             }
@@ -225,14 +224,22 @@ impl CommandAnalyzer {
                     if item_struct.ident == type_name
                         && self.struct_parser.should_include_struct(item_struct)
                     {
-                        return self.struct_parser.parse_struct(item_struct, file_path, &mut self.type_resolver);
+                        return self.struct_parser.parse_struct(
+                            item_struct,
+                            file_path,
+                            &mut self.type_resolver,
+                        );
                     }
                 }
                 syn::Item::Enum(item_enum) => {
                     if item_enum.ident == type_name
                         && self.struct_parser.should_include_enum(item_enum)
                     {
-                        return self.struct_parser.parse_enum(item_enum, file_path, &mut self.type_resolver);
+                        return self.struct_parser.parse_enum(
+                            item_enum,
+                            file_path,
+                            &mut self.type_resolver,
+                        );
                     }
                 }
                 _ => {}
@@ -346,7 +353,8 @@ impl CommandAnalyzer {
             && !self.type_resolver.get_type_mappings().contains_key(rust_type)
             && !rust_type.starts_with(char::is_lowercase) // Skip built-in types
             && rust_type.chars().next().is_some_and(char::is_alphabetic)
-            && !rust_type.contains('<') // Skip generic type names with parameters
+            && !rust_type.contains('<')
+        // Skip generic type names with parameters
         {
             type_names.insert(rust_type.to_string());
         }

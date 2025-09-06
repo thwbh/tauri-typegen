@@ -1,16 +1,16 @@
-pub mod project_scanner;
 pub mod dependency_resolver;
 pub mod output_manager;
+pub mod project_scanner;
 
-use crate::interface::config::{ConfigError, GenerateConfig};
-use crate::interface::output::{Logger, ProgressReporter};
 use crate::analysis::CommandAnalyzer;
 use crate::generators::generator::BindingsGenerator;
+use crate::interface::config::{ConfigError, GenerateConfig};
+use crate::interface::output::{Logger, ProgressReporter};
 use std::path::Path;
 
-pub use project_scanner::*;
 pub use dependency_resolver::*;
 pub use output_manager::*;
+pub use project_scanner::*;
 
 /// Build-time code generation orchestrator
 pub struct BuildSystem {
@@ -38,7 +38,10 @@ impl BuildSystem {
         let project_scanner = ProjectScanner::new();
         let project_info = match project_scanner.detect_project()? {
             Some(info) => {
-                reporter.complete_step(Some(&format!("Found project at {}", info.root_path.display())));
+                reporter.complete_step(Some(&format!(
+                    "Found project at {}",
+                    info.root_path.display()
+                )));
                 info
             }
             None => {
@@ -75,13 +78,17 @@ impl BuildSystem {
         Ok(())
     }
 
-    fn load_configuration(&self, project_info: &ProjectInfo) -> Result<GenerateConfig, ConfigError> {
+    fn load_configuration(
+        &self,
+        project_info: &ProjectInfo,
+    ) -> Result<GenerateConfig, ConfigError> {
         // Try to load from tauri.conf.json first
         if let Some(tauri_config_path) = &project_info.tauri_config_path {
             if tauri_config_path.exists() {
                 match GenerateConfig::from_tauri_config(tauri_config_path) {
                     Ok(config) => {
-                        self.logger.debug("Loaded configuration from tauri.conf.json");
+                        self.logger
+                            .debug("Loaded configuration from tauri.conf.json");
                         return Ok(config);
                     }
                     Err(e) => {
@@ -116,10 +123,13 @@ impl BuildSystem {
         Ok(GenerateConfig::default())
     }
 
-    fn setup_build_dependencies(&self, config: &GenerateConfig) -> Result<(), Box<dyn std::error::Error>> {
+    fn setup_build_dependencies(
+        &self,
+        config: &GenerateConfig,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         // Set up cargo rerun directives
         println!("cargo:rerun-if-changed={}", config.project_path);
-        
+
         // Watch for changes in configuration files
         if Path::new("tauri.conf.json").exists() {
             println!("cargo:rerun-if-changed=tauri.conf.json");
@@ -136,12 +146,16 @@ impl BuildSystem {
         Ok(())
     }
 
-    fn generate_bindings(&self, config: &GenerateConfig) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    fn generate_bindings(
+        &self,
+        config: &GenerateConfig,
+    ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
         let mut analyzer = CommandAnalyzer::new();
         let commands = analyzer.analyze_project(&config.project_path)?;
 
         if commands.is_empty() {
-            self.logger.info("No Tauri commands found. Skipping generation.");
+            self.logger
+                .info("No Tauri commands found. Skipping generation.");
             return Ok(vec![]);
         }
 
@@ -175,17 +189,20 @@ impl BuildSystem {
         use std::fs;
 
         self.logger.debug("Generating dependency visualization");
-        
+
         let text_viz = analyzer.visualize_dependencies(commands);
         let viz_file_path = Path::new(output_path).join("dependency-graph.txt");
         fs::write(&viz_file_path, text_viz)?;
-        
+
         let dot_viz = analyzer.generate_dot_graph(commands);
         let dot_file_path = Path::new(output_path).join("dependency-graph.dot");
         fs::write(&dot_file_path, dot_viz)?;
-        
-        self.logger.verbose(&format!("Generated dependency graphs: {} and {}", 
-            viz_file_path.display(), dot_file_path.display()));
+
+        self.logger.verbose(&format!(
+            "Generated dependency graphs: {} and {}",
+            viz_file_path.display(),
+            dot_file_path.display()
+        ));
 
         Ok(())
     }
@@ -199,7 +216,9 @@ mod tests {
     #[test]
     fn test_build_system_creation() {
         let build_system = BuildSystem::new(true, false);
-        assert!(build_system.logger.should_log(crate::interface::output::LogLevel::Verbose));
+        assert!(build_system
+            .logger
+            .should_log(crate::interface::output::LogLevel::Verbose));
     }
 
     #[test]
@@ -213,7 +232,7 @@ mod tests {
 
         let build_system = BuildSystem::new(false, false);
         let config = build_system.load_configuration(&project_info).unwrap();
-        
+
         assert_eq!(config.validation_library, "zod");
         assert_eq!(config.project_path, "./src-tauri");
     }

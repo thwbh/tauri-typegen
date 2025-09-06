@@ -1,7 +1,7 @@
 use std::fs;
-use tempfile::TempDir;
 use tauri_plugin_typegen::analysis::CommandAnalyzer;
 use tauri_plugin_typegen::generators::generator::BindingsGenerator;
+use tempfile::TempDir;
 
 #[test]
 fn test_map_types_generation() {
@@ -43,32 +43,48 @@ pub async fn get_config() -> Result<BTreeMap<String, i32>, String> {
 
     // Test vanilla TypeScript generation
     let mut analyzer = CommandAnalyzer::new();
-    let commands = analyzer.analyze_project(temp_dir.path().to_str().unwrap()).unwrap();
+    let commands = analyzer
+        .analyze_project(temp_dir.path().to_str().unwrap())
+        .unwrap();
     let discovered_structs = analyzer.get_discovered_structs();
 
     let mut generator = BindingsGenerator::new(None); // vanilla TypeScript
-    generator.generate_models(&commands, discovered_structs, output_dir.to_str().unwrap(), &CommandAnalyzer::new()).unwrap();
+    generator
+        .generate_models(
+            &commands,
+            discovered_structs,
+            output_dir.to_str().unwrap(),
+            &CommandAnalyzer::new(),
+        )
+        .unwrap();
 
     let types_content = fs::read_to_string(output_dir.join("types.ts")).unwrap();
-    
+
     println!("Vanilla TypeScript types content:\n{}", types_content);
-    
+
     // Should use Map<K, V> instead of Record<K, V>
     assert!(types_content.contains("Map<string, string>"));
     assert!(types_content.contains("Map<string, number>"));
-    
+
     // Should NOT use Record anymore
     assert!(!types_content.contains("Record<string, string>"));
-    
+
     // Test Zod generation
     let output_dir_zod = temp_dir.path().join("generated_zod");
     let mut generator_zod = BindingsGenerator::new(Some("zod".to_string()));
-    generator_zod.generate_models(&commands, discovered_structs, output_dir_zod.to_str().unwrap(), &CommandAnalyzer::new()).unwrap();
+    generator_zod
+        .generate_models(
+            &commands,
+            discovered_structs,
+            output_dir_zod.to_str().unwrap(),
+            &CommandAnalyzer::new(),
+        )
+        .unwrap();
 
     let types_content_zod = fs::read_to_string(output_dir_zod.join("types.ts")).unwrap();
-    
+
     println!("Zod types content:\n{}", types_content_zod);
-    
+
     // For Zod, z.record() should be used
     assert!(types_content_zod.contains("z.record(z.string())"));
 }

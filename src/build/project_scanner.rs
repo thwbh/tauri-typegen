@@ -38,12 +38,12 @@ impl ProjectScanner {
     pub fn detect_project(&self) -> Result<Option<ProjectInfo>, ScanError> {
         // Start from current directory and walk up the tree
         let mut current = self.current_dir.clone();
-        
+
         loop {
             if let Some(project_info) = self.check_directory(&current)? {
                 return Ok(Some(project_info));
             }
-            
+
             // Move up one directory
             if let Some(parent) = current.parent() {
                 current = parent.to_path_buf();
@@ -52,7 +52,7 @@ impl ProjectScanner {
                 break;
             }
         }
-        
+
         Ok(None)
     }
 
@@ -62,7 +62,7 @@ impl ProjectScanner {
         let tauri_config_json = dir.join("tauri.conf.json");
         let tauri_config_js = dir.join("tauri.conf.js");
         let src_tauri = dir.join("src-tauri");
-        
+
         let tauri_config_path = if tauri_config_json.exists() {
             Some(tauri_config_json)
         } else if tauri_config_js.exists() {
@@ -101,7 +101,7 @@ impl ProjectScanner {
     /// Try to read the source directory from the Tauri configuration
     fn read_source_dir_from_config(&self, config_path: &Path) -> Result<String, ScanError> {
         let content = fs::read_to_string(config_path)?;
-        
+
         // Handle JSON config
         if config_path.extension().and_then(|s| s.to_str()) == Some("json") {
             if let Ok(config) = serde_json::from_str::<serde_json::Value>(&content) {
@@ -112,13 +112,16 @@ impl ProjectScanner {
                 }
             }
         }
-        
+
         // Default fallback
         Ok("src-tauri".to_string())
     }
 
     /// Discover all Rust source files in the project
-    pub fn discover_rust_files(&self, project_info: &ProjectInfo) -> Result<Vec<PathBuf>, ScanError> {
+    pub fn discover_rust_files(
+        &self,
+        project_info: &ProjectInfo,
+    ) -> Result<Vec<PathBuf>, ScanError> {
         let mut rust_files = Vec::new();
         self.walk_directory(&project_info.src_tauri_path, &mut rust_files)?;
         Ok(rust_files)
@@ -131,17 +134,15 @@ impl ProjectScanner {
         }
 
         let entries = fs::read_dir(dir)?;
-        
+
         for entry in entries {
             let entry = entry?;
             let path = entry.path();
-            
+
             if path.is_dir() {
                 // Skip common directories that shouldn't contain source
-                let dir_name = path.file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("");
-                
+                let dir_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+
                 if !["target", "node_modules", ".git", "dist"].contains(&dir_name) {
                     self.walk_directory(&path, rust_files)?;
                 }
@@ -149,7 +150,7 @@ impl ProjectScanner {
                 rust_files.push(path);
             }
         }
-        
+
         Ok(())
     }
 
@@ -180,18 +181,18 @@ impl Default for ProjectScanner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use std::fs;
+    use tempfile::TempDir;
 
     #[test]
     fn test_detect_tauri_project_with_config() {
         let temp_dir = TempDir::new().unwrap();
         let config_path = temp_dir.path().join("tauri.conf.json");
         fs::write(&config_path, r#"{"build": {"devPath": "./src"}}"#).unwrap();
-        
+
         let scanner = ProjectScanner::with_current_dir(temp_dir.path());
         let project_info = scanner.detect_project().unwrap().unwrap();
-        
+
         assert_eq!(project_info.root_path, temp_dir.path());
         assert!(project_info.tauri_config_path.is_some());
     }
@@ -201,10 +202,10 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let src_tauri = temp_dir.path().join("src-tauri");
         fs::create_dir(&src_tauri).unwrap();
-        
+
         let scanner = ProjectScanner::with_current_dir(temp_dir.path());
         let project_info = scanner.detect_project().unwrap().unwrap();
-        
+
         assert_eq!(project_info.root_path, temp_dir.path());
         assert_eq!(project_info.src_tauri_path, src_tauri);
     }
@@ -212,10 +213,10 @@ mod tests {
     #[test]
     fn test_no_tauri_project() {
         let temp_dir = TempDir::new().unwrap();
-        
+
         let scanner = ProjectScanner::with_current_dir(temp_dir.path());
         let project_info = scanner.detect_project().unwrap();
-        
+
         assert!(project_info.is_none());
     }
 
@@ -224,21 +225,21 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let src_tauri = temp_dir.path().join("src-tauri");
         fs::create_dir(&src_tauri).unwrap();
-        
+
         let main_rs = src_tauri.join("main.rs");
         let lib_rs = src_tauri.join("lib.rs");
         fs::write(&main_rs, "// main").unwrap();
         fs::write(&lib_rs, "// lib").unwrap();
-        
+
         let project_info = ProjectInfo {
             root_path: temp_dir.path().to_path_buf(),
             src_tauri_path: src_tauri,
             tauri_config_path: None,
         };
-        
+
         let scanner = ProjectScanner::new();
         let rust_files = scanner.discover_rust_files(&project_info).unwrap();
-        
+
         assert_eq!(rust_files.len(), 2);
         assert!(rust_files.contains(&main_rs));
         assert!(rust_files.contains(&lib_rs));
@@ -249,13 +250,13 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let package_json = temp_dir.path().join("package.json");
         fs::write(&package_json, r#"{"name": "test"}"#).unwrap();
-        
+
         let project_info = ProjectInfo {
             root_path: temp_dir.path().to_path_buf(),
             src_tauri_path: temp_dir.path().join("src-tauri"),
             tauri_config_path: None,
         };
-        
+
         let scanner = ProjectScanner::new();
         assert!(scanner.has_frontend(&project_info));
     }
@@ -263,21 +264,27 @@ mod tests {
     #[test]
     fn test_recommended_output_path() {
         let temp_dir = TempDir::new().unwrap();
-        
+
         // Test without frontend
         let project_info = ProjectInfo {
             root_path: temp_dir.path().to_path_buf(),
             src_tauri_path: temp_dir.path().join("src-tauri"),
             tauri_config_path: None,
         };
-        
+
         let scanner = ProjectScanner::new();
-        assert_eq!(scanner.get_recommended_output_path(&project_info), "./generated");
-        
+        assert_eq!(
+            scanner.get_recommended_output_path(&project_info),
+            "./generated"
+        );
+
         // Test with frontend
         let package_json = temp_dir.path().join("package.json");
         fs::write(&package_json, r#"{"name": "test"}"#).unwrap();
-        
-        assert_eq!(scanner.get_recommended_output_path(&project_info), "./src/generated");
+
+        assert_eq!(
+            scanner.get_recommended_output_path(&project_info),
+            "./src/generated"
+        );
     }
 }

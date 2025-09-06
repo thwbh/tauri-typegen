@@ -94,7 +94,7 @@ impl ProgressReporter {
     pub fn start_step(&mut self, step_name: &str) {
         self.current_step += 1;
         self.step_name = step_name.to_string();
-        
+
         if self.logger.should_log(LogLevel::Info) {
             let progress = if self.total_steps > 0 {
                 format!(" ({}/{})", self.current_step, self.total_steps)
@@ -107,14 +107,16 @@ impl ProgressReporter {
 
     pub fn complete_step(&self, message: Option<&str>) {
         if let Some(msg) = message {
-            self.logger.info(&format!("✅ {} - {}", self.step_name, msg));
+            self.logger
+                .info(&format!("✅ {} - {}", self.step_name, msg));
         } else {
             self.logger.info(&format!("✅ {}", self.step_name));
         }
     }
 
     pub fn fail_step(&self, error: &str) {
-        self.logger.error(&format!("Failed {}: {}", self.step_name, error));
+        self.logger
+            .error(&format!("Failed {}: {}", self.step_name, error));
     }
 
     pub fn update_progress(&self, message: &str) {
@@ -138,7 +140,7 @@ pub fn print_usage_info(output_path: &str, generated_files: &[String]) {
             break;
         }
     }
-    
+
     println!("\n📁 Generated files:");
     for file in generated_files {
         println!("  📄 {}/{}", output_path, file);
@@ -189,14 +191,14 @@ mod tests {
     fn test_progress_reporter() {
         let logger = Logger::new(false, false);
         let mut reporter = ProgressReporter::new(logger, 3);
-        
+
         // Test step progression
         assert_eq!(reporter.current_step, 0);
-        
+
         reporter.start_step("First Step");
         assert_eq!(reporter.current_step, 1);
         assert_eq!(reporter.step_name, "First Step");
-        
+
         reporter.start_step("Second Step");
         assert_eq!(reporter.current_step, 2);
         assert_eq!(reporter.step_name, "Second Step");

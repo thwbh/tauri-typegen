@@ -19,8 +19,8 @@ pub use models::*;
 
 // Convenience re-exports for common use cases
 pub use interface::config::GenerateConfig;
-pub use interface::output::{Logger, ProgressReporter};
 pub use interface::generate_from_config;
+pub use interface::output::{Logger, ProgressReporter};
 
 // Build system integration
 pub use build::BuildSystem;
