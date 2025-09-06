@@ -2123,19 +2123,19 @@
         {
           "description": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-ping`",
           "type": "string",
-          "const": "model-bindings:default",
+          "const": "typegen:default",
           "markdownDescription": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-ping`"
         },
         {
           "description": "Enables the ping command without any pre-configured scope.",
           "type": "string",
-          "const": "model-bindings:allow-ping",
+          "const": "typegen:allow-ping",
           "markdownDescription": "Enables the ping command without any pre-configured scope."
         },
         {
           "description": "Denies the ping command without any pre-configured scope.",
           "type": "string",
-          "const": "model-bindings:deny-ping",
+          "const": "typegen:deny-ping",
           "markdownDescription": "Denies the ping command without any pre-configured scope."
         }
       ]

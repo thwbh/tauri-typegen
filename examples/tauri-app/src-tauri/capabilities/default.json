@@ -7,6 +7,6 @@
   ],
   "permissions": [
     "core:default",
-    "model-bindings:default"
+    "typegen:default"
   ]
 }

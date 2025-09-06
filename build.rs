@@ -1,4 +1,4 @@
-const COMMANDS: &[&str] = &["ping"];
+const COMMANDS: &[&str] = &["ping", "analyze_commands", "generate_models"];
 
 fn main() {
     // Build the Tauri plugin
