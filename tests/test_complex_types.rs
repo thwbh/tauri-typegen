@@ -10,17 +10,17 @@ use tempfile::TempDir;
 fn test_map_type_conversion() {
     let mut analyzer = CommandAnalyzer::new();
     
-    // Test HashMap<String, String> -> Record<string, string>
+    // Test HashMap<String, String> -> Map<string, string>
     let result = analyzer.map_rust_type_to_typescript("HashMap<String, String>");
-    assert_eq!(result, "Record<string, string>");
+    assert_eq!(result, "Map<string, string>");
     
-    // Test BTreeMap<i32, User> -> Record<number, User>
+    // Test BTreeMap<i32, User> -> Map<number, User>
     let result = analyzer.map_rust_type_to_typescript("BTreeMap<i32, User>");
-    assert_eq!(result, "Record<number, User>");
+    assert_eq!(result, "Map<number, User>");
     
-    // Test nested HashMap<String, Vec<Option<i32>>> -> Record<string, (number | null)[]>
+    // Test nested HashMap<String, Vec<Option<i32>>> -> Map<string, (number | null)[]>
     let result = analyzer.map_rust_type_to_typescript("HashMap<String, Vec<Option<i32>>>");
-    assert_eq!(result, "Record<string, number | null[]>");
+    assert_eq!(result, "Map<string, number | null[]>");
 }
 
 #[test]
@@ -61,9 +61,9 @@ fn test_deeply_nested_types() {
     let result = analyzer.map_rust_type_to_typescript("Option<Vec<Result<MyStruct, String>>>");
     assert_eq!(result, "MyStruct[] | null");
     
-    // Test HashMap<String, Vec<Option<User>>> -> Record<string, (User | null)[]>
+    // Test HashMap<String, Vec<Option<User>>> -> Map<string, (User | null)[]>
     let result = analyzer.map_rust_type_to_typescript("HashMap<String, Vec<Option<User>>>");
-    assert_eq!(result, "Record<string, User | null[]>");
+    assert_eq!(result, "Map<string, User | null[]>");
 }
 
 #[test]
@@ -103,7 +103,7 @@ fn test_complex_parameter_types() {
     assert_eq!(create_user.parameters[0].typescript_type, "string");
     
     assert_eq!(create_user.parameters[1].name, "metadata");
-    assert_eq!(create_user.parameters[1].typescript_type, "Record<string, string>");
+    assert_eq!(create_user.parameters[1].typescript_type, "Map<string, string>");
     
     assert_eq!(create_user.parameters[2].name, "tags");
     assert_eq!(create_user.parameters[2].typescript_type, "string[]");
@@ -116,7 +116,7 @@ fn test_complex_parameter_types() {
     
     assert_eq!(get_products.parameters.len(), 2);
     assert_eq!(get_products.parameters[1].name, "filters");
-    assert_eq!(get_products.parameters[1].typescript_type, "Record<string, string[]> | null");
+    assert_eq!(get_products.parameters[1].typescript_type, "Map<string, string[]> | null");
     assert!(get_products.parameters[1].is_optional);
 }
 

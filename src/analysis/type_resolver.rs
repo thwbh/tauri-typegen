@@ -32,8 +32,8 @@ impl TypeResolver {
         type_mappings.insert("()".to_string(), "void".to_string());
         
         // Collection type mappings
-        type_mappings.insert("HashMap".to_string(), "Record".to_string());
-        type_mappings.insert("BTreeMap".to_string(), "Record".to_string());
+        type_mappings.insert("HashMap".to_string(), "Map".to_string());
+        type_mappings.insert("BTreeMap".to_string(), "Map".to_string());
         type_mappings.insert("HashSet".to_string(), "Set".to_string());
         type_mappings.insert("BTreeSet".to_string(), "Set".to_string());
 
@@ -59,18 +59,18 @@ impl TypeResolver {
             return format!("{}[]", mapped_inner);
         }
 
-        // Handle HashMap<K, V> -> Record<K, V>
+        // Handle HashMap<K, V> -> Map<K, V>
         if let Some((key_type, value_type)) = self.extract_hashmap_types(rust_type) {
             let mapped_key = self.map_rust_type_to_typescript(&key_type);
             let mapped_value = self.map_rust_type_to_typescript(&value_type);
-            return format!("Record<{}, {}>", mapped_key, mapped_value);
+            return format!("Map<{}, {}>", mapped_key, mapped_value);
         }
 
-        // Handle BTreeMap<K, V> -> Record<K, V>
+        // Handle BTreeMap<K, V> -> Map<K, V>
         if let Some((key_type, value_type)) = self.extract_btreemap_types(rust_type) {
             let mapped_key = self.map_rust_type_to_typescript(&key_type);
             let mapped_value = self.map_rust_type_to_typescript(&value_type);
-            return format!("Record<{}, {}>", mapped_key, mapped_value);
+            return format!("Map<{}, {}>", mapped_key, mapped_value);
         }
 
         // Handle HashSet<T> -> T[] (arrays for JSON compatibility)

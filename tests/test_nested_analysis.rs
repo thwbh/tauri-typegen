@@ -154,19 +154,19 @@ fn test_map_types_with_custom_generics() {
     
     // Test HashMap<CustomKey, CustomValue>
     let result = analyzer.map_rust_type_to_typescript("HashMap<UserId, UserProfile>");
-    assert_eq!(result, "Record<UserId, UserProfile>");
+    assert_eq!(result, "Map<UserId, UserProfile>");
     
     // Test nested HashMap
     let result = analyzer.map_rust_type_to_typescript("HashMap<String, HashMap<String, User>>");
-    assert_eq!(result, "Record<string, Record<string, User>>");
+    assert_eq!(result, "Map<string, Map<string, User>>");
     
     // Test HashMap in Option
     let result = analyzer.map_rust_type_to_typescript("Option<HashMap<String, User>>");
-    assert_eq!(result, "Record<string, User> | null");
+    assert_eq!(result, "Map<string, User> | null");
     
     // Test HashMap in Vec
     let result = analyzer.map_rust_type_to_typescript("Vec<HashMap<String, User>>");
-    assert_eq!(result, "Record<string, User>[]");
+    assert_eq!(result, "Map<string, User>[]");
 }
 
 #[test]
