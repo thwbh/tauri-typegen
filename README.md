@@ -1,21 +1,41 @@
-# Tauri Plugin TypeGen
+# Tauri TypeGen
 
-A Tauri CLI extension that automatically generates TypeScript models and bindings from your Tauri commands, eliminating the manual process of creating frontend types and validation.
+A command-line tool that automatically generates TypeScript models and bindings from your Tauri commands, eliminating the manual process of creating frontend types and validation.
 
 ## Features
 
 - 🔍 **Automatic Discovery**: Scans your Rust source files to find all `#[tauri::command]` functions
 - 📝 **TypeScript Generation**: Creates TypeScript interfaces for all command parameters and return types
-- ✅ **Validation Support**: Generates validation schemas using Zod, Yup, or other libraries
+- ✅ **Validation Support**: Generates validation schemas using Zod or plain TypeScript types
 - 🚀 **Command Bindings**: Creates strongly-typed frontend functions that call your Tauri commands
 - 🎯 **Type Safety**: Ensures frontend and backend types stay in sync
 - 🛠️ **CLI Integration**: Generate types with a simple command: `cargo tauri-typegen generate`
+- 📊 **Dependency Visualization**: Optional dependency graph generation for complex projects
+- ⚙️ **Configuration Support**: Supports both standalone config files and Tauri project integration
+
+## Table of Contents
+
+- [Quick Start](#quick-start)
+- [Installation](#installation)
+- [Usage Examples](#usage-examples)
+    - [E-commerce App Example](#example-e-commerce-app)
+    - [Generate TypeScript Bindings](#generate-typescript-bindings)
+    - [Generated Files Structure](#generated-files-structure)
+    - [Using Generated Bindings](#using-generated-bindings-in-frontend)
+        - [React Example](#react-example)
+        - [Vue Example](#vue-example)
+        - [Svelte Example](#svelte-example)
+    - [Benefits](#benefits-of-using-generated-bindings)
+- [Generated Files](#generated-files)
+- [API Reference](#api-reference)
+- [Configuration Options](#configuration-options)
+- [Development](#development)
 
 ## Quick Start
 
 1. **Install the CLI tool**:
    ```bash
-   cargo install tauri-plugin-typegen
+   cargo install tauri-typegen
    ```
 
 2. **Generate TypeScript bindings** from your Tauri project:
@@ -32,35 +52,28 @@ A Tauri CLI extension that automatically generates TypeScript models and binding
    const users = await getUsers({ filter: null });
    ```
 
-### CLI Options
+### CLI Commands
 
 ```bash
 cargo tauri-typegen generate [OPTIONS]
 
 Options:
-  -p, --project-path <PATH>    Path to Tauri source directory [default: ./src-tauri]
-  -o, --output-path <PATH>     Output path for TypeScript files [default: ./src/generated]  
-  -v, --validation <LIBRARY>   Validation library: zod, yup, or none [default: zod]
-      --verbose               Verbose output
+  -p, --project-path <PATH>      Path to Tauri source directory [default: ./src-tauri]
+  -o, --output-path <PATH>       Output path for TypeScript files [default: ./src/generated]
+  -v, --validation <LIBRARY>     Validation library: zod or none [default: zod]
+      --verbose                  Verbose output
+      --visualize-deps           Generate dependency graph visualization
+  -c, --config <CONFIG_FILE>     Configuration file path
 ```
 
-## Table of Contents
+```bash
+cargo tauri-typegen init [OPTIONS]
 
-- [Quick Start](#quick-start)
-- [Installation](#installation)
-- [Usage Examples](#usage-examples)
-  - [E-commerce App Example](#example-e-commerce-app)
-  - [Generate TypeScript Bindings](#generate-typescript-bindings)
-  - [Generated Files Structure](#generated-files-structure)
-  - [Using Generated Bindings](#using-generated-bindings-in-frontend)
-    - [React Example](#react-example)
-    - [Vue Example](#vue-example)
-    - [Svelte Example](#svelte-example)
-  - [Benefits](#benefits-of-using-generated-bindings)
-- [Generated Files](#generated-files)
-- [API Reference](#api-reference)
-- [Configuration Options](#configuration-options)
-- [Development](#development)
+Options:
+  -o, --output <PATH>            Output path for config file [default: tauri.conf.json]
+  -v, --validation <LIBRARY>     Validation library: zod or none [default: zod]
+      --force                    Force overwrite existing configuration
+```
 
 ## Installation
 
@@ -72,30 +85,32 @@ Install the CLI tool globally:
 cargo install tauri-plugin-typegen
 ```
 
-### Build Integration (Optional)
+### Configuration Setup
 
-For automatic generation during builds, add to your project's `build.rs`:
+#### Initialize Configuration
 
-```rust
-// build.rs
-use tauri_plugin_typegen::build::generate_at_build_time;
+Create a configuration file for your project:
 
-fn main() {
-    // Generate TypeScript bindings during build
-    if let Err(e) = generate_at_build_time() {
-        println!("cargo:warning=Failed to generate TypeScript bindings: {}", e);
-    }
-    
-    tauri_build::build()
-}
+```bash
+# Create a standalone config file
+cargo tauri-typegen init --output my-config.json --validation zod
+
+# Or add configuration to your tauri.conf.json
+cargo tauri-typegen init --output tauri.conf.json --validation zod
 ```
 
-Add the build dependency to your `Cargo.toml`:
+#### Configuration File
 
-```toml
-[build-dependencies]
-tauri-plugin-typegen = { git = "https://github.com/yourusername/tauri-plugin-typegen" }
-tauri-build = { version = "2.0", features = [] }
+Configuration can be stored in a standalone JSON file or within your `tauri.conf.json`:
+
+```json
+{
+  "project_path": "./src-tauri",
+  "output_path": "./src/generated",
+  "validation_library": "zod",
+  "verbose": true,
+  "visualize_deps": false
+}
 ```
 
 ### Package.json Integration
@@ -200,8 +215,14 @@ cargo tauri-typegen generate \
   --validation zod \
   --verbose
 
+# Generate with dependency visualization
+cargo tauri-typegen generate --visualize-deps
+
+# Use configuration file
+cargo tauri-typegen generate --config my-config.json
+
 # Quick examples for different setups
-cargo tauri-typegen generate -p ./backend -o ./frontend/types -v yup
+cargo tauri-typegen generate -p ./backend -o ./frontend/types -v zod
 cargo tauri-typegen generate --validation none  # No validation schemas
 ```
 
@@ -241,10 +262,12 @@ After running the generator:
 
 ```
 src/lib/generated/
-├── types.ts      # TypeScript interfaces
-├── schemas.ts    # Zod validation schemas
-├── commands.ts   # Typed command functions
-└── index.ts      # Barrel exports
+├── types.ts                 # TypeScript interfaces
+├── schemas.ts               # Zod validation schemas (if using zod)
+├── commands.ts              # Typed command functions
+├── index.ts                 # Barrel exports
+├── dependency-graph.txt     # Text dependency visualization (if --visualize-deps)
+└── dependency-graph.dot     # DOT format graph (if --visualize-deps)
 ```
 
 **Generated `types.ts`:**
@@ -558,14 +581,16 @@ The plugin generates several files in your output directory:
 cargo tauri-typegen generate [OPTIONS]
 
 OPTIONS:
-    -p, --project-path <PATH>     Path to the Tauri project source directory
-                                 [default: ./src-tauri]
-    -o, --output-path <PATH>      Output path for generated TypeScript files  
-                                 [default: ./src/generated]
-    -v, --validation <LIBRARY>    Validation library to use
-                                 [default: zod] [possible values: zod, yup, none]
-        --verbose                Enable verbose output
-    -h, --help                   Print help information
+    -p, --project-path <PATH>      Path to the Tauri project source directory
+                                  [default: ./src-tauri]
+    -o, --output-path <PATH>       Output path for generated TypeScript files  
+                                  [default: ./src/generated]
+    -v, --validation <LIBRARY>     Validation library to use
+                                  [default: zod] [possible values: zod, none]
+        --verbose                 Enable verbose output
+        --visualize-deps          Generate dependency graph visualization
+    -c, --config <CONFIG_FILE>     Configuration file path
+    -h, --help                    Print help information
 ```
 
 ### Library Usage (Advanced)
@@ -573,12 +598,15 @@ OPTIONS:
 For programmatic usage in build scripts:
 
 ```rust
-use tauri_plugin_typegen::cli::{GenerateConfig, generate_from_config};
+use tauri_plugin_typegen::interface::{GenerateConfig, generate_from_config};
 
 let config = GenerateConfig {
     project_path: "./src-tauri".to_string(),
     output_path: "./src/generated".to_string(),
     validation_library: "zod".to_string(),
+    verbose: Some(true),
+    visualize_deps: Some(false),
+    ..Default::default()
 };
 
 let files = generate_from_config(&config)?;
@@ -589,8 +617,7 @@ let files = generate_from_config(&config)?;
 ### Validation Libraries
 
 - **`zod`** - Generates Zod schemas with validation
-- **`yup`** - Generates Yup schemas with validation  
-- **`none`** - No validation schemas generated
+- **`none`** - No validation schemas generated, only TypeScript types
 
 ### Type Mapping
 

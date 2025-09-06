@@ -7,6 +7,7 @@ edition = "2021"
 rust-version = "1.77.2"
 exclude = ["/examples", "/dist-js", "/guest-js", "/node_modules"]
 links = "tauri-plugin-typegen"
+license = "MIT"
 
 [dependencies]
 tauri = { version = "2.2.0" }
@@ -19,6 +20,7 @@ proc-macro2 = {  version = "1.0", features = ["span-locations"] }
 walkdir = "2.0"
 regex = "1.0"
 clap = { version = "4.0", features = ["derive"] }
+chrono = { version = "0.4", features = ["serde"] }
 
 [[bin]]
 name = "cargo-tauri-typegen"
@@ -26,6 +28,10 @@ path = "src/bin/cargo-tauri-typegen.rs"
 
 [build-dependencies]
 tauri-plugin = { version = "2.0.3", features = ["build"] }
+
+[features]
+default = []
+build-time-generation = []
 
 [dev-dependencies]
 tokio = { version = "1.0", features = ["macros", "rt"] }
