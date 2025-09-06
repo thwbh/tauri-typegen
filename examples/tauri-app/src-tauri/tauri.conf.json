@@ -3,10 +3,19 @@
   "version": "0.1.0",
   "identifier": "com.tauri.dev",
   "build": {
-    "beforeDevCommand": "pnpm dev",
-    "beforeBuildCommand": "pnpm build",
+    "beforeDevCommand": "cargo tauri-typegen generate && pnpm dev",
+    "beforeBuildCommand": "cargo tauri-typegen generate && pnpm build",
     "devUrl": "http://localhost:1420",
     "frontendDist": "../dist"
+  },
+  "plugins": {
+    "tauri-typegen": {
+      "project_path": ".",
+      "output_path": "../src/generated",
+      "validation_library": "zod",
+      "verbose": true,
+      "visualize_deps": false
+    }
   },
   "app": {
     "withGlobalTauri": false,

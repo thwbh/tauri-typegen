@@ -228,32 +228,76 @@ cargo tauri-typegen generate --validation none  # No validation schemas
 
 #### Build Integration
 
-Add automatic generation to your build process:
+The recommended approach is to use Tauri's built-in build hooks to ensure types are generated before the frontend build starts. This solves the chicken-and-egg problem where the frontend needs the generated types but builds before the Rust backend.
 
-**`package.json`:**
+**Method 1: Tauri Build Hooks (Recommended)**
+
+First, add configuration to your `tauri.conf.json`:
+
+```json
+{
+  "build": {
+    "beforeDevCommand": "cargo tauri-typegen generate && npm run dev",
+    "beforeBuildCommand": "cargo tauri-typegen generate && npm run build",
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../dist"
+  },
+  "plugins": {
+    "tauri-typegen": {
+      "project_path": "./src-tauri",
+      "output_path": "./src/generated",
+      "validation_library": "zod",
+      "verbose": false,
+      "visualize_deps": false
+    }
+  }
+}
+```
+
+Then use standard Tauri commands:
+```bash
+# Development - types generated automatically before frontend starts
+npm run tauri dev
+
+# Production build - types generated before frontend build
+npm run tauri build
+```
+
+**Method 2: Package.json Scripts (Alternative)**
+
+If you prefer explicit control in package.json:
+
 ```json
 {
   "scripts": {
     "generate-types": "cargo tauri-typegen generate",
-    "dev": "npm run generate-types && npm run tauri dev",
+    "dev": "npm run generate-types && npm run tauri dev", 
     "build": "npm run generate-types && npm run tauri build",
     "tauri": "tauri"
   }
 }
 ```
 
-**`Makefile` (optional):**
-```makefile
-.PHONY: generate-types dev build
+**Method 3: Cargo Build Scripts (Advanced)**
 
-generate-types:
-	cargo tauri-typegen generate --verbose
+For tighter integration, add type generation to your Rust build process in `src-tauri/build.rs`:
 
-dev: generate-types
-	npm run tauri dev
+```rust
+use std::process::Command;
 
-build: generate-types  
-	npm run tauri build
+fn main() {
+    // Generate TypeScript bindings before build
+    let output = Command::new("cargo")
+        .args(&["tauri-typegen", "generate"])
+        .output()
+        .expect("Failed to run cargo tauri-typegen");
+
+    if !output.status.success() {
+        panic!("TypeScript generation failed: {}", String::from_utf8_lossy(&output.stderr));
+    }
+
+    tauri_build::build()
+}
 ```
 
 ### Generated Files Structure
@@ -572,6 +616,64 @@ The plugin generates several files in your output directory:
 - **`schemas.ts`** - Validation schemas (if validation library is specified)
 - **`commands.ts`** - Strongly-typed command binding functions
 - **`index.ts`** - Barrel export file
+
+## TypeScript Compatibility
+
+The generated TypeScript code is compatible with modern TypeScript environments and follows current best practices.
+
+### Version Requirements
+
+- **TypeScript 3.7+** (for optional chaining support)
+- **ES2018+** compilation target
+- **Zod 3.x** (when using Zod validation)
+
+### Generated Code Features
+
+The generated TypeScript code uses modern language features:
+
+- **ES Modules**: `import`/`export` statements
+- **Async/Await**: All command functions are async
+- **Union Types**: `string | null`, optional properties
+- **Generic Types**: `Array<T>`, `Promise<T>`, `Record<K, V>`
+- **Tuple Types**: `[string, number]` for Rust tuples
+- **Template Literal Types**: Advanced string manipulation (when needed)
+
+### TypeScript Configuration
+
+Ensure your `tsconfig.json` is compatible with the generated code:
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2018",
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true
+  }
+}
+```
+
+### Generated Type Mappings
+
+| Rust Type | Generated TypeScript | Notes |
+|-----------|---------------------|-------|
+| `String`, `&str` | `string` | Basic string types |
+| `i32`, `f64`, etc. | `number` | All numeric types → number |
+| `bool` | `boolean` | Boolean type |
+| `()` | `void` | Unit type |
+| `Option<T>` | `T \| null` | Nullable types |
+| `Vec<T>` | `T[]` | Arrays |
+| `HashMap<K, V>` | `Map<K, V>` | Map type |
+| `BTreeMap<K, V>` | `Map<K, V>` | Consistent with HashMap |
+| `HashSet<T>` | `T[]` | Arrays for JSON compatibility |
+| `(T, U)` | `[T, U]` | Tuple types |
+| `Result<T, E>` | `T` | Errors handled by Tauri runtime |
+
 
 ## API Reference
 
