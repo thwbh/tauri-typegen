@@ -60,10 +60,7 @@ fn run_generate(
     } else {
         // Try to load from tauri.conf.json if it exists
         if std::path::Path::new("tauri.conf.json").exists() {
-            match GenerateConfig::from_tauri_config("tauri.conf.json") {
-                Ok(conf) => conf,
-                Err(_) => GenerateConfig::default(),
-            }
+            GenerateConfig::from_tauri_config("tauri.conf.json").unwrap_or_default()
         } else {
             GenerateConfig::default()
         }

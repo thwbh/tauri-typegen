@@ -1,6 +1,6 @@
 use crate::analysis::type_resolver::TypeResolver;
 use crate::models::{CommandInfo, ParameterInfo};
-use std::path::PathBuf;
+use std::path::Path;
 use syn::{File as SynFile, FnArg, ItemFn, PatType, ReturnType, Type};
 
 /// Parser for Tauri command functions
@@ -16,7 +16,7 @@ impl CommandParser {
     pub fn extract_commands_from_ast(
         &self,
         ast: &SynFile,
-        file_path: &PathBuf,
+        file_path: &Path,
         type_resolver: &mut TypeResolver,
     ) -> Result<Vec<CommandInfo>, Box<dyn std::error::Error>> {
         let mut commands = Vec::new();
@@ -45,7 +45,7 @@ impl CommandParser {
     }
 
     /// Extract command information from a function
-    fn extract_command_info(&self, func: &ItemFn, file_path: &PathBuf, type_resolver: &mut TypeResolver) -> Option<CommandInfo> {
+    fn extract_command_info(&self, func: &ItemFn, file_path: &Path, type_resolver: &mut TypeResolver) -> Option<CommandInfo> {
         let name = func.sig.ident.to_string();
         let parameters = self.extract_parameters(&func.sig.inputs, type_resolver);
         let return_type = self.extract_return_type(&func.sig.output, type_resolver);

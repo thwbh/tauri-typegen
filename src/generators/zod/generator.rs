@@ -158,17 +158,13 @@ impl ZodBindingsGenerator {
         }
 
         // Apply email validation
-        if validator.email {
-            if schema == "z.string()" {
-                schema = "z.string().email()".to_string();
-            }
+        if validator.email && schema == "z.string()" {
+            schema = "z.string().email()".to_string();
         }
 
         // Apply URL validation
-        if validator.url {
-            if schema == "z.string()" {
-                schema = "z.string().url()".to_string();
-            }
+        if validator.url && schema == "z.string()" {
+            schema = "z.string().url()".to_string();
         }
 
         schema
@@ -308,7 +304,7 @@ impl ZodBindingsGenerator {
         content.push_str(&TemplateHelpers::generate_named_imports(&[
             ("@tauri-apps/api/core", &["invoke"]),
         ]));
-        content.push_str(&TemplateHelpers::generate_type_imports(&[
+        content.push_str(TemplateHelpers::generate_type_imports(&[
             ("./types", "* as types"),
         ]).trim_end());
         content.push_str("\n\n");

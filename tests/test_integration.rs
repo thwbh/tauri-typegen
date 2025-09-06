@@ -10,7 +10,7 @@ fn create_complex_test_project() -> TempDir {
     // Create a complex project structure with multiple files and command types
     let src_dir = temp_dir.path().join("src");
     fs::create_dir_all(&src_dir).unwrap();
-    fs::create_dir_all(&src_dir.join("modules")).unwrap();
+    fs::create_dir_all(src_dir.join("modules")).unwrap();
 
     // Main commands file
     let main_commands = r#"

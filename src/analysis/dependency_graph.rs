@@ -27,7 +27,7 @@ impl TypeDependencyGraph {
     pub fn add_dependency(&mut self, dependent: String, dependency: String) {
         self.dependencies
             .entry(dependent)
-            .or_insert_with(HashSet::new)
+            .or_default()
             .insert(dependency);
     }
 
@@ -142,7 +142,7 @@ impl TypeDependencyGraph {
             // Show dependencies
             if let Some(deps) = self.dependencies.get(type_name) {
                 if !deps.is_empty() {
-                    let deps_list: Vec<String> = deps.iter().map(|s| s.clone()).collect();
+                    let deps_list: Vec<String> = deps.iter().cloned().collect();
                     output.push_str(&format!("  └─ depends on: {}\n", deps_list.join(", ")));
                 }
             }
@@ -184,7 +184,7 @@ impl TypeDependencyGraph {
         output.push_str("digraph Dependencies {\n");
         output.push_str("  rankdir=LR;\n");
         output.push_str("  node [shape=box];\n");
-        output.push_str("\n");
+        output.push('\n');
 
         // Add command nodes
         for command in commands {

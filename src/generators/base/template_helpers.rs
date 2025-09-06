@@ -276,7 +276,7 @@ impl TemplateHelpers {
         let mut chars = pascal.chars();
         match chars.next() {
             None => String::new(),
-            Some(first) => first.to_lowercase().collect::<String>() + &chars.as_str(),
+            Some(first) => first.to_lowercase().collect::<String>() + chars.as_str(),
         }
     }
 

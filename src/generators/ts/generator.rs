@@ -87,7 +87,7 @@ impl TypeScriptBindingsGenerator {
         content.push_str(&TemplateHelpers::generate_named_imports(&[
             ("@tauri-apps/api/core", &["invoke"]),
         ]));
-        content.push_str(&TemplateHelpers::generate_type_imports(&[
+        content.push_str(TemplateHelpers::generate_type_imports(&[
             ("./types", "* as types"),
         ]).trim_end());
         content.push_str("\n\n");

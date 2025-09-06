@@ -205,12 +205,7 @@ impl TypeResolver {
 
     /// Extract inner type from reference &T
     fn extract_reference_type(&self, rust_type: &str) -> Option<String> {
-        if rust_type.starts_with('&') {
-            let inner = &rust_type[1..];
-            Some(inner.to_string())
-        } else {
-            None
-        }
+        rust_type.strip_prefix('&').map(|stripped| stripped.to_string())
     }
 
     /// Parse two type parameters separated by comma (for HashMap, BTreeMap)

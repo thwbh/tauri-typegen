@@ -256,7 +256,7 @@ fn test_only_generates_types_used_by_commands() {
 
 #[test]
 fn test_collect_referenced_types_handles_complex_types() {
-    let mut generator = BindingsGenerator::new(None);
+    let generator = BindingsGenerator::new(None);
     let mut used_types = std::collections::HashSet::new();
 
     // Test Result type extraction

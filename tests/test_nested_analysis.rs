@@ -3,7 +3,7 @@ use tauri_plugin_typegen::analysis::CommandAnalyzer;
 
 #[test]
 fn test_extract_type_names_recursive() {
-    let mut analyzer = CommandAnalyzer::new();
+    let analyzer = CommandAnalyzer::new();
     let mut type_names = HashSet::new();
     
     // Test simple custom type
@@ -53,7 +53,7 @@ fn test_extract_type_names_recursive() {
 
 #[test]
 fn test_extract_multiple_custom_types() {
-    let mut analyzer = CommandAnalyzer::new();
+    let analyzer = CommandAnalyzer::new();
     let mut type_names = HashSet::new();
     
     // Test HashMap<CustomKey, CustomValue>
@@ -74,7 +74,7 @@ fn test_extract_multiple_custom_types() {
 
 #[test]
 fn test_extract_deeply_nested_types() {
-    let mut analyzer = CommandAnalyzer::new();
+    let analyzer = CommandAnalyzer::new();
     let mut type_names = HashSet::new();
     
     // Test very complex nested structure
@@ -87,7 +87,7 @@ fn test_extract_deeply_nested_types() {
 
 #[test]
 fn test_reference_handling() {
-    let mut analyzer = CommandAnalyzer::new();
+    let analyzer = CommandAnalyzer::new();
     let mut type_names = HashSet::new();
     
     // Test &User -> User
@@ -103,7 +103,7 @@ fn test_reference_handling() {
 
 #[test]
 fn test_primitive_types_ignored() {
-    let mut analyzer = CommandAnalyzer::new();
+    let analyzer = CommandAnalyzer::new();
     let mut type_names = HashSet::new();
     
     // Test that primitives are ignored
@@ -121,7 +121,7 @@ fn test_primitive_types_ignored() {
 
 #[test]
 fn test_collect_referenced_types_from_generator() {
-    let mut analyzer = CommandAnalyzer::new();
+    let analyzer = CommandAnalyzer::new();
     let generator = tauri_plugin_typegen::generators::generator::BindingsGenerator::new(None);
     let mut used_types = HashSet::new();
     

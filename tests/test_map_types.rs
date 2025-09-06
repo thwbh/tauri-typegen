@@ -1,4 +1,3 @@
-use std::collections::{HashMap, BTreeMap};
 use std::fs;
 use tempfile::TempDir;
 use tauri_plugin_typegen::analysis::CommandAnalyzer;
@@ -48,7 +47,7 @@ pub async fn get_config() -> Result<BTreeMap<String, i32>, String> {
     let discovered_structs = analyzer.get_discovered_structs();
 
     let mut generator = BindingsGenerator::new(None); // vanilla TypeScript
-    generator.generate_models(&commands, &discovered_structs, output_dir.to_str().unwrap(), &CommandAnalyzer::new()).unwrap();
+    generator.generate_models(&commands, discovered_structs, output_dir.to_str().unwrap(), &CommandAnalyzer::new()).unwrap();
 
     let types_content = fs::read_to_string(output_dir.join("types.ts")).unwrap();
     
@@ -64,7 +63,7 @@ pub async fn get_config() -> Result<BTreeMap<String, i32>, String> {
     // Test Zod generation
     let output_dir_zod = temp_dir.path().join("generated_zod");
     let mut generator_zod = BindingsGenerator::new(Some("zod".to_string()));
-    generator_zod.generate_models(&commands, &discovered_structs, output_dir_zod.to_str().unwrap(), &CommandAnalyzer::new()).unwrap();
+    generator_zod.generate_models(&commands, discovered_structs, output_dir_zod.to_str().unwrap(), &CommandAnalyzer::new()).unwrap();
 
     let types_content_zod = fs::read_to_string(output_dir_zod.join("types.ts")).unwrap();
     

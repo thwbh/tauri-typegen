@@ -2,7 +2,7 @@ use crate::analysis::validator_parser::ValidatorParser;
 use crate::analysis::type_resolver::TypeResolver;
 use crate::models::{StructInfo, FieldInfo};
 use quote::ToTokens;
-use std::path::PathBuf;
+use std::path::Path;
 use syn::{Attribute, ItemEnum, ItemStruct, Type, Visibility};
 
 /// Parser for Rust structs and enums
@@ -46,11 +46,7 @@ impl StructParser {
             if meta_list.path.is_ident("derive") {
                 let tokens_str = meta_list.to_token_stream().to_string();
 
-                if tokens_str.contains("Serialize") || tokens_str.contains("Deserialize") {
-                    true
-                } else {
-                    false
-                }
+                tokens_str.contains("Serialize") || tokens_str.contains("Deserialize")
             } else {
                 false
             }
@@ -60,7 +56,7 @@ impl StructParser {
     }
 
     /// Parse a Rust struct into StructInfo
-    pub fn parse_struct(&self, item_struct: &ItemStruct, file_path: &PathBuf, type_resolver: &mut TypeResolver) -> Option<StructInfo> {
+    pub fn parse_struct(&self, item_struct: &ItemStruct, file_path: &Path, type_resolver: &mut TypeResolver) -> Option<StructInfo> {
         let mut fields = Vec::new();
 
         match &item_struct.fields {
@@ -89,7 +85,7 @@ impl StructParser {
     }
 
     /// Parse a Rust enum into StructInfo
-    pub fn parse_enum(&self, item_enum: &ItemEnum, file_path: &PathBuf, type_resolver: &mut TypeResolver) -> Option<StructInfo> {
+    pub fn parse_enum(&self, item_enum: &ItemEnum, file_path: &Path, type_resolver: &mut TypeResolver) -> Option<StructInfo> {
         let mut fields = Vec::new();
 
         for variant in &item_enum.variants {
@@ -99,7 +95,7 @@ impl StructParser {
                     let field_info = FieldInfo {
                         name: variant.ident.to_string(),
                         rust_type: "enum_variant".to_string(),
-                        typescript_type: format!("\"{}\"", variant.ident.to_string()),
+                        typescript_type: format!("\"{}\"", variant.ident),
                         is_optional: false,
                         is_public: true,
                         validator_attributes: None,
@@ -114,7 +110,7 @@ impl StructParser {
                     let field_info = FieldInfo {
                         name: variant.ident.to_string(),
                         rust_type: "enum_variant_tuple".to_string(),
-                        typescript_type: format!("{{ type: \"{}\", data: [{}] }}", variant.ident.to_string(), types.join(", ")),
+                        typescript_type: format!("{{ type: \"{}\", data: [{}] }}", variant.ident, types.join(", ")),
                         is_optional: false,
                         is_public: true,
                         validator_attributes: None,
@@ -133,7 +129,7 @@ impl StructParser {
                     let field_info = FieldInfo {
                         name: variant.ident.to_string(),
                         rust_type: "enum_variant_struct".to_string(),
-                        typescript_type: format!("{{ type: \"{}\", data: {{ {} }} }}", variant.ident.to_string(), struct_fields.join(", ")),
+                        typescript_type: format!("{{ type: \"{}\", data: {{ {} }} }}", variant.ident, struct_fields.join(", ")),
                         is_optional: false,
                         is_public: true,
                         validator_attributes: None,

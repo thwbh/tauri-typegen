@@ -2,7 +2,6 @@ use std::fs;
 use tauri_plugin_typegen::commands::{analyze_commands, generate_models};
 use tauri_plugin_typegen::models::*;
 use tempfile::TempDir;
-use tokio;
 
 fn create_test_project_with_commands() -> TempDir {
     let temp_dir = TempDir::new().unwrap();

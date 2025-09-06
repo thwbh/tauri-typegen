@@ -111,7 +111,7 @@ mod tests {
         assert_eq!(config.project_path, "./src-tauri");
         assert_eq!(config.output_path, "./src/generated");
         assert_eq!(config.validation_library, "zod");
-        assert_eq!(config.verbose.unwrap_or(false), false);
+        assert!(!config.verbose.unwrap_or(false));
     }
 
     #[test]
@@ -129,7 +129,7 @@ mod tests {
         assert_eq!(config.project_path, "./my-tauri");
         assert_eq!(config.output_path, "./types");
         assert_eq!(config.validation_library, "none");
-        assert_eq!(config.verbose.unwrap_or(false), true);
-        assert_eq!(config.visualize_deps.unwrap_or(false), true);
+        assert!(config.verbose.unwrap_or(false));
+        assert!(config.visualize_deps.unwrap_or(false));
     }
 }

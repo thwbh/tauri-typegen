@@ -7,7 +7,7 @@ pub mod validator_parser;
 
 use crate::models::{CommandInfo, StructInfo};
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use ast_cache::AstCache;
 use command_parser::CommandParser;
@@ -65,7 +65,7 @@ impl CommandAnalyzer {
                 // Extract commands from this file's AST
                 let file_commands = self.command_parser.extract_commands_from_ast(
                     &parsed_file.ast,
-                    &parsed_file.path,
+                    parsed_file.path.as_path(),
                     &mut self.type_resolver,
                 )?;
 
@@ -80,7 +80,7 @@ impl CommandAnalyzer {
                 commands.extend(file_commands);
 
                 // Build type definition index from this file
-                self.index_type_definitions(&parsed_file.ast, &parsed_file.path);
+                self.index_type_definitions(&parsed_file.ast, parsed_file.path.as_path());
             }
         }
 
@@ -114,7 +114,7 @@ impl CommandAnalyzer {
                 if let Some(parsed_file) = self.ast_cache.get_cloned(&path_buf) {
                     self.command_parser.extract_commands_from_ast(
                         &parsed_file.ast,
-                        &path_buf,
+                        path_buf.as_path(),
                         &mut self.type_resolver,
                     )
                 } else {
@@ -129,21 +129,21 @@ impl CommandAnalyzer {
     }
 
     /// Build an index of type definitions from an AST
-    fn index_type_definitions(&mut self, ast: &syn::File, file_path: &PathBuf) {
+    fn index_type_definitions(&mut self, ast: &syn::File, file_path: &Path) {
         for item in &ast.items {
             match item {
                 syn::Item::Struct(item_struct) => {
                     if self.struct_parser.should_include_struct(item_struct) {
                         let struct_name = item_struct.ident.to_string();
                         self.dependency_graph
-                            .add_type_definition(struct_name, file_path.clone());
+                            .add_type_definition(struct_name, file_path.to_path_buf());
                     }
                 }
                 syn::Item::Enum(item_enum) => {
                     if self.struct_parser.should_include_enum(item_enum) {
                         let enum_name = item_enum.ident.to_string();
                         self.dependency_graph
-                            .add_type_definition(enum_name, file_path.clone());
+                            .add_type_definition(enum_name, file_path.to_path_buf());
                     }
                 }
                 _ => {}
@@ -176,7 +176,7 @@ impl CommandAnalyzer {
                 if let Some(parsed_file) = self.ast_cache.get_cloned(&file_path) {
                     // Find and parse the specific type from the cached AST
                     if let Some(struct_info) =
-                        self.extract_type_from_ast(&parsed_file.ast, &type_name, &file_path)
+                        self.extract_type_from_ast(&parsed_file.ast, &type_name, file_path.as_path())
                     {
                         // Collect dependencies of this type
                         let mut type_dependencies = HashSet::new();
@@ -217,19 +217,19 @@ impl CommandAnalyzer {
         &mut self,
         ast: &syn::File,
         type_name: &str,
-        file_path: &PathBuf,
+        file_path: &Path,
     ) -> Option<StructInfo> {
         for item in &ast.items {
             match item {
                 syn::Item::Struct(item_struct) => {
-                    if item_struct.ident.to_string() == type_name
+                    if item_struct.ident == type_name
                         && self.struct_parser.should_include_struct(item_struct)
                     {
                         return self.struct_parser.parse_struct(item_struct, file_path, &mut self.type_resolver);
                     }
                 }
                 syn::Item::Enum(item_enum) => {
-                    if item_enum.ident.to_string() == type_name
+                    if item_enum.ident == type_name
                         && self.struct_parser.should_include_enum(item_enum)
                     {
                         return self.struct_parser.parse_enum(item_enum, file_path, &mut self.type_resolver);
@@ -345,7 +345,7 @@ impl CommandAnalyzer {
         if !rust_type.is_empty()
             && !self.type_resolver.get_type_mappings().contains_key(rust_type)
             && !rust_type.starts_with(char::is_lowercase) // Skip built-in types
-            && rust_type.chars().next().map_or(false, char::is_alphabetic)
+            && rust_type.chars().next().is_some_and(char::is_alphabetic)
             && !rust_type.contains('<') // Skip generic type names with parameters
         {
             type_names.insert(rust_type.to_string());

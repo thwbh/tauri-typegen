@@ -37,11 +37,7 @@ impl TypeConverter {
     pub fn extract_result_ok_type(&self, type_str: &str) -> Option<String> {
         if type_str.starts_with("Result<") && type_str.ends_with('>') {
             let inner = &type_str[7..type_str.len() - 1];
-            if let Some(comma_pos) = inner.find(',') {
-                Some(inner[..comma_pos].trim().to_string())
-            } else {
-                None
-            }
+            inner.find(',').map(|comma_pos| inner[..comma_pos].trim().to_string())
         } else {
             None
         }
