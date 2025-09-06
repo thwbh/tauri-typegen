@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
 use tauri_plugin_typegen::analysis::CommandAnalyzer;
-use tauri_plugin_typegen::generator::TypeScriptGenerator;
+use tauri_plugin_typegen::generators::generator::BindingsGenerator;
 use tauri_plugin_typegen::models::{CommandInfo, FieldInfo, ParameterInfo, StructInfo};
 use tempfile::TempDir;
 
@@ -222,7 +222,7 @@ fn test_only_generates_types_used_by_commands() {
     let commands = create_sample_commands_with_unused_structs();
     let all_discovered_structs = create_sample_structs_with_unused();
 
-    let mut generator = TypeScriptGenerator::new(None);
+    let mut generator = BindingsGenerator::new(None);
     generator
         .generate_models(&commands, &all_discovered_structs, output_path, &CommandAnalyzer::new())
         .unwrap();
@@ -256,7 +256,7 @@ fn test_only_generates_types_used_by_commands() {
 
 #[test]
 fn test_collect_referenced_types_handles_complex_types() {
-    let mut generator = TypeScriptGenerator::new(None);
+    let mut generator = BindingsGenerator::new(None);
     let mut used_types = std::collections::HashSet::new();
 
     // Test Result type extraction
@@ -322,7 +322,7 @@ fn test_integration_with_real_analyzer() {
     let output_path = temp_dir.path().join("output");
     fs::create_dir_all(&output_path).unwrap();
 
-    let mut generator = TypeScriptGenerator::new(None);
+    let mut generator = BindingsGenerator::new(None);
     generator
         .generate_models(
             &commands,
@@ -353,7 +353,7 @@ fn test_type_filtering_with_validation_library() {
     let all_discovered_structs = create_sample_structs_with_unused();
 
     // Test with Zod validation
-    let mut generator = TypeScriptGenerator::new(Some("zod".to_string()));
+    let mut generator = BindingsGenerator::new(Some("zod".to_string()));
     generator
         .generate_models(&commands, &all_discovered_structs, output_path, &CommandAnalyzer::new())
         .unwrap();
@@ -383,7 +383,7 @@ fn test_empty_commands_generates_no_unnecessary_types() {
     let commands = vec![];
     let all_discovered_structs = create_sample_structs_with_unused();
 
-    let mut generator = TypeScriptGenerator::new(None);
+    let mut generator = BindingsGenerator::new(None);
     generator
         .generate_models(&commands, &all_discovered_structs, output_path, &CommandAnalyzer::new())
         .unwrap();

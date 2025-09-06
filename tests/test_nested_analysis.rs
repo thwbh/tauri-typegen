@@ -122,7 +122,7 @@ fn test_primitive_types_ignored() {
 #[test]
 fn test_collect_referenced_types_from_generator() {
     let mut analyzer = CommandAnalyzer::new();
-    let generator = tauri_plugin_typegen::generator::TypeScriptGenerator::new(None);
+    let generator = tauri_plugin_typegen::generators::generator::BindingsGenerator::new(None);
     let mut used_types = HashSet::new();
     
     // Test complex nested structure

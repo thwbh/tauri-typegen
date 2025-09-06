@@ -1,5 +1,5 @@
 use crate::analysis::CommandAnalyzer;
-use crate::generator::TypeScriptGenerator;
+use crate::generators::generator::BindingsGenerator;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -99,7 +99,7 @@ pub fn generate_from_config(
     }
 
     // Generate TypeScript models with discovered structs
-    let mut generator = TypeScriptGenerator::new(validation);
+    let mut generator = BindingsGenerator::new(validation);
     let generated_files = generator.generate_models(
         &commands,
         analyzer.get_discovered_structs(),

@@ -2,7 +2,7 @@ use clap::{Args, Parser, Subcommand};
 use std::fs;
 use std::path::PathBuf;
 use tauri_plugin_typegen::analysis::CommandAnalyzer;
-use tauri_plugin_typegen::generator::TypeScriptGenerator;
+use tauri_plugin_typegen::generators::generator::BindingsGenerator;
 
 #[derive(Parser)]
 #[command(name = "cargo")]
@@ -150,7 +150,7 @@ fn run_generate(
         );
     }
 
-    let mut generator = TypeScriptGenerator::new(validation);
+    let mut generator = BindingsGenerator::new(validation);
     let generated_files = generator.generate_models(
         &commands,
         analyzer.get_discovered_structs(),

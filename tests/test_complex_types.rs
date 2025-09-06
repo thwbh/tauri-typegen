@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use tauri_plugin_typegen::analysis::CommandAnalyzer;
-use tauri_plugin_typegen::generator::TypeScriptGenerator;
+use tauri_plugin_typegen::generators::generator::BindingsGenerator;
 use tauri_plugin_typegen::models::StructInfo;
 use tempfile::TempDir;
 
@@ -137,7 +137,7 @@ fn test_tuple_return_type() {
 
 #[test]
 fn test_zod_schema_generation_for_maps() {
-    let generator = TypeScriptGenerator::new(Some("zod".to_string()));
+    let generator = BindingsGenerator::new(Some("zod".to_string()));
     
     // Test Record<string, string>
     let schema = generator.typescript_to_zod_type("Record<string, string>");
@@ -154,7 +154,7 @@ fn test_zod_schema_generation_for_maps() {
 
 #[test]
 fn test_zod_schema_generation_for_tuples() {
-    let generator = TypeScriptGenerator::new(Some("zod".to_string()));
+    let generator = BindingsGenerator::new(Some("zod".to_string()));
     
     // Test [string, number]
     let schema = generator.typescript_to_zod_type("[string, number]");
@@ -171,7 +171,7 @@ fn test_zod_schema_generation_for_tuples() {
 
 #[test]
 fn test_yup_schema_generation_for_maps() {
-    let generator = TypeScriptGenerator::new(Some("yup".to_string()));
+    let generator = BindingsGenerator::new(Some("yup".to_string()));
     
     // Test Record<string, string> - yup support removed
     let schema = generator.typescript_to_yup_type("Record<string, string>");
@@ -226,7 +226,7 @@ fn test_full_generation_with_complex_types() {
     let _ = analyzer.analyze_project(temp_dir_for_analysis.path().to_str().unwrap()).unwrap();
     let discovered_structs = analyzer.get_discovered_structs();
     
-    let mut generator = TypeScriptGenerator::new(Some("zod".to_string()));
+    let mut generator = BindingsGenerator::new(Some("zod".to_string()));
     let generated_files = generator
         .generate_models(&commands, discovered_structs, output_path.to_str().unwrap(), &CommandAnalyzer::new())
         .unwrap();

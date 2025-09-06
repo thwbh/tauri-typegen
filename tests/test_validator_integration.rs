@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 use tauri_plugin_typegen::analysis::CommandAnalyzer;
-use tauri_plugin_typegen::generator::TypeScriptGenerator;
+use tauri_plugin_typegen::generators::generator::BindingsGenerator;
 use tempfile::TempDir;
 
 #[test]
@@ -107,7 +107,7 @@ pub async fn create_product(data: ProductData) -> Result<String, String> {
     let commands = analyzer.analyze_project(temp_dir.path().to_str().unwrap()).unwrap();
     let discovered_structs = analyzer.get_discovered_structs();
 
-    let mut generator = TypeScriptGenerator::new(Some("zod".to_string()));
+    let mut generator = BindingsGenerator::new(Some("zod".to_string()));
     generator.generate_models(&commands, &discovered_structs, output_dir.to_str().unwrap(), &CommandAnalyzer::new()).unwrap();
 
     // Read the generated types file

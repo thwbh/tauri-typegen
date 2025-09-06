@@ -1,7 +1,7 @@
 use serial_test::serial;
 use std::fs;
 use tauri_plugin_typegen::analysis::CommandAnalyzer;
-use tauri_plugin_typegen::generator::TypeScriptGenerator;
+use tauri_plugin_typegen::generators::generator::BindingsGenerator;
 use tempfile::TempDir;
 
 fn create_complex_test_project() -> TempDir {
@@ -197,7 +197,7 @@ fn test_full_pipeline_complex_project() {
 
     // Step 2: Generate TypeScript models
     let output_path = temp_dir.path().join("generated");
-    let mut generator = TypeScriptGenerator::new(Some("zod".to_string()));
+    let mut generator = BindingsGenerator::new(Some("zod".to_string()));
 
     let generated_files = generator
         .generate_models(
@@ -279,7 +279,7 @@ fn test_full_pipeline_with_yup() {
     let commands = analyzer.analyze_project(project_path).unwrap();
 
     let output_path = temp_dir.path().join("generated_yup");
-    let mut generator = TypeScriptGenerator::new(Some("yup".to_string()));
+    let mut generator = BindingsGenerator::new(Some("yup".to_string()));
 
     let generated_files = generator
         .generate_models(
@@ -312,7 +312,7 @@ fn test_full_pipeline_without_validation() {
     let commands = analyzer.analyze_project(project_path).unwrap();
 
     let output_path = temp_dir.path().join("generated_no_validation");
-    let mut generator = TypeScriptGenerator::new(Some("none".to_string()));
+    let mut generator = BindingsGenerator::new(Some("none".to_string()));
 
     let generated_files = generator
         .generate_models(
@@ -392,7 +392,7 @@ fn test_generated_content_syntax_valid() {
     let commands = analyzer.analyze_project(project_path).unwrap();
 
     let output_path = temp_dir.path().join("generated");
-    let mut generator = TypeScriptGenerator::new(Some("zod".to_string()));
+    let mut generator = BindingsGenerator::new(Some("zod".to_string()));
 
     generator
         .generate_models(

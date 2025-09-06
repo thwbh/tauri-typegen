@@ -1,5 +1,5 @@
 use crate::analysis::CommandAnalyzer;
-use crate::generator::TypeScriptGenerator;
+use crate::generators::generator::BindingsGenerator;
 use crate::models::*;
 use crate::Result;
 
@@ -31,7 +31,7 @@ pub async fn generate_models(payload: GenerateModelsRequest) -> Result<GenerateM
         .map_err(|e| crate::Error::CommandAnalysis(e.to_string()))?;
 
     // Generate TypeScript models with struct information
-    let mut generator = TypeScriptGenerator::new(payload.validation_library);
+    let mut generator = BindingsGenerator::new(payload.validation_library);
     let output_path = payload
         .output_path
         .unwrap_or_else(|| format!("{}/generated", payload.project_path));

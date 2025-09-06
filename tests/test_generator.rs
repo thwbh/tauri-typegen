@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
 use tauri_plugin_typegen::analysis::CommandAnalyzer;
-use tauri_plugin_typegen::generator::TypeScriptGenerator;
+use tauri_plugin_typegen::generators::generator::BindingsGenerator;
 use tauri_plugin_typegen::models::{CommandInfo, ParameterInfo, StructInfo};
 use tempfile::TempDir;
 
@@ -43,7 +43,7 @@ fn test_generator_creates_all_files() {
     let commands = create_sample_commands();
     let discovered_structs = create_empty_structs();
 
-    let mut generator = TypeScriptGenerator::new(Some("zod".to_string()));
+    let mut generator = BindingsGenerator::new(Some("zod".to_string()));
     let generated_files = generator
         .generate_models(&commands, &discovered_structs, output_path, &CommandAnalyzer::new())
         .unwrap();
@@ -67,7 +67,7 @@ fn test_generator_without_validation_library() {
     let commands = create_sample_commands();
     let discovered_structs = create_empty_structs();
 
-    let mut generator = TypeScriptGenerator::new(Some("none".to_string()));
+    let mut generator = BindingsGenerator::new(Some("none".to_string()));
     let generated_files = generator
         .generate_models(&commands, &discovered_structs, output_path, &CommandAnalyzer::new())
         .unwrap();
@@ -86,7 +86,7 @@ fn test_types_file_generation() {
     let commands = create_sample_commands();
     let discovered_structs = create_empty_structs();
 
-    let mut generator = TypeScriptGenerator::new(None);
+    let mut generator = BindingsGenerator::new(None);
     generator
         .generate_models(&commands, &discovered_structs, output_path, &CommandAnalyzer::new())
         .unwrap();
@@ -109,7 +109,7 @@ fn test_zod_schemas_in_types_file() {
     let commands = create_sample_commands();
     let discovered_structs = create_empty_structs();
 
-    let mut generator = TypeScriptGenerator::new(Some("zod".to_string()));
+    let mut generator = BindingsGenerator::new(Some("zod".to_string()));
     generator
         .generate_models(&commands, &discovered_structs, output_path, &CommandAnalyzer::new())
         .unwrap();
@@ -135,7 +135,7 @@ fn test_yup_schemas_generation() {
     let discovered_structs = create_empty_structs();
 
     // Yup support removed - should fall back to vanilla generator
-    let mut generator = TypeScriptGenerator::new(Some("yup".to_string()));
+    let mut generator = BindingsGenerator::new(Some("yup".to_string()));
     let generated_files = generator
         .generate_models(&commands, &discovered_structs, output_path, &CommandAnalyzer::new())
         .unwrap();
@@ -156,7 +156,7 @@ fn test_commands_file_generation() {
     let commands = create_sample_commands();
     let discovered_structs = create_empty_structs();
 
-    let mut generator = TypeScriptGenerator::new(Some("zod".to_string()));
+    let mut generator = BindingsGenerator::new(Some("zod".to_string()));
     generator
         .generate_models(&commands, &discovered_structs, output_path, &CommandAnalyzer::new())
         .unwrap();
@@ -186,7 +186,7 @@ fn test_commands_without_validation() {
     let commands = create_sample_commands();
     let discovered_structs = create_empty_structs();
 
-    let mut generator = TypeScriptGenerator::new(Some("none".to_string()));
+    let mut generator = BindingsGenerator::new(Some("none".to_string()));
     generator
         .generate_models(&commands, &discovered_structs, output_path, &CommandAnalyzer::new())
         .unwrap();
@@ -207,7 +207,7 @@ fn test_index_file_generation() {
     let commands = create_sample_commands();
     let discovered_structs = create_empty_structs();
 
-    let mut generator = TypeScriptGenerator::new(None);
+    let mut generator = BindingsGenerator::new(None);
     generator
         .generate_models(&commands, &discovered_structs, output_path, &CommandAnalyzer::new())
         .unwrap();
@@ -220,7 +220,7 @@ fn test_index_file_generation() {
 
 #[test]
 fn test_pascal_case_conversion() {
-    let generator = TypeScriptGenerator::new(None);
+    let generator = BindingsGenerator::new(None);
 
     assert_eq!(generator.to_pascal_case("hello_world"), "HelloWorld");
     assert_eq!(generator.to_pascal_case("get_user_count"), "GetUserCount");
@@ -230,7 +230,7 @@ fn test_pascal_case_conversion() {
 
 #[test]
 fn test_typescript_to_zod_type_conversion() {
-    let generator = TypeScriptGenerator::new(None);
+    let generator = BindingsGenerator::new(None);
 
     assert_eq!(generator.typescript_to_zod_type("string"), "z.string()");
     assert_eq!(generator.typescript_to_zod_type("number"), "z.number()");
@@ -248,7 +248,7 @@ fn test_typescript_to_zod_type_conversion() {
 
 #[test]
 fn test_typescript_to_yup_type_conversion() {
-    let generator = TypeScriptGenerator::new(None);
+    let generator = BindingsGenerator::new(None);
 
     // Yup support has been removed - all types return the removed message
     assert!(generator.typescript_to_yup_type("string").contains("yup support removed"));
@@ -261,7 +261,7 @@ fn test_typescript_to_yup_type_conversion() {
 
 #[test]
 fn test_custom_type_detection() {
-    let generator = TypeScriptGenerator::new(None);
+    let generator = BindingsGenerator::new(None);
 
     assert!(!generator.is_custom_type("string"));
     assert!(!generator.is_custom_type("number"));
@@ -294,7 +294,7 @@ fn test_generator_with_void_return() {
     }];
     let discovered_structs = create_empty_structs();
 
-    let mut generator = TypeScriptGenerator::new(None);
+    let mut generator = BindingsGenerator::new(None);
     generator
         .generate_models(&commands, &discovered_structs, output_path, &CommandAnalyzer::new())
         .unwrap();
@@ -311,7 +311,7 @@ fn test_generator_empty_commands_list() {
     let commands = vec![];
     let discovered_structs = create_empty_structs();
 
-    let mut generator = TypeScriptGenerator::new(None);
+    let mut generator = BindingsGenerator::new(None);
     let generated_files = generator
         .generate_models(&commands, &discovered_structs, output_path, &CommandAnalyzer::new())
         .unwrap();
