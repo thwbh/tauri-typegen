@@ -99,6 +99,32 @@ impl BaseGenerator {
             self.collect_referenced_types(&command.return_type, &mut used_types);
         }
 
+        // Recursively collect nested dependencies from struct fields
+        let mut types_to_process: Vec<String> = used_types.iter().cloned().collect();
+        let mut processed_types = std::collections::HashSet::new();
+
+        while let Some(type_name) = types_to_process.pop() {
+            if processed_types.contains(&type_name) {
+                continue;
+            }
+            processed_types.insert(type_name.clone());
+
+            // If this type is a known struct, collect types from its fields
+            if let Some(struct_info) = all_structs.get(&type_name) {
+                for field in &struct_info.fields {
+                    let mut field_types = std::collections::HashSet::new();
+                    self.collect_referenced_types(&field.rust_type, &mut field_types);
+                    
+                    for field_type in field_types {
+                        if !used_types.contains(&field_type) {
+                            used_types.insert(field_type.clone());
+                            types_to_process.push(field_type);
+                        }
+                    }
+                }
+            }
+        }
+
         // Filter to only include used types
         all_structs
             .iter()
@@ -113,46 +139,141 @@ impl BaseGenerator {
         type_str: &str,
         used_types: &mut std::collections::HashSet<String>,
     ) {
-        // Handle Result<T, E>
-        if let Some(inner) = self.extract_result_inner_type(type_str) {
-            self.collect_referenced_types(&inner, used_types);
+        let cleaned_type = type_str.trim();
+        
+        // Handle Result<T, E> - need to extract both types
+        if let Some((ok_type, err_type)) = self.extract_result_both_types(cleaned_type) {
+            self.collect_referenced_types(&ok_type, used_types);
+            self.collect_referenced_types(&err_type, used_types);
             return;
         }
 
         // Handle Option<T>
-        if let Some(inner) = self.extract_option_inner_type(type_str) {
+        if let Some(inner) = self.extract_option_inner_type(cleaned_type) {
             self.collect_referenced_types(&inner, used_types);
             return;
         }
 
         // Handle Vec<T>
-        if let Some(inner) = self.extract_vec_inner_type(type_str) {
+        if let Some(inner) = self.extract_vec_inner_type(cleaned_type) {
             self.collect_referenced_types(&inner, used_types);
             return;
         }
 
+        // Handle HashMap<K, V>
+        if let Some((key_type, value_type)) = self.extract_hashmap_types(cleaned_type) {
+            self.collect_referenced_types(&key_type, used_types);
+            self.collect_referenced_types(&value_type, used_types);
+            return;
+        }
+
+        // Handle tuples (T1, T2, ...)
+        if let Some(tuple_types) = self.extract_tuple_types(cleaned_type) {
+            for tuple_type in tuple_types {
+                self.collect_referenced_types(&tuple_type, used_types);
+            }
+            return;
+        }
+
         // Handle references &T
-        if type_str.starts_with('&') {
-            let inner = type_str.trim_start_matches('&').trim();
+        if cleaned_type.starts_with('&') {
+            let inner = cleaned_type.trim_start_matches('&').trim();
             self.collect_referenced_types(inner, used_types);
             return;
         }
 
         // If it's not a primitive type, add it to used types
-        if !self.is_primitive_type(type_str) {
-            used_types.insert(type_str.to_string());
+        if !self.is_primitive_type(cleaned_type) {
+            used_types.insert(cleaned_type.to_string());
         }
     }
 
-    fn extract_result_inner_type(&self, type_str: &str) -> Option<String> {
+    fn extract_result_both_types(&self, type_str: &str) -> Option<(String, String)> {
         if type_str.starts_with("Result<") && type_str.ends_with('>') {
             let inner = &type_str[7..type_str.len() - 1];
-            inner
-                .find(',')
-                .map(|comma_pos| inner[..comma_pos].trim().to_string())
+            if let Some(comma_pos) = self.find_top_level_comma(inner) {
+                let ok_type = inner[..comma_pos].trim().to_string();
+                let err_type = inner[comma_pos + 1..].trim().to_string();
+                Some((ok_type, err_type))
+            } else {
+                None
+            }
         } else {
             None
         }
+    }
+
+    fn extract_hashmap_types(&self, type_str: &str) -> Option<(String, String)> {
+        if type_str.starts_with("HashMap<") && type_str.ends_with('>') {
+            let inner = &type_str[8..type_str.len() - 1];
+            if let Some(comma_pos) = self.find_top_level_comma(inner) {
+                let key_type = inner[..comma_pos].trim().to_string();
+                let value_type = inner[comma_pos + 1..].trim().to_string();
+                Some((key_type, value_type))
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
+    /// Find the position of a comma that's at the same bracket nesting level (not inside nested generics)
+    fn find_top_level_comma(&self, s: &str) -> Option<usize> {
+        let mut bracket_depth = 0;
+        let mut paren_depth = 0;
+        
+        for (i, c) in s.char_indices() {
+            match c {
+                '<' => bracket_depth += 1,
+                '>' => bracket_depth -= 1,
+                '(' => paren_depth += 1,
+                ')' => paren_depth -= 1,
+                ',' if bracket_depth == 0 && paren_depth == 0 => return Some(i),
+                _ => {}
+            }
+        }
+        None
+    }
+
+    fn extract_tuple_types(&self, type_str: &str) -> Option<Vec<String>> {
+        if type_str.starts_with('(') && type_str.ends_with(')') {
+            let inner = &type_str[1..type_str.len() - 1];
+            let types = self.split_by_top_level_comma(inner);
+            if types.len() > 1 {
+                Some(types)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
+    /// Split a string by commas that are at the same bracket nesting level
+    fn split_by_top_level_comma(&self, s: &str) -> Vec<String> {
+        let mut result = Vec::new();
+        let mut bracket_depth = 0;
+        let mut paren_depth = 0;
+        let mut start = 0;
+        
+        for (i, c) in s.char_indices() {
+            match c {
+                '<' => bracket_depth += 1,
+                '>' => bracket_depth -= 1,
+                '(' => paren_depth += 1,
+                ')' => paren_depth -= 1,
+                ',' if bracket_depth == 0 && paren_depth == 0 => {
+                    result.push(s[start..i].trim().to_string());
+                    start = i + 1;
+                }
+                _ => {}
+            }
+        }
+        
+        // Add the last part
+        result.push(s[start..].trim().to_string());
+        result
     }
 
     fn extract_option_inner_type(&self, type_str: &str) -> Option<String> {

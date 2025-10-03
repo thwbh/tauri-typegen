@@ -295,6 +295,30 @@
       "type": "string",
       "oneOf": [
         {
+          "description": "Enables the analyze_commands command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-analyze-commands",
+          "markdownDescription": "Enables the analyze_commands command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the analyze_commands command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-analyze-commands",
+          "markdownDescription": "Denies the analyze_commands command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the generate_models command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-generate-models",
+          "markdownDescription": "Enables the generate_models command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the generate_models command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-generate-models",
+          "markdownDescription": "Denies the generate_models command without any pre-configured scope."
+        },
+        {
           "description": "Enables the ping command without any pre-configured scope.",
           "type": "string",
           "const": "allow-ping",
