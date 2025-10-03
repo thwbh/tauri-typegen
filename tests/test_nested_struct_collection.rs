@@ -59,27 +59,27 @@ fn create_struct_with_fields(name: &str, fields: Vec<(&str, &str)>) -> StructInf
 fn test_collect_used_types_basic_struct() {
     let generator = BaseGenerator::new();
     
-    // Create a command that uses Cinema struct
-    let commands = vec![create_command_with_params("get_cinema", vec![("cinema", "Cinema")])];
+    // Create a command that uses PetShop struct
+    let commands = vec![create_command_with_params("get_petshop", vec![("petshop", "PetShop")])];
     
-    // Create Cinema struct with a movies field
+    // Create PetShop struct with a pets field
     let mut structs = HashMap::new();
-    structs.insert("Cinema".to_string(), create_struct_with_fields("Cinema", vec![
+    structs.insert("PetShop".to_string(), create_struct_with_fields("PetShop", vec![
         ("name", "String"),
-        ("movies", "Vec<Movie>"),
+        ("pets", "Vec<Pet>"),
     ]));
     
-    // Create Movie struct
-    structs.insert("Movie".to_string(), create_struct_with_fields("Movie", vec![
-        ("title", "String"),
-        ("year", "i32"),
+    // Create Pet struct
+    structs.insert("Pet".to_string(), create_struct_with_fields("Pet", vec![
+        ("name", "String"),
+        ("species", "String"),
     ]));
     
     let used_types = generator.collect_used_types(&commands, &structs);
     
-    // Both Cinema and Movie should be collected
-    assert!(used_types.contains_key("Cinema"));
-    assert!(used_types.contains_key("Movie"));
+    // Both PetShop and Pet should be collected
+    assert!(used_types.contains_key("PetShop"));
+    assert!(used_types.contains_key("Pet"));
     assert_eq!(used_types.len(), 2);
 }
 
@@ -87,28 +87,28 @@ fn test_collect_used_types_basic_struct() {
 fn test_collect_used_types_deeply_nested() {
     let generator = BaseGenerator::new();
     
-    // Create a command that uses Theater struct
-    let commands = vec![create_command_with_return("get_theater", "Theater")];
+    // Create a command that uses PetStore struct
+    let commands = vec![create_command_with_return("get_petstore", "PetStore")];
     
     let mut structs = HashMap::new();
     
-    // Theater -> Cinema -> Movie -> Actor
-    structs.insert("Theater".to_string(), create_struct_with_fields("Theater", vec![
+    // PetStore -> PetShop -> Pet -> Owner
+    structs.insert("PetStore".to_string(), create_struct_with_fields("PetStore", vec![
         ("name", "String"),
-        ("cinemas", "Vec<Cinema>"),
+        ("shops", "Vec<PetShop>"),
     ]));
     
-    structs.insert("Cinema".to_string(), create_struct_with_fields("Cinema", vec![
+    structs.insert("PetShop".to_string(), create_struct_with_fields("PetShop", vec![
         ("id", "i32"),
-        ("movies", "Vec<Movie>"),
+        ("pets", "Vec<Pet>"),
     ]));
     
-    structs.insert("Movie".to_string(), create_struct_with_fields("Movie", vec![
-        ("title", "String"),
-        ("actors", "Vec<Actor>"),
+    structs.insert("Pet".to_string(), create_struct_with_fields("Pet", vec![
+        ("name", "String"),
+        ("owners", "Vec<Owner>"),
     ]));
     
-    structs.insert("Actor".to_string(), create_struct_with_fields("Actor", vec![
+    structs.insert("Owner".to_string(), create_struct_with_fields("Owner", vec![
         ("name", "String"),
         ("age", "i32"),
     ]));
@@ -116,10 +116,10 @@ fn test_collect_used_types_deeply_nested() {
     let used_types = generator.collect_used_types(&commands, &structs);
     
     // All structs should be collected due to nesting
-    assert!(used_types.contains_key("Theater"));
-    assert!(used_types.contains_key("Cinema"));
-    assert!(used_types.contains_key("Movie"));
-    assert!(used_types.contains_key("Actor"));
+    assert!(used_types.contains_key("PetStore"));
+    assert!(used_types.contains_key("PetShop"));
+    assert!(used_types.contains_key("Pet"));
+    assert!(used_types.contains_key("Owner"));
     assert_eq!(used_types.len(), 4);
 }
 
@@ -127,22 +127,22 @@ fn test_collect_used_types_deeply_nested() {
 fn test_collect_used_types_option_wrapper() {
     let generator = BaseGenerator::new();
     
-    let commands = vec![create_command_with_params("update_cinema", vec![("cinema", "Option<Cinema>")])];
+    let commands = vec![create_command_with_params("update_petshop", vec![("petshop", "Option<PetShop>")])];
     
     let mut structs = HashMap::new();
-    structs.insert("Cinema".to_string(), create_struct_with_fields("Cinema", vec![
-        ("movies", "Vec<Movie>"),
+    structs.insert("PetShop".to_string(), create_struct_with_fields("PetShop", vec![
+        ("pets", "Vec<Pet>"),
     ]));
     
-    structs.insert("Movie".to_string(), create_struct_with_fields("Movie", vec![
-        ("title", "String"),
+    structs.insert("Pet".to_string(), create_struct_with_fields("Pet", vec![
+        ("name", "String"),
     ]));
     
     let used_types = generator.collect_used_types(&commands, &structs);
     
-    // Both Cinema and Movie should be collected even with Option wrapper
-    assert!(used_types.contains_key("Cinema"));
-    assert!(used_types.contains_key("Movie"));
+    // Both PetShop and Pet should be collected even with Option wrapper
+    assert!(used_types.contains_key("PetShop"));
+    assert!(used_types.contains_key("Pet"));
     assert_eq!(used_types.len(), 2);
 }
 
@@ -150,15 +150,15 @@ fn test_collect_used_types_option_wrapper() {
 fn test_collect_used_types_result_wrapper() {
     let generator = BaseGenerator::new();
     
-    let commands = vec![create_command_with_return("get_cinema_result", "Result<Cinema, AppError>")];
+    let commands = vec![create_command_with_return("get_petshop_result", "Result<PetShop, AppError>")];
     
     let mut structs = HashMap::new();
-    structs.insert("Cinema".to_string(), create_struct_with_fields("Cinema", vec![
-        ("movies", "Vec<Movie>"),
+    structs.insert("PetShop".to_string(), create_struct_with_fields("PetShop", vec![
+        ("pets", "Vec<Pet>"),
     ]));
     
-    structs.insert("Movie".to_string(), create_struct_with_fields("Movie", vec![
-        ("title", "String"),
+    structs.insert("Pet".to_string(), create_struct_with_fields("Pet", vec![
+        ("name", "String"),
     ]));
     
     structs.insert("AppError".to_string(), create_struct_with_fields("AppError", vec![
@@ -167,9 +167,9 @@ fn test_collect_used_types_result_wrapper() {
     
     let used_types = generator.collect_used_types(&commands, &structs);
     
-    // Cinema, Movie, and AppError should all be collected
-    assert!(used_types.contains_key("Cinema"));
-    assert!(used_types.contains_key("Movie"));
+    // PetShop, Pet, and AppError should all be collected
+    assert!(used_types.contains_key("PetShop"));
+    assert!(used_types.contains_key("Pet"));
     assert!(used_types.contains_key("AppError"));
     assert_eq!(used_types.len(), 3);
 }
@@ -179,29 +179,29 @@ fn test_collect_used_types_multiple_commands() {
     let generator = BaseGenerator::new();
     
     let commands = vec![
-        create_command_with_params("create_cinema", vec![("cinema", "Cinema")]),
-        create_command_with_return("get_restaurant", "Restaurant"),
+        create_command_with_params("create_petshop", vec![("petshop", "PetShop")]),
+        create_command_with_return("get_veterinarian", "Veterinarian"),
     ];
     
     let mut structs = HashMap::new();
     
-    // Cinema uses Movie
-    structs.insert("Cinema".to_string(), create_struct_with_fields("Cinema", vec![
-        ("movies", "Vec<Movie>"),
+    // PetShop uses Pet
+    structs.insert("PetShop".to_string(), create_struct_with_fields("PetShop", vec![
+        ("pets", "Vec<Pet>"),
     ]));
     
-    structs.insert("Movie".to_string(), create_struct_with_fields("Movie", vec![
-        ("title", "String"),
-    ]));
-    
-    // Restaurant uses Food (separate hierarchy)
-    structs.insert("Restaurant".to_string(), create_struct_with_fields("Restaurant", vec![
-        ("menu", "Vec<Food>"),
-    ]));
-    
-    structs.insert("Food".to_string(), create_struct_with_fields("Food", vec![
+    structs.insert("Pet".to_string(), create_struct_with_fields("Pet", vec![
         ("name", "String"),
-        ("price", "f64"),
+    ]));
+    
+    // Veterinarian uses Treatment (separate hierarchy)
+    structs.insert("Veterinarian".to_string(), create_struct_with_fields("Veterinarian", vec![
+        ("treatments", "Vec<Treatment>"),
+    ]));
+    
+    structs.insert("Treatment".to_string(), create_struct_with_fields("Treatment", vec![
+        ("name", "String"),
+        ("cost", "f64"),
     ]));
     
     // Unused struct that shouldn't be collected
@@ -211,11 +211,11 @@ fn test_collect_used_types_multiple_commands() {
     
     let used_types = generator.collect_used_types(&commands, &structs);
     
-    // Should collect Cinema->Movie and Restaurant->Food, but not UnusedStruct
-    assert!(used_types.contains_key("Cinema"));
-    assert!(used_types.contains_key("Movie"));
-    assert!(used_types.contains_key("Restaurant"));
-    assert!(used_types.contains_key("Food"));
+    // Should collect PetShop->Pet and Veterinarian->Treatment, but not UnusedStruct
+    assert!(used_types.contains_key("PetShop"));
+    assert!(used_types.contains_key("Pet"));
+    assert!(used_types.contains_key("Veterinarian"));
+    assert!(used_types.contains_key("Treatment"));
     assert!(!used_types.contains_key("UnusedStruct"));
     assert_eq!(used_types.len(), 4);
 }
@@ -279,22 +279,22 @@ fn test_collect_used_types_no_nested_dependencies() {
 fn test_collect_used_types_reference_types() {
     let generator = BaseGenerator::new();
     
-    let commands = vec![create_command_with_params("process_data", vec![("cinema", "&Cinema")])];
+    let commands = vec![create_command_with_params("process_data", vec![("petshop", "&PetShop")])];
     
     let mut structs = HashMap::new();
-    structs.insert("Cinema".to_string(), create_struct_with_fields("Cinema", vec![
-        ("movies", "Vec<Movie>"),
+    structs.insert("PetShop".to_string(), create_struct_with_fields("PetShop", vec![
+        ("pets", "Vec<Pet>"),
     ]));
     
-    structs.insert("Movie".to_string(), create_struct_with_fields("Movie", vec![
-        ("title", "&str"),
+    structs.insert("Pet".to_string(), create_struct_with_fields("Pet", vec![
+        ("name", "&str"),
     ]));
     
     let used_types = generator.collect_used_types(&commands, &structs);
     
     // Should handle reference types and collect nested dependencies
-    assert!(used_types.contains_key("Cinema"));
-    assert!(used_types.contains_key("Movie"));
+    assert!(used_types.contains_key("PetShop"));
+    assert!(used_types.contains_key("Pet"));
     assert_eq!(used_types.len(), 2);
 }
 
@@ -302,27 +302,27 @@ fn test_collect_used_types_reference_types() {
 fn test_collect_used_types_complex_nested_wrappers() {
     let generator = BaseGenerator::new();
     
-    let commands = vec![create_command_with_return("complex_return", "Option<Vec<Result<Cinema, String>>>")];
+    let commands = vec![create_command_with_return("complex_return", "Option<Vec<Result<PetShop, String>>>")];
     
     let mut structs = HashMap::new();
-    structs.insert("Cinema".to_string(), create_struct_with_fields("Cinema", vec![
-        ("movies", "HashMap<String, Movie>"),
+    structs.insert("PetShop".to_string(), create_struct_with_fields("PetShop", vec![
+        ("pets", "HashMap<String, Pet>"),
     ]));
     
-    structs.insert("Movie".to_string(), create_struct_with_fields("Movie", vec![
-        ("actors", "Vec<Actor>"),
+    structs.insert("Pet".to_string(), create_struct_with_fields("Pet", vec![
+        ("caretakers", "Vec<Caretaker>"),
     ]));
     
-    structs.insert("Actor".to_string(), create_struct_with_fields("Actor", vec![
+    structs.insert("Caretaker".to_string(), create_struct_with_fields("Caretaker", vec![
         ("name", "String"),
     ]));
     
     let used_types = generator.collect_used_types(&commands, &structs);
     
     // Should unwrap complex nested types and collect all dependencies
-    assert!(used_types.contains_key("Cinema"));
-    assert!(used_types.contains_key("Movie"));
-    assert!(used_types.contains_key("Actor"));
+    assert!(used_types.contains_key("PetShop"));
+    assert!(used_types.contains_key("Pet"));
+    assert!(used_types.contains_key("Caretaker"));
     assert_eq!(used_types.len(), 3);
 }
 
@@ -330,61 +330,61 @@ fn test_collect_used_types_complex_nested_wrappers() {
 fn test_collect_used_types_preserves_struct_data() {
     let generator = BaseGenerator::new();
     
-    let commands = vec![create_command_with_params("get_cinema", vec![("cinema", "Cinema")])];
+    let commands = vec![create_command_with_params("get_petshop", vec![("petshop", "PetShop")])];
     
     let mut structs = HashMap::new();
-    let original_cinema = create_struct_with_fields("Cinema", vec![
+    let original_petshop = create_struct_with_fields("PetShop", vec![
         ("name", "String"),
-        ("movies", "Vec<Movie>"),
+        ("pets", "Vec<Pet>"),
         ("capacity", "i32"),
     ]);
     
-    let original_movie = create_struct_with_fields("Movie", vec![
-        ("title", "String"),
-        ("year", "i32"),
+    let original_pet = create_struct_with_fields("Pet", vec![
+        ("name", "String"),
+        ("age", "i32"),
     ]);
     
-    structs.insert("Cinema".to_string(), original_cinema.clone());
-    structs.insert("Movie".to_string(), original_movie.clone());
+    structs.insert("PetShop".to_string(), original_petshop.clone());
+    structs.insert("Pet".to_string(), original_pet.clone());
     
     let used_types = generator.collect_used_types(&commands, &structs);
     
     // Verify that the collected structs maintain their original data
-    let collected_cinema = used_types.get("Cinema").unwrap();
-    let collected_movie = used_types.get("Movie").unwrap();
+    let collected_petshop = used_types.get("PetShop").unwrap();
+    let collected_pet = used_types.get("Pet").unwrap();
     
-    assert_eq!(collected_cinema.name, original_cinema.name);
-    assert_eq!(collected_cinema.fields.len(), original_cinema.fields.len());
-    assert_eq!(collected_cinema.fields[0].name, "name");
-    assert_eq!(collected_cinema.fields[1].name, "movies");
-    assert_eq!(collected_cinema.fields[2].name, "capacity");
+    assert_eq!(collected_petshop.name, original_petshop.name);
+    assert_eq!(collected_petshop.fields.len(), original_petshop.fields.len());
+    assert_eq!(collected_petshop.fields[0].name, "name");
+    assert_eq!(collected_petshop.fields[1].name, "pets");
+    assert_eq!(collected_petshop.fields[2].name, "capacity");
     
-    assert_eq!(collected_movie.name, original_movie.name);
-    assert_eq!(collected_movie.fields.len(), original_movie.fields.len());
-    assert_eq!(collected_movie.fields[0].name, "title");
-    assert_eq!(collected_movie.fields[1].name, "year");
+    assert_eq!(collected_pet.name, original_pet.name);
+    assert_eq!(collected_pet.fields.len(), original_pet.fields.len());
+    assert_eq!(collected_pet.fields[0].name, "name");
+    assert_eq!(collected_pet.fields[1].name, "age");
 }
 
 #[test]
 fn test_collect_used_types_hashmap_values() {
     let generator = BaseGenerator::new();
     
-    let commands = vec![create_command_with_params("process_data", vec![("data", "HashMap<String, Cinema>")])];
+    let commands = vec![create_command_with_params("process_data", vec![("data", "HashMap<String, PetShop>")])];
     
     let mut structs = HashMap::new();
-    structs.insert("Cinema".to_string(), create_struct_with_fields("Cinema", vec![
-        ("movies", "Vec<Movie>"),
+    structs.insert("PetShop".to_string(), create_struct_with_fields("PetShop", vec![
+        ("pets", "Vec<Pet>"),
     ]));
     
-    structs.insert("Movie".to_string(), create_struct_with_fields("Movie", vec![
-        ("title", "String"),
+    structs.insert("Pet".to_string(), create_struct_with_fields("Pet", vec![
+        ("name", "String"),
     ]));
     
     let used_types = generator.collect_used_types(&commands, &structs);
     
-    // Both Cinema and Movie should be collected from HashMap value type
-    assert!(used_types.contains_key("Cinema"));
-    assert!(used_types.contains_key("Movie"));
+    // Both PetShop and Pet should be collected from HashMap value type
+    assert!(used_types.contains_key("PetShop"));
+    assert!(used_types.contains_key("Pet"));
     assert_eq!(used_types.len(), 2);
 }
 
@@ -392,29 +392,29 @@ fn test_collect_used_types_hashmap_values() {
 fn test_collect_used_types_hashmap_keys_and_values() {
     let generator = BaseGenerator::new();
     
-    let commands = vec![create_command_with_params("process_mapping", vec![("mapping", "HashMap<UserId, UserProfile>")])];
+    let commands = vec![create_command_with_params("process_mapping", vec![("mapping", "HashMap<PetId, PetProfile>")])];
     
     let mut structs = HashMap::new();
-    structs.insert("UserId".to_string(), create_struct_with_fields("UserId", vec![
+    structs.insert("PetId".to_string(), create_struct_with_fields("PetId", vec![
         ("id", "i32"),
     ]));
     
-    structs.insert("UserProfile".to_string(), create_struct_with_fields("UserProfile", vec![
+    structs.insert("PetProfile".to_string(), create_struct_with_fields("PetProfile", vec![
         ("name", "String"),
-        ("preferences", "Vec<Preference>"),
+        ("attributes", "Vec<PetAttribute>"),
     ]));
     
-    structs.insert("Preference".to_string(), create_struct_with_fields("Preference", vec![
+    structs.insert("PetAttribute".to_string(), create_struct_with_fields("PetAttribute", vec![
         ("key", "String"),
         ("value", "String"),
     ]));
     
     let used_types = generator.collect_used_types(&commands, &structs);
     
-    // Should collect UserId, UserProfile, and Preference
-    assert!(used_types.contains_key("UserId"));
-    assert!(used_types.contains_key("UserProfile"));
-    assert!(used_types.contains_key("Preference"));
+    // Should collect PetId, PetProfile, and PetAttribute
+    assert!(used_types.contains_key("PetId"));
+    assert!(used_types.contains_key("PetProfile"));
+    assert!(used_types.contains_key("PetAttribute"));
     assert_eq!(used_types.len(), 3);
 }
 
@@ -422,33 +422,33 @@ fn test_collect_used_types_hashmap_keys_and_values() {
 fn test_collect_used_types_tuple_parameters() {
     let generator = BaseGenerator::new();
     
-    let commands = vec![create_command_with_params("process_tuple", vec![("data", "(User, Product, Order)")])];
+    let commands = vec![create_command_with_params("process_tuple", vec![("data", "(Owner, Pet, Appointment)")])];
     
     let mut structs = HashMap::new();
-    structs.insert("User".to_string(), create_struct_with_fields("User", vec![
+    structs.insert("Owner".to_string(), create_struct_with_fields("Owner", vec![
         ("name", "String"),
     ]));
     
-    structs.insert("Product".to_string(), create_struct_with_fields("Product", vec![
+    structs.insert("Pet".to_string(), create_struct_with_fields("Pet", vec![
         ("name", "String"),
-        ("category", "Category"),
+        ("breed", "Breed"),
     ]));
     
-    structs.insert("Order".to_string(), create_struct_with_fields("Order", vec![
+    structs.insert("Appointment".to_string(), create_struct_with_fields("Appointment", vec![
         ("id", "i32"),
     ]));
     
-    structs.insert("Category".to_string(), create_struct_with_fields("Category", vec![
+    structs.insert("Breed".to_string(), create_struct_with_fields("Breed", vec![
         ("name", "String"),
     ]));
     
     let used_types = generator.collect_used_types(&commands, &structs);
     
-    // Should collect User, Product, Order, and Category (nested from Product)
-    assert!(used_types.contains_key("User"));
-    assert!(used_types.contains_key("Product"));
-    assert!(used_types.contains_key("Order"));
-    assert!(used_types.contains_key("Category"));
+    // Should collect Owner, Pet, Appointment, and Breed (nested from Pet)
+    assert!(used_types.contains_key("Owner"));
+    assert!(used_types.contains_key("Pet"));
+    assert!(used_types.contains_key("Appointment"));
+    assert!(used_types.contains_key("Breed"));
     assert_eq!(used_types.len(), 4);
 }
 
@@ -457,15 +457,15 @@ fn test_collect_used_types_mixed_wrappers() {
     let generator = BaseGenerator::new();
     
     // Test complex nested structure with multiple wrapper types
-    let commands = vec![create_command_with_return("complex_operation", "Result<Option<Vec<HashMap<String, Cinema>>>, AppError>")];
+    let commands = vec![create_command_with_return("complex_operation", "Result<Option<Vec<HashMap<String, PetShop>>>, AppError>")];
     
     let mut structs = HashMap::new();
-    structs.insert("Cinema".to_string(), create_struct_with_fields("Cinema", vec![
-        ("movies", "Vec<Movie>"),
+    structs.insert("PetShop".to_string(), create_struct_with_fields("PetShop", vec![
+        ("pets", "Vec<Pet>"),
     ]));
     
-    structs.insert("Movie".to_string(), create_struct_with_fields("Movie", vec![
-        ("title", "String"),
+    structs.insert("Pet".to_string(), create_struct_with_fields("Pet", vec![
+        ("name", "String"),
     ]));
     
     structs.insert("AppError".to_string(), create_struct_with_fields("AppError", vec![
@@ -475,9 +475,9 @@ fn test_collect_used_types_mixed_wrappers() {
     
     let used_types = generator.collect_used_types(&commands, &structs);
     
-    // Should unwrap all nested wrappers and collect Cinema, Movie, and AppError
-    assert!(used_types.contains_key("Cinema"));
-    assert!(used_types.contains_key("Movie"));
+    // Should unwrap all nested wrappers and collect PetShop, Pet, and AppError
+    assert!(used_types.contains_key("PetShop"));
+    assert!(used_types.contains_key("Pet"));
     assert!(used_types.contains_key("AppError"));
     assert_eq!(used_types.len(), 3);
 }
