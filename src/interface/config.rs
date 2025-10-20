@@ -29,10 +29,6 @@ pub struct GenerateConfig {
     #[serde(default = "default_validation_library")]
     pub validation_library: String,
 
-    /// Tauri app identifier (e.g., "com.company.app")
-    #[serde(default)]
-    pub tauri_identifier: Option<String>,
-
     /// Enable verbose output
     #[serde(default)]
     pub verbose: Option<bool>,
@@ -76,7 +72,6 @@ impl Default for GenerateConfig {
             project_path: default_project_path(),
             output_path: default_output_path(),
             validation_library: default_validation_library(),
-            tauri_identifier: None,
             verbose: Some(false),
             visualize_deps: Some(false),
             include_private: Some(false),
@@ -171,19 +166,16 @@ impl GenerateConfig {
 
     /// Save configuration to Tauri configuration file
     pub fn save_to_tauri_config<P: AsRef<Path>>(&self, path: P) -> Result<(), ConfigError> {
-        // Read existing tauri.conf.json or create new one
-        let mut tauri_config = if path.as_ref().exists() {
-            let content = fs::read_to_string(&path)?;
-            serde_json::from_str::<serde_json::Value>(&content)?
-        } else {
-            // Create a minimal valid Tauri v2 configuration
-            // "identifier" is a required field in Tauri v2
-            let identifier = self.tauri_identifier.clone().unwrap_or_else(|| "com.tauri.app".to_string());
-            serde_json::json!({
-                "identifier": identifier,
-                "plugins": {}
-            })
-        };
+        // Read existing tauri.conf.json - we require it to exist
+        if !path.as_ref().exists() {
+            return Err(ConfigError::InvalidConfig(format!(
+                "tauri.conf.json not found at {}. Please ensure you have a Tauri project initialized.",
+                path.as_ref().display()
+            )));
+        }
+
+        let content = fs::read_to_string(&path)?;
+        let mut tauri_config = serde_json::from_str::<serde_json::Value>(&content)?;
 
         // Create typegen plugin configuration
         let typegen_config = serde_json::json!({
@@ -202,14 +194,14 @@ impl GenerateConfig {
         if !tauri_config.is_object() {
             tauri_config = serde_json::json!({});
         }
-        
+
         let tauri_obj = tauri_config.as_object_mut().unwrap();
-        
+
         // Create plugins section if it doesn't exist
         if !tauri_obj.contains_key("plugins") {
             tauri_obj.insert("plugins".to_string(), serde_json::json!({}));
         }
-        
+
         // Insert typegen configuration into plugins
         if let Some(plugins) = tauri_obj.get_mut("plugins") {
             if let Some(plugins_obj) = plugins.as_object_mut() {
@@ -256,9 +248,6 @@ impl GenerateConfig {
         }
         if other.validation_library != default_validation_library() {
             self.validation_library = other.validation_library.clone();
-        }
-        if other.tauri_identifier.is_some() {
-            self.tauri_identifier = other.tauri_identifier.clone();
         }
         if other.verbose.is_some() {
             self.verbose = other.verbose;
@@ -367,9 +356,9 @@ mod tests {
         let temp_dir = tempfile::TempDir::new().unwrap();
         let project_path = temp_dir.path().join("src-tauri");
         std::fs::create_dir_all(&project_path).unwrap();
-        
+
         let tauri_conf_path = temp_dir.path().join("tauri.conf.json");
-        
+
         // Create existing tauri.conf.json with some content
         let existing_content = serde_json::json!({
             "package": {
@@ -387,8 +376,12 @@ mod tests {
                 }
             }
         });
-        
-        fs::write(&tauri_conf_path, serde_json::to_string_pretty(&existing_content).unwrap()).unwrap();
+
+        fs::write(
+            &tauri_conf_path,
+            serde_json::to_string_pretty(&existing_content).unwrap(),
+        )
+        .unwrap();
 
         let config = GenerateConfig {
             project_path: project_path.to_string_lossy().to_string(),
@@ -410,10 +403,13 @@ mod tests {
         assert_eq!(updated_json["package"]["version"], "1.0.0");
         assert_eq!(updated_json["tauri"]["allowlist"]["all"], false);
         assert_eq!(updated_json["plugins"]["shell"]["all"], false);
-        
+
         // Check that typegen config was added
         assert_eq!(updated_json["plugins"]["typegen"]["outputPath"], "./test");
-        assert_eq!(updated_json["plugins"]["typegen"]["validationLibrary"], "zod");
+        assert_eq!(
+            updated_json["plugins"]["typegen"]["validationLibrary"],
+            "zod"
+        );
         assert_eq!(updated_json["plugins"]["typegen"]["verbose"], true);
     }
 
@@ -422,9 +418,9 @@ mod tests {
         let temp_dir = tempfile::TempDir::new().unwrap();
         let project_path = temp_dir.path().join("src-tauri");
         std::fs::create_dir_all(&project_path).unwrap();
-        
+
         let tauri_conf_path = temp_dir.path().join("tauri.conf.json");
-        
+
         // Create existing tauri.conf.json without plugins section
         let existing_content = serde_json::json!({
             "package": {
@@ -437,8 +433,12 @@ mod tests {
                 }
             }
         });
-        
-        fs::write(&tauri_conf_path, serde_json::to_string_pretty(&existing_content).unwrap()).unwrap();
+
+        fs::write(
+            &tauri_conf_path,
+            serde_json::to_string_pretty(&existing_content).unwrap(),
+        )
+        .unwrap();
 
         let config = GenerateConfig {
             project_path: project_path.to_string_lossy().to_string(),
@@ -457,10 +457,13 @@ mod tests {
         // Check that existing content is preserved
         assert_eq!(updated_json["package"]["productName"], "My App");
         assert_eq!(updated_json["tauri"]["allowlist"]["all"], false);
-        
+
         // Check that plugins section was created with typegen config
         assert!(updated_json["plugins"].is_object());
         assert_eq!(updated_json["plugins"]["typegen"]["outputPath"], "./test");
-        assert_eq!(updated_json["plugins"]["typegen"]["validationLibrary"], "none");
+        assert_eq!(
+            updated_json["plugins"]["typegen"]["validationLibrary"],
+            "none"
+        );
     }
 }

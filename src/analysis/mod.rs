@@ -48,8 +48,18 @@ impl CommandAnalyzer {
         &mut self,
         project_path: &str,
     ) -> Result<Vec<CommandInfo>, Box<dyn std::error::Error>> {
+        self.analyze_project_with_verbose(project_path, false)
+    }
+
+    /// Analyze a complete project for Tauri commands and types with verbose output
+    pub fn analyze_project_with_verbose(
+        &mut self,
+        project_path: &str,
+        verbose: bool,
+    ) -> Result<Vec<CommandInfo>, Box<dyn std::error::Error>> {
         // Single pass: Parse all Rust files and cache ASTs
-        self.ast_cache.parse_and_cache_all_files(project_path)?;
+        self.ast_cache
+            .parse_and_cache_all_files(project_path, verbose)?;
 
         // Extract commands from cached ASTs
         let file_paths: Vec<PathBuf> = self.ast_cache.keys().cloned().collect();
@@ -59,7 +69,9 @@ impl CommandAnalyzer {
         // Process each file - using functional style where possible
         for file_path in file_paths {
             if let Some(parsed_file) = self.ast_cache.get_cloned(&file_path) {
-                println!("🔍 Analyzing file: {}", parsed_file.path.display());
+                if verbose {
+                    println!("🔍 Analyzing file: {}", parsed_file.path.display());
+                }
 
                 // Extract commands from this file's AST
                 let file_commands = self.command_parser.extract_commands_from_ast(
@@ -83,17 +95,21 @@ impl CommandAnalyzer {
             }
         }
 
-        println!("🔍 Type names to discover: {:?}", type_names_to_discover);
+        if verbose {
+            println!("🔍 Type names to discover: {:?}", type_names_to_discover);
+        }
 
         // Lazy type resolution: Resolve types on demand using dependency graph
         self.resolve_types_lazily(&type_names_to_discover)?;
 
-        println!(
-            "🏗️  Discovered {} structs total",
-            self.discovered_structs.len()
-        );
-        for (name, info) in &self.discovered_structs {
-            println!("  - {}: {} fields", name, info.fields.len());
+        if verbose {
+            println!(
+                "🏗️  Discovered {} structs total",
+                self.discovered_structs.len()
+            );
+            for (name, info) in &self.discovered_structs {
+                println!("  - {}: {} fields", name, info.fields.len());
+            }
         }
 
         Ok(commands)

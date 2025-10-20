@@ -1,4 +1,6 @@
+use indicatif::{ProgressBar, ProgressStyle};
 use std::fmt;
+use std::time::Duration;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogLevel {
@@ -45,11 +47,15 @@ impl Logger {
             let icon = match level {
                 LogLevel::Error => "❌",
                 LogLevel::Warning => "⚠️",
-                LogLevel::Info => "ℹ️",
+                LogLevel::Info => "",
                 LogLevel::Debug => "🔍",
                 LogLevel::Verbose => "💬",
             };
-            println!("{} {}", icon, message);
+            if icon.is_empty() {
+                println!("{}", message);
+            } else {
+                println!("{} {}", icon, message);
+            }
         }
     }
 
@@ -72,10 +78,15 @@ impl Logger {
     pub fn verbose(&self, message: &str) {
         self.log(LogLevel::Verbose, message);
     }
+
+    pub fn is_verbose(&self) -> bool {
+        self.verbose
+    }
 }
 
 pub struct ProgressReporter {
     logger: Logger,
+    progress_bar: Option<ProgressBar>,
     current_step: usize,
     total_steps: usize,
     step_name: String,
@@ -83,8 +94,23 @@ pub struct ProgressReporter {
 
 impl ProgressReporter {
     pub fn new(logger: Logger, total_steps: usize) -> Self {
+        let progress_bar = if !logger.is_verbose() {
+            let pb = ProgressBar::new_spinner();
+            pb.set_style(
+                ProgressStyle::default_spinner()
+                    .template("{spinner:.cyan} {msg}")
+                    .unwrap()
+                    .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
+            );
+            pb.enable_steady_tick(Duration::from_millis(100));
+            Some(pb)
+        } else {
+            None
+        };
+
         Self {
             logger,
+            progress_bar,
             current_step: 0,
             total_steps,
             step_name: String::new(),
@@ -95,55 +121,85 @@ impl ProgressReporter {
         self.current_step += 1;
         self.step_name = step_name.to_string();
 
-        if self.logger.should_log(LogLevel::Info) {
+        if self.logger.is_verbose() {
+            // Verbose mode: use old-style logging
             let progress = if self.total_steps > 0 {
                 format!(" ({}/{})", self.current_step, self.total_steps)
             } else {
                 String::new()
             };
             self.logger.info(&format!("🚀 {}{}", step_name, progress));
-        }
-    }
-
-    pub fn complete_step(&self, message: Option<&str>) {
-        if let Some(msg) = message {
-            self.logger
-                .info(&format!("✅ {} - {}", self.step_name, msg));
         } else {
-            self.logger.info(&format!("✅ {}", self.step_name));
+            // Non-verbose mode: update the single progress bar
+            if let Some(ref pb) = self.progress_bar {
+                pb.set_message(format!(
+                    "{} ({}/{})",
+                    step_name, self.current_step, self.total_steps
+                ));
+            }
         }
     }
 
-    pub fn fail_step(&self, error: &str) {
+    pub fn complete_step(&mut self, message: Option<&str>) {
+        if self.logger.is_verbose() {
+            // Verbose mode: use old-style logging
+            if let Some(msg) = message {
+                self.logger
+                    .info(&format!("✅ {} - {}", self.step_name, msg));
+            } else {
+                self.logger.info(&format!("✅ {}", self.step_name));
+            }
+        }
+        // In non-verbose mode, we just continue to the next step (no need to "complete")
+    }
+
+    pub fn fail_step(&mut self, error: &str) {
+        if let Some(ref pb) = self.progress_bar {
+            pb.finish_with_message(format!("✗ {} - {}", self.step_name, error));
+        }
         self.logger
             .error(&format!("Failed {}: {}", self.step_name, error));
     }
 
     pub fn update_progress(&self, message: &str) {
-        self.logger.verbose(&format!("  → {}", message));
+        // Only log in verbose mode
+        self.logger.verbose(message);
     }
 
     pub fn finish(&self, total_message: &str) {
-        self.logger.info(&format!("🎉 {}", total_message));
+        if let Some(ref pb) = self.progress_bar {
+            pb.finish_and_clear();
+        }
+        println!("✓ {}", total_message);
     }
 }
 
-pub fn print_usage_info(output_path: &str, generated_files: &[String]) {
-    println!("\n💡 Usage in your frontend:");
+impl Drop for ProgressReporter {
+    fn drop(&mut self) {
+        // Ensure progress bar is cleared when reporter is dropped
+        if let Some(ref pb) = self.progress_bar {
+            pb.finish_and_clear();
+        }
+    }
+}
+
+pub fn print_usage_info(output_path: &str, generated_files: &[String], command_count: usize) {
+    println!(
+        "\n✓ Generated TypeScript bindings for {} command{}",
+        command_count,
+        if command_count == 1 { "" } else { "s" }
+    );
+    println!("📁 Location: {}", output_path);
+
+    println!("\n💡 Import in your frontend:");
     for file in generated_files {
         if file.ends_with("index.ts") || file.ends_with("index.js") {
             println!(
-                "  import {{ /* your commands */ }} from '{}/{}'",
-                output_path.trim_end_matches('/'),
-                file.trim_end_matches(".ts").trim_end_matches(".js")
+                "  import {{ /* commands */ }} from '{}'",
+                output_path.trim_end_matches('/')
             );
             break;
         }
-    }
-
-    println!("\n📁 Generated files:");
-    for file in generated_files {
-        println!("  📄 {}/{}", output_path, file);
     }
 }
 

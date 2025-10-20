@@ -38,7 +38,6 @@ fn main() {
                 generated_path,
                 output_path,
                 validation_library,
-                tauri_identifier,
                 verbose,
                 visualize_deps,
                 force,
@@ -48,7 +47,6 @@ fn main() {
                     generated_path,
                     output_path,
                     validation_library,
-                    tauri_identifier,
                     verbose,
                     visualize_deps,
                     force,
@@ -112,7 +110,8 @@ fn run_generate(
     // Analyze and generate
     reporter.start_step("Analyzing Tauri commands");
     let mut analyzer = CommandAnalyzer::new();
-    let commands = analyzer.analyze_project(&config.project_path)?;
+    let commands =
+        analyzer.analyze_project_with_verbose(&config.project_path, config.is_verbose())?;
 
     if config.is_verbose() {
         reporter.update_progress(&format!("Found {} Tauri commands", commands.len()));
@@ -176,11 +175,8 @@ fn run_generate(
     }
 
     // Print summary
-    reporter.finish(&format!(
-        "Successfully generated TypeScript bindings for {} commands",
-        commands.len()
-    ));
-    print_usage_info(&config.output_path, &generated_files);
+    reporter.finish("Generation complete");
+    print_usage_info(&config.output_path, &generated_files, commands.len());
 
     Ok(())
 }
@@ -188,9 +184,8 @@ fn run_generate(
 fn run_init(
     project_path: PathBuf,
     generated_path: PathBuf,
-    output_path: PathBuf,
+    mut output_path: PathBuf,
     validation_library: String,
-    tauri_identifier: Option<String>,
     verbose: bool,
     visualize_deps: bool,
     force: bool,
@@ -199,8 +194,24 @@ fn run_init(
 
     logger.info("🚀 Initializing Tauri TypeScript generation configuration");
 
-    // Check if target file exists
-    if output_path.exists() && !force {
+    // If output path is just "tauri.conf.json" (default), place it in the project path
+    let has_no_meaningful_parent = output_path
+        .parent()
+        .map(|p| p.as_os_str().is_empty())
+        .unwrap_or(true);
+
+    if output_path.file_name().and_then(|n| n.to_str()) == Some("tauri.conf.json")
+        && has_no_meaningful_parent
+    {
+        output_path = project_path.join("tauri.conf.json");
+    }
+
+    let is_tauri_config =
+        output_path.file_name().and_then(|n| n.to_str()) == Some("tauri.conf.json");
+
+    // For tauri.conf.json, we always update/merge (no force required)
+    // For custom config files, require force if they exist
+    if !is_tauri_config && output_path.exists() && !force {
         return Err(format!(
             "Configuration file already exists at {}. Use --force to overwrite.",
             output_path.display()
@@ -213,17 +224,27 @@ fn run_init(
         project_path: project_path.to_string_lossy().to_string(),
         output_path: generated_path.to_string_lossy().to_string(),
         validation_library,
-        tauri_identifier,
         verbose: Some(verbose),
         visualize_deps: Some(visualize_deps),
         ..Default::default()
     };
 
     // Determine file format and save
-    if output_path.file_name().and_then(|n| n.to_str()) == Some("tauri.conf.json") {
+    if is_tauri_config {
+        // For tauri.conf.json, require it to exist
+        if !output_path.exists() {
+            return Err(format!(
+                "tauri.conf.json not found at {}.\n\
+                 Please ensure you have a Tauri project initialized.\n\
+                 Run 'cargo tauri init' or use --output to specify a different config file.",
+                output_path.display()
+            )
+            .into());
+        }
+
         config.save_to_tauri_config(&output_path)?;
         logger.info(&format!(
-            "✅ Added typegen configuration to {}",
+            "✅ Updated typegen configuration in {}",
             output_path.display()
         ));
     } else {
@@ -237,7 +258,10 @@ fn run_init(
     // Print configuration summary
     logger.info("📋 Configuration summary:");
     logger.info(&format!("  • Project path: {}", config.project_path));
-    logger.info(&format!("  • Generated files output path: {}", config.output_path));
+    logger.info(&format!(
+        "  • Generated files output path: {}",
+        config.output_path
+    ));
     logger.info(&format!(
         "  • Validation library: {}",
         config.validation_library
@@ -257,7 +281,9 @@ fn run_init(
     )?;
 
     logger.info("");
-    logger.info("✨ Initialization complete! Your Tauri project is now set up for TypeScript generation.");
+    logger.info(
+        "✨ Initialization complete! Your Tauri project is now set up for TypeScript generation.",
+    );
     logger.info("💡 You can run 'cargo tauri-typegen generate' anytime to regenerate bindings.");
 
     Ok(())

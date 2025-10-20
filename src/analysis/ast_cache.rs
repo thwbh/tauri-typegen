@@ -37,8 +37,11 @@ impl AstCache {
     pub fn parse_and_cache_all_files(
         &mut self,
         project_path: &str,
+        verbose: bool,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        println!("🔄 Parsing and caching all Rust files in: {}", project_path);
+        if verbose {
+            println!("🔄 Parsing and caching all Rust files in: {}", project_path);
+        }
 
         for entry in WalkDir::new(project_path) {
             let entry = entry?;
@@ -52,14 +55,18 @@ impl AstCache {
                     continue;
                 }
 
-                println!("📄 Parsing file: {}", path.display());
+                if verbose {
+                    println!("📄 Parsing file: {}", path.display());
+                }
 
                 let content = std::fs::read_to_string(path)?;
                 match syn::parse_file(&content) {
                     Ok(ast) => {
                         let parsed_file = ParsedFile::new(ast, path.to_path_buf());
                         self.cache.insert(path.to_path_buf(), parsed_file);
-                        println!("✅ Successfully parsed: {}", path.display());
+                        if verbose {
+                            println!("✅ Successfully parsed: {}", path.display());
+                        }
                     }
                     Err(e) => {
                         eprintln!("❌ Failed to parse {}: {}", path.display(), e);
@@ -69,7 +76,9 @@ impl AstCache {
             }
         }
 
-        println!("📊 Cached {} Rust files", self.cache.len());
+        if verbose {
+            println!("📊 Cached {} Rust files", self.cache.len());
+        }
         Ok(())
     }
 

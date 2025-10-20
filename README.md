@@ -26,7 +26,7 @@ A command-line tool that automatically generates TypeScript models and bindings 
         - [Vue Example](#vue-example)
         - [Svelte Example](#svelte-example)
     - [Benefits](#benefits-of-using-generated-bindings)
-- [Generated Files](#generated-files)
+- [TypeScript Compatibility](#typescript-compatibility)
 - [API Reference](#api-reference)
 - [Configuration Options](#configuration-options)
 - [Development](#development)
@@ -74,7 +74,6 @@ Options:
   -g, --generated-path <PATH>    Output path for generated files [default: ./src/generated]
   -o, --output <PATH>            Output path for config file [default: tauri.conf.json]
   -v, --validation <LIBRARY>     Validation library: zod or none [default: zod]
-  -i, --identifier <IDENTIFIER>  Tauri app identifier (e.g., "com.company.app") [default: com.tauri.app]
       --verbose                  Verbose output
       --visualize-deps           Generate dependency graph visualization
       --force                    Force overwrite existing configuration
@@ -104,20 +103,20 @@ npm install @thwbh/tauri-plugin-typegen
 
 #### Initialize Configuration
 
-Create a configuration file for your project:
+Add typegen configuration to your existing Tauri project:
 
 ```bash
+# Add configuration to your existing tauri.conf.json (default)
+cargo tauri-typegen init
+
+# Specify custom validation library
+cargo tauri-typegen init --validation none
+
 # Create a standalone config file
 cargo tauri-typegen init --output my-config.json --validation zod
-
-# Or add configuration to your tauri.conf.json with a custom identifier
-cargo tauri-typegen init --output tauri.conf.json --validation zod --identifier com.mycompany.myapp
-
-# Basic init with defaults (creates tauri.conf.json)
-cargo tauri-typegen init
 ```
 
-**Note**: When creating a new `tauri.conf.json`, the `--identifier` option specifies your app's unique identifier (e.g., `com.company.app`). If not provided, it defaults to `com.tauri.app`. This identifier is required by Tauri v2.
+**Note**: The `init` command requires an existing `tauri.conf.json` file in your Tauri project. It will update the file to add the `plugins.typegen` configuration section.
 
 #### Configuration File
 
@@ -128,13 +127,10 @@ Configuration can be stored in a standalone JSON file or within your `tauri.conf
   "project_path": "./src-tauri",
   "output_path": "./src/generated",
   "validation_library": "zod",
-  "tauri_identifier": "com.mycompany.myapp",
   "verbose": true,
   "visualize_deps": false
 }
 ```
-
-**Note**: The `tauri_identifier` field is only used when creating a new `tauri.conf.json` file. If the file already exists or you're using a standalone config file, this field is ignored.
 
 ### Package.json Integration
 
@@ -328,7 +324,7 @@ fn main() {
 After running the generator:
 
 ```
-src/lib/generated/
+src/generated/
 ├── types.ts                 # TypeScript interfaces
 ├── schemas.ts               # Zod validation schemas (if using zod)
 ├── commands.ts              # Typed command functions
@@ -631,15 +627,6 @@ Your IDE will provide full autocomplete and type hints for all generated functio
 #### ✅ Automatic Updates
 When you change your Rust commands, just re-run the generator to get updated TypeScript bindings.
 
-## Generated Files
-
-The plugin generates several files in your output directory:
-
-- **`types.ts`** - TypeScript interfaces for all command parameters and return types
-- **`schemas.ts`** - Validation schemas (if validation library is specified)
-- **`commands.ts`** - Strongly-typed command binding functions
-- **`index.ts`** - Barrel export file
-
 ## TypeScript Compatibility
 
 The generated TypeScript code is compatible with modern TypeScript environments and follows current best practices.
@@ -744,21 +731,6 @@ let files = generate_from_config(&config)?;
 - **`zod`** - Generates Zod schemas with validation
 - **`none`** - No validation schemas generated, only TypeScript types
 
-### Type Mapping
-
-The plugin automatically maps Rust types to TypeScript:
-
-| Rust Type | TypeScript Type |
-|-----------|----------------|
-| `String`, `&str` | `string` |
-| `i32`, `i64`, `f32`, `f64` | `number` |
-| `bool` | `boolean` |
-| `Option<T>` | `T \| null` |
-| `Vec<T>` | `T[]` |
-| `Result<T, E>` | `T` (error handling via Tauri) |
-
-Custom structs are generated as TypeScript interfaces.
-
 ## Example Project Structure
 
 ```
@@ -781,18 +753,6 @@ my-tauri-app/
 ```
 
 ## Development
-
-### Testing with LibreFit Example
-
-The plugin includes an example that demonstrates generating models for the LibreFit project:
-
-```bash
-cd examples/tauri-app
-npm install
-npm run tauri dev
-```
-
-Click "Analyze LibreFit Commands" to scan the LibreFit project and "Generate TypeScript Models" to create the bindings.
 
 ### Building the Plugin
 
