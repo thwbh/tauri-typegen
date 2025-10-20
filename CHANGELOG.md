@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] - 2025-10-20
+
+### Fixed
+- Fixed camelCase naming convention not being consistently applied to generated TypeScript types
+- Fixed configuration file not being properly loaded from `tauri.conf.json`
+- Fixed topological sorting and forward references in type dependency resolution after refactoring
+- Fixed CLI config loading to properly detect and use `tauri.conf.json` from project directory
+
+### Changed
+- Changed enum generation to use Zod native enums (`z.enum()`) instead of union types 
 ## [0.1.2] - 2025-10-20
 
 ### Fixed

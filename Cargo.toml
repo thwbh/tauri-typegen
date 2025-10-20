@@ -1,6 +1,6 @@
 [package]
 name = "tauri-plugin-typegen"
-version = "0.1.2"
+version = "0.1.3"
 authors = [ "Stefan Poindl" ]
 description = "A Tauri plugin that automatically generates TypeScript models and bindings from your Tauri commands"
 edition = "2021"
