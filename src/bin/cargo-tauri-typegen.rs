@@ -72,31 +72,52 @@ fn run_generate(
 
     // Load configuration
     reporter.start_step("Loading configuration");
-    let mut config = if let Some(config_path) = config_file {
+    let config = if let Some(config_path) = config_file {
+        // Explicit config file specified
         if config_path.exists() {
             GenerateConfig::from_file(config_path)?
         } else {
             return Err(format!("Configuration file not found: {}", config_path.display()).into());
         }
     } else {
-        // Try to load from tauri.conf.json if it exists
-        if std::path::Path::new("tauri.conf.json").exists() {
-            GenerateConfig::from_tauri_config("tauri.conf.json").unwrap_or_default()
-        } else {
-            GenerateConfig::default()
+        // Try to find tauri.conf.json in common locations
+        let possible_paths = vec![
+            PathBuf::from("tauri.conf.json"),              // Current directory
+            PathBuf::from("src-tauri/tauri.conf.json"),    // Common Tauri structure
+            PathBuf::from("../tauri.conf.json"),            // If running from src-tauri
+        ];
+
+        let mut config_loaded = false;
+        let mut config = GenerateConfig::default();
+
+        for path in possible_paths {
+            if path.exists() {
+                match GenerateConfig::from_tauri_config(&path) {
+                    Ok(loaded_config) => {
+                        config = loaded_config;
+                        config_loaded = true;
+                        break;
+                    }
+                    Err(_) => continue,
+                }
+            }
         }
+
+        if !config_loaded {
+            // No config file found, use CLI defaults
+            config = GenerateConfig {
+                project_path: project_path.to_string_lossy().to_string(),
+                output_path: output_path.to_string_lossy().to_string(),
+                validation_library,
+                verbose: Some(verbose),
+                visualize_deps: Some(visualize_deps),
+                ..Default::default()
+            };
+        }
+
+        config
     };
 
-    // Override with CLI arguments
-    let cli_config = GenerateConfig {
-        project_path: project_path.to_string_lossy().to_string(),
-        output_path: output_path.to_string_lossy().to_string(),
-        validation_library,
-        verbose: Some(verbose),
-        visualize_deps: Some(visualize_deps),
-        ..Default::default()
-    };
-    config.merge(&cli_config);
     reporter.complete_step(Some(&format!(
         "Using {} validation",
         config.validation_library
