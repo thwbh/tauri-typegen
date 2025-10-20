@@ -1,0 +1,11 @@
+{
+  "project_path": "./examples/tauri-app/src-tauri",
+  "output_path": "./test_init_new",
+  "validation_library": "zod",
+  "verbose": true,
+  "visualize_deps": false,
+  "include_private": false,
+  "type_mappings": null,
+  "exclude_patterns": null,
+  "include_patterns": null
+}

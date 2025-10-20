@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-analyze-commands"
+description = "Enables the analyze_commands command without any pre-configured scope."
+commands.allow = ["analyze_commands"]
+
+[[permission]]
+identifier = "deny-analyze-commands"
+description = "Denies the analyze_commands command without any pre-configured scope."
+commands.deny = ["analyze_commands"]

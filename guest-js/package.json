@@ -1,5 +1,5 @@
 {
-  "name": "tauri-plugin-typegen",
+  "name": "@thwbh/tauri-plugin-typegen",
   "version": "0.1.1",
   "description": "TypeScript bindings for tauri-plugin-typegen",
   "main": "index.ts",

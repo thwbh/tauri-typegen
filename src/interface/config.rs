@@ -29,6 +29,10 @@ pub struct GenerateConfig {
     #[serde(default = "default_validation_library")]
     pub validation_library: String,
 
+    /// Tauri app identifier (e.g., "com.company.app")
+    #[serde(default)]
+    pub tauri_identifier: Option<String>,
+
     /// Enable verbose output
     #[serde(default)]
     pub verbose: Option<bool>,
@@ -72,6 +76,7 @@ impl Default for GenerateConfig {
             project_path: default_project_path(),
             output_path: default_output_path(),
             validation_library: default_validation_library(),
+            tauri_identifier: None,
             verbose: Some(false),
             visualize_deps: Some(false),
             include_private: Some(false),
@@ -171,9 +176,11 @@ impl GenerateConfig {
             let content = fs::read_to_string(&path)?;
             serde_json::from_str::<serde_json::Value>(&content)?
         } else {
+            // Create a minimal valid Tauri v2 configuration
+            // "identifier" is a required field in Tauri v2
+            let identifier = self.tauri_identifier.clone().unwrap_or_else(|| "com.tauri.app".to_string());
             serde_json::json!({
-                "build": {},
-                "package": {},
+                "identifier": identifier,
                 "plugins": {}
             })
         };
@@ -191,8 +198,20 @@ impl GenerateConfig {
             "includePatterns": self.include_patterns,
         });
 
-        // Insert into plugins section
-        if let Some(plugins) = tauri_config.get_mut("plugins") {
+        // Ensure plugins section exists and insert typegen configuration
+        if !tauri_config.is_object() {
+            tauri_config = serde_json::json!({});
+        }
+        
+        let tauri_obj = tauri_config.as_object_mut().unwrap();
+        
+        // Create plugins section if it doesn't exist
+        if !tauri_obj.contains_key("plugins") {
+            tauri_obj.insert("plugins".to_string(), serde_json::json!({}));
+        }
+        
+        // Insert typegen configuration into plugins
+        if let Some(plugins) = tauri_obj.get_mut("plugins") {
             if let Some(plugins_obj) = plugins.as_object_mut() {
                 plugins_obj.insert("typegen".to_string(), typegen_config);
             }
@@ -237,6 +256,9 @@ impl GenerateConfig {
         }
         if other.validation_library != default_validation_library() {
             self.validation_library = other.validation_library.clone();
+        }
+        if other.tauri_identifier.is_some() {
+            self.tauri_identifier = other.tauri_identifier.clone();
         }
         if other.verbose.is_some() {
             self.verbose = other.verbose;
@@ -338,5 +360,107 @@ mod tests {
         let loaded_config = GenerateConfig::from_file(temp_file.path()).unwrap();
         assert_eq!(loaded_config.output_path, "./test");
         assert!(loaded_config.is_verbose());
+    }
+
+    #[test]
+    fn test_save_to_tauri_config_preserves_existing_content() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("src-tauri");
+        std::fs::create_dir_all(&project_path).unwrap();
+        
+        let tauri_conf_path = temp_dir.path().join("tauri.conf.json");
+        
+        // Create existing tauri.conf.json with some content
+        let existing_content = serde_json::json!({
+            "package": {
+                "productName": "My App",
+                "version": "1.0.0"
+            },
+            "tauri": {
+                "allowlist": {
+                    "all": false
+                }
+            },
+            "plugins": {
+                "shell": {
+                    "all": false
+                }
+            }
+        });
+        
+        fs::write(&tauri_conf_path, serde_json::to_string_pretty(&existing_content).unwrap()).unwrap();
+
+        let config = GenerateConfig {
+            project_path: project_path.to_string_lossy().to_string(),
+            output_path: "./test".to_string(),
+            validation_library: "zod".to_string(),
+            verbose: Some(true),
+            ..Default::default()
+        };
+
+        // Save to tauri config - should preserve existing content
+        config.save_to_tauri_config(&tauri_conf_path).unwrap();
+
+        // Read back and verify
+        let updated_content = fs::read_to_string(&tauri_conf_path).unwrap();
+        let updated_json: serde_json::Value = serde_json::from_str(&updated_content).unwrap();
+
+        // Check that existing content is preserved
+        assert_eq!(updated_json["package"]["productName"], "My App");
+        assert_eq!(updated_json["package"]["version"], "1.0.0");
+        assert_eq!(updated_json["tauri"]["allowlist"]["all"], false);
+        assert_eq!(updated_json["plugins"]["shell"]["all"], false);
+        
+        // Check that typegen config was added
+        assert_eq!(updated_json["plugins"]["typegen"]["outputPath"], "./test");
+        assert_eq!(updated_json["plugins"]["typegen"]["validationLibrary"], "zod");
+        assert_eq!(updated_json["plugins"]["typegen"]["verbose"], true);
+    }
+
+    #[test]
+    fn test_save_to_tauri_config_creates_plugins_section() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("src-tauri");
+        std::fs::create_dir_all(&project_path).unwrap();
+        
+        let tauri_conf_path = temp_dir.path().join("tauri.conf.json");
+        
+        // Create existing tauri.conf.json without plugins section
+        let existing_content = serde_json::json!({
+            "package": {
+                "productName": "My App",
+                "version": "1.0.0"
+            },
+            "tauri": {
+                "allowlist": {
+                    "all": false
+                }
+            }
+        });
+        
+        fs::write(&tauri_conf_path, serde_json::to_string_pretty(&existing_content).unwrap()).unwrap();
+
+        let config = GenerateConfig {
+            project_path: project_path.to_string_lossy().to_string(),
+            output_path: "./test".to_string(),
+            validation_library: "none".to_string(),
+            ..Default::default()
+        };
+
+        // Save to tauri config - should create plugins section
+        config.save_to_tauri_config(&tauri_conf_path).unwrap();
+
+        // Read back and verify
+        let updated_content = fs::read_to_string(&tauri_conf_path).unwrap();
+        let updated_json: serde_json::Value = serde_json::from_str(&updated_content).unwrap();
+
+        // Check that existing content is preserved
+        assert_eq!(updated_json["package"]["productName"], "My App");
+        assert_eq!(updated_json["tauri"]["allowlist"]["all"], false);
+        
+        // Check that plugins section was created with typegen config
+        assert!(updated_json["plugins"].is_object());
+        assert_eq!(updated_json["plugins"]["typegen"]["outputPath"], "./test");
+        assert_eq!(updated_json["plugins"]["typegen"]["validationLibrary"], "none");
     }
 }

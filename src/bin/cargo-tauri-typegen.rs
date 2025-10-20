@@ -34,11 +34,25 @@ fn main() {
                 }
             }
             TypegenCommands::Init {
+                project_path,
+                generated_path,
                 output_path,
                 validation_library,
+                tauri_identifier,
+                verbose,
+                visualize_deps,
                 force,
             } => {
-                if let Err(e) = run_init(output_path, validation_library, force) {
+                if let Err(e) = run_init(
+                    project_path,
+                    generated_path,
+                    output_path,
+                    validation_library,
+                    tauri_identifier,
+                    verbose,
+                    visualize_deps,
+                    force,
+                ) {
                     eprintln!("Error: {}", e);
                     std::process::exit(1);
                 }
@@ -172,11 +186,16 @@ fn run_generate(
 }
 
 fn run_init(
+    project_path: PathBuf,
+    generated_path: PathBuf,
     output_path: PathBuf,
     validation_library: String,
+    tauri_identifier: Option<String>,
+    verbose: bool,
+    visualize_deps: bool,
     force: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let logger = Logger::new(true, false);
+    let logger = Logger::new(verbose, false);
 
     logger.info("🚀 Initializing Tauri TypeScript generation configuration");
 
@@ -191,7 +210,12 @@ fn run_init(
 
     // Create configuration
     let config = GenerateConfig {
+        project_path: project_path.to_string_lossy().to_string(),
+        output_path: generated_path.to_string_lossy().to_string(),
         validation_library,
+        tauri_identifier,
+        verbose: Some(verbose),
+        visualize_deps: Some(visualize_deps),
         ..Default::default()
     };
 
@@ -202,15 +226,10 @@ fn run_init(
             "✅ Added typegen configuration to {}",
             output_path.display()
         ));
-        logger.info("💡 You can now run: cargo tauri-typegen generate");
     } else {
         config.save_to_file(&output_path)?;
         logger.info(&format!(
             "✅ Created configuration file: {}",
-            output_path.display()
-        ));
-        logger.info(&format!(
-            "💡 You can now run: cargo tauri-typegen generate --config {}",
             output_path.display()
         ));
     }
@@ -218,11 +237,28 @@ fn run_init(
     // Print configuration summary
     logger.info("📋 Configuration summary:");
     logger.info(&format!("  • Project path: {}", config.project_path));
-    logger.info(&format!("  • Output path: {}", config.output_path));
+    logger.info(&format!("  • Generated files output path: {}", config.output_path));
     logger.info(&format!(
         "  • Validation library: {}",
         config.validation_library
     ));
+
+    // Now run initial generation
+    logger.info("");
+    logger.info("🔄 Running initial generation...");
+
+    run_generate(
+        project_path,
+        generated_path,
+        config.validation_library.clone(),
+        verbose,
+        visualize_deps,
+        None, // No config file since we just created one
+    )?;
+
+    logger.info("");
+    logger.info("✨ Initialization complete! Your Tauri project is now set up for TypeScript generation.");
+    logger.info("💡 You can run 'cargo tauri-typegen generate' anytime to regenerate bindings.");
 
     Ok(())
 }

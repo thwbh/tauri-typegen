@@ -35,7 +35,7 @@ A command-line tool that automatically generates TypeScript models and bindings 
 
 1. **Install the CLI tool**:
    ```bash
-   cargo install tauri-typegen
+   cargo install tauri-plugin-typegen
    ```
 
 2. **Generate TypeScript bindings** from your Tauri project:
@@ -70,8 +70,13 @@ Options:
 cargo tauri-typegen init [OPTIONS]
 
 Options:
+  -p, --project-path <PATH>      Path to Tauri source directory [default: ./src-tauri]
+  -g, --generated-path <PATH>    Output path for generated files [default: ./src/generated]
   -o, --output <PATH>            Output path for config file [default: tauri.conf.json]
   -v, --validation <LIBRARY>     Validation library: zod or none [default: zod]
+  -i, --identifier <IDENTIFIER>  Tauri app identifier (e.g., "com.company.app") [default: com.tauri.app]
+      --verbose                  Verbose output
+      --visualize-deps           Generate dependency graph visualization
       --force                    Force overwrite existing configuration
 ```
 
@@ -85,6 +90,16 @@ Install the CLI tool globally:
 cargo install tauri-plugin-typegen
 ```
 
+### TypeScript Bindings (Optional)
+
+If you need TypeScript bindings for frontend integration:
+
+```bash
+npm install @thwbh/tauri-plugin-typegen
+```
+
+**Note**: This plugin requires manual installation. The `cargo tauri add` command only works with official Tauri plugins.
+
 ### Configuration Setup
 
 #### Initialize Configuration
@@ -95,9 +110,14 @@ Create a configuration file for your project:
 # Create a standalone config file
 cargo tauri-typegen init --output my-config.json --validation zod
 
-# Or add configuration to your tauri.conf.json
-cargo tauri-typegen init --output tauri.conf.json --validation zod
+# Or add configuration to your tauri.conf.json with a custom identifier
+cargo tauri-typegen init --output tauri.conf.json --validation zod --identifier com.mycompany.myapp
+
+# Basic init with defaults (creates tauri.conf.json)
+cargo tauri-typegen init
 ```
+
+**Note**: When creating a new `tauri.conf.json`, the `--identifier` option specifies your app's unique identifier (e.g., `com.company.app`). If not provided, it defaults to `com.tauri.app`. This identifier is required by Tauri v2.
 
 #### Configuration File
 
@@ -108,10 +128,13 @@ Configuration can be stored in a standalone JSON file or within your `tauri.conf
   "project_path": "./src-tauri",
   "output_path": "./src/generated",
   "validation_library": "zod",
+  "tauri_identifier": "com.mycompany.myapp",
   "verbose": true,
   "visualize_deps": false
 }
 ```
+
+**Note**: The `tauri_identifier` field is only used when creating a new `tauri.conf.json` file. If the file already exists or you're using a standalone config file, this field is ignored.
 
 ### Package.json Integration
 
