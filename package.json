@@ -1,6 +1,6 @@
 {
-  "name": "tauri-plugin-typegen-api",
-  "version": "0.1.1",
+  "name": "tauri-plugin-typegen",
+  "version": "0.1.2",
   "author": "Stefan Poindl",
   "description": "",
   "type": "module",
