@@ -31,7 +31,7 @@ impl ZodBindingsGenerator {
         }
     }
 
-    /// Generate Zod schema for an enum (as union of literals)
+    /// Generate Zod schema for an enum
     fn generate_enum_schema(&self, name: &str, struct_info: &StructInfo) -> String {
         let variants: Vec<String> = struct_info
             .fields
@@ -39,10 +39,10 @@ impl ZodBindingsGenerator {
             .map(|field| format!("\"{}\"", field.name))
             .collect();
 
-        let union_values = variants.join(", ");
+        let enum_values = variants.join(", ");
         format!(
-            "export const {}Schema = z.union([{}]);\n\n",
-            name, union_values
+            "export const {}Schema = z.enum([{}]);\n\n",
+            name, enum_values
         )
     }
 
@@ -52,7 +52,9 @@ impl ZodBindingsGenerator {
 
         for field in &struct_info.fields {
             let field_schema = self.generate_field_schema(field);
-            content.push_str(&format!("  {}: {},\n", field.name, field_schema));
+            // Convert to camelCase to match serde serialization
+            let field_name = self.to_camel_case(&field.name);
+            content.push_str(&format!("  {}: {},\n", field_name, field_schema));
         }
 
         content.push_str("});\n\n");
@@ -97,14 +99,15 @@ impl ZodBindingsGenerator {
             return format!("z.array({})", inner_schema);
         }
 
-        // Handle HashMap<K, V> and BTreeMap<K, V> -> z.record(V)
-        if let Some((_, value_type)) = self
+        // Handle HashMap<K, V> and BTreeMap<K, V> -> z.record(key, value)
+        if let Some((key_type, value_type)) = self
             .type_converter
             .extract_hashmap_types(&cleaned)
             .or_else(|| self.type_converter.extract_btreemap_types(&cleaned))
         {
+            let key_schema = self.rust_type_to_zod_schema(&key_type);
             let value_schema = self.rust_type_to_zod_schema(&value_type);
-            return format!("z.record({})", value_schema);
+            return format!("z.record({}, {})", key_schema, value_schema);
         }
 
         // Handle HashSet<T> and BTreeSet<T> -> z.array(T)
@@ -247,7 +250,9 @@ impl ZodBindingsGenerator {
                     } else {
                         param_schema
                     };
-                    content.push_str(&format!("  {}: {},\n", param.name, final_schema));
+                    // Convert param name to camelCase to match Tauri's serialization
+                    let param_name = self.to_camel_case(&param.name);
+                    content.push_str(&format!("  {}: {},\n", param_name, final_schema));
                 }
 
                 content.push_str("});\n\n");
