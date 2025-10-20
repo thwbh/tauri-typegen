@@ -99,12 +99,52 @@ impl BaseGenerator {
             self.collect_referenced_types(&command.return_type, &mut used_types);
         }
 
+        // Clone to avoid borrow checker issues
+        let initial_types = used_types.clone();
+
+        // Discover nested dependencies (types referenced by the collected types)
+        self.discover_nested_dependencies(&initial_types, all_structs, &mut used_types);
+
         // Filter to only include used types
         all_structs
             .iter()
             .filter(|(name, _)| used_types.contains(*name))
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect()
+    }
+
+    /// Recursively discover nested dependencies
+    fn discover_nested_dependencies(
+        &self,
+        initial_types: &std::collections::HashSet<String>,
+        all_structs: &HashMap<String, StructInfo>,
+        all_types: &mut std::collections::HashSet<String>,
+    ) {
+        let mut to_process: Vec<String> = initial_types.iter().cloned().collect();
+        let mut processed: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+        while let Some(type_name) = to_process.pop() {
+            if processed.contains(&type_name) {
+                continue;
+            }
+            processed.insert(type_name.clone());
+
+            if let Some(struct_info) = all_structs.get(&type_name) {
+                for field in &struct_info.fields {
+                    let mut nested_types = std::collections::HashSet::new();
+                    // Use rust_type to collect referenced types
+                    self.collect_referenced_types(&field.rust_type, &mut nested_types);
+
+                    for nested_type in nested_types {
+                        if !all_types.contains(&nested_type) && all_structs.contains_key(&nested_type)
+                        {
+                            all_types.insert(nested_type.clone());
+                            to_process.push(nested_type);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /// Recursively collect type names from complex types

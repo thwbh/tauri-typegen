@@ -296,6 +296,7 @@ impl ZodBindingsGenerator {
         &self,
         commands: &[CommandInfo],
         used_structs: &HashMap<String, StructInfo>,
+        analyzer: &CommandAnalyzer,
     ) -> String {
         let mut content = String::new();
 
@@ -305,9 +306,15 @@ impl ZodBindingsGenerator {
         // Import Zod
         content.push_str(&TemplateHelpers::generate_named_imports(&[("zod", &["z"])]));
 
-        // Generate struct schemas
-        for (name, struct_info) in used_structs {
-            content.push_str(&self.generate_struct_schema(name, struct_info));
+        // Sort structs topologically to ensure dependencies are defined before use
+        let type_names: HashSet<String> = used_structs.keys().cloned().collect();
+        let sorted_types = analyzer.topological_sort_types(&type_names);
+
+        // Generate struct schemas in topological order
+        for name in &sorted_types {
+            if let Some(struct_info) = used_structs.get(name) {
+                content.push_str(&self.generate_struct_schema(name, struct_info));
+            }
         }
 
         // Generate parameter schemas
@@ -464,7 +471,7 @@ impl BaseBindingsGenerator for ZodBindingsGenerator {
         commands: &[CommandInfo],
         discovered_structs: &HashMap<String, StructInfo>,
         output_path: &str,
-        _analyzer: &CommandAnalyzer,
+        analyzer: &CommandAnalyzer,
     ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
         // Set up the type converter with known structs
         self.type_converter
@@ -480,7 +487,7 @@ impl BaseBindingsGenerator for ZodBindingsGenerator {
         let mut file_writer = FileWriter::new(output_path)?;
 
         // Generate and write types file (with embedded schemas)
-        let types_content = self.generate_types_file_content(commands, &used_structs);
+        let types_content = self.generate_types_file_content(commands, &used_structs, analyzer);
         file_writer.write_types_file(&types_content)?;
 
         // Generate and write commands file
