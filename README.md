@@ -299,21 +299,21 @@ If you prefer explicit control in package.json:
 
 **Method 3: Cargo Build Scripts (Advanced)**
 
-For tighter integration, add type generation to your Rust build process in `src-tauri/build.rs`:
+For tighter integration, add type generation to your Rust build process.
+
+Add tauri-typegen as build dependency to your project.
+
+```bash
+cargo add --build tauri-plugin-typegen
+```
+
+In `src-tauri/build.rs`:
 
 ```rust
-use std::process::Command;
-
 fn main() {
     // Generate TypeScript bindings before build
-    let output = Command::new("cargo")
-        .args(&["tauri-typegen", "generate"])
-        .output()
-        .expect("Failed to run cargo tauri-typegen");
-
-    if !output.status.success() {
-        panic!("TypeScript generation failed: {}", String::from_utf8_lossy(&output.stderr));
-    }
+    tauri_plugin_typegen::BuildSystem::generate_at_build_time()
+        .expect("Failed to generate TypeScript bindings");
 
     tauri_build::build()
 }
