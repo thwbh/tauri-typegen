@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4] - 2025-10-30
+
+### Added
+- Added support for custom validation error messages in Zod schemas
+  - Validator `message` parameters are now extracted from Rust `#[validate(...)]` attributes
+  - Error messages are properly escaped and included in Zod schema validations
+  - Supports messages for `length`, `range`, `email`, and `url` constraints
+  - Example: `#[validate(length(min = 5, max = 50, message = "Must be 5-50 chars"))]` generates `z.string().min(5, { message: "Must be 5-50 chars" })`
+
+### Fixed
+- Fixed vanilla TypeScript interface properties not using camelCase naming convention
+  - Interface properties now consistently use camelCase (e.g., `stringMap` instead of `string_map`)
+  - Matches the naming convention already used in Zod schemas for consistency
+
+### Changed
+- Updated `z.record()` generation to use explicit two-parameter syntax for better type safety
+  - Now generates `z.record(z.string(), z.number())` instead of `z.record(z.number())`
+  - More explicit about both key and value types
+
 ## [0.1.3] - 2025-10-20
 
 ### Fixed

@@ -33,46 +33,9 @@ if the validator crate is being used.
 
 ## Modularization Plan
 
-### 3. Type System Module (src/types/)
-
-  Create a dedicated module for type handling:
-
-  src/types/
-  ├── mod.rs                   # Public API
-  ├── rust_types.rs           # Rust type definitions and parsing
-  ├── typescript_types.rs     # TypeScript type generation
-  ├── mappings.rs            # Type mapping tables
-  ├── complex_types.rs       # Generics, tuples, collections
-  └── validation_types.rs    # Validator attribute handling
-
-  Benefits:
-  - Centralizes type system logic
-  - Supports CLAUDE.md goal of enhanced type system
-  - Easier to extend for generics and complex types
-
-###  5. Core Models (src/core/)
-
-  Keep models but add domain-specific groupings:
-
-  src/core/
-  ├── mod.rs                 # Re-exports
-  ├── ast_models.rs          # AST-related data structures
-  ├── command_models.rs      # Command and parameter info
-  ├── type_models.rs         # Type and struct definitions
-  └── validation_models.rs   # Validator attributes and constraints
-
-2. Type System Enhancements
-
-  - Issue: Limited support for complex Rust types (generics, associated types, trait bounds)
-  - Suggestion:
-    - Add support for generic structs and enums
-    - Handle impl types and trait objects
-    - Support for serde rename attributes
-  - Implementation: Expand type mapping system and add generic type parameter tracking
-
 ## Nice to Have
 
-### 3. Macro-Based Command Discovery
+### Macro-Based Command Discovery
 
 **Concept**: Instead of parsing all Rust files for `#[tauri::command]` functions, extract commands directly from `tauri::generate_handler!` macro invocations.
 
