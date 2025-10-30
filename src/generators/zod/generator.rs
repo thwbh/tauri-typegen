@@ -189,23 +189,36 @@ impl ZodBindingsGenerator {
 
     /// Apply length constraints to Zod schema
     fn apply_length_constraint(&self, mut schema: String, length: &LengthConstraint) -> String {
+        // Helper function to format error message parameter
+        let format_error = |msg: &Option<String>| -> String {
+            msg.as_ref()
+                .map(|m| format!(", {{ message: \"{}\" }}", Self::escape_for_js(m)))
+                .unwrap_or_default()
+        };
+
         if let (Some(min), Some(max)) = (length.min, length.max) {
             if schema.starts_with("z.string()") {
-                schema = format!("z.string().min({}).max({})", min, max);
+                let min_error = format_error(&length.message);
+                let max_error = format_error(&length.message);
+                schema = format!("z.string().min({}{}).max({}{})", min, min_error, max, max_error);
             } else if schema.contains("z.array(") {
-                schema = format!("{}.min({}).max({}", schema, min, max);
+                let min_error = format_error(&length.message);
+                let max_error = format_error(&length.message);
+                schema = format!("{}.min({}{}).max({}{})", schema, min, min_error, max, max_error);
             }
         } else if let Some(min) = length.min {
+            let error = format_error(&length.message);
             if schema.starts_with("z.string()") {
-                schema = format!("z.string().min({})", min);
+                schema = format!("z.string().min({}{})", min, error);
             } else if schema.contains("z.array(") {
-                schema = format!("{}.min({})", schema, min);
+                schema = format!("{}.min({}{})", schema, min, error);
             }
         } else if let Some(max) = length.max {
+            let error = format_error(&length.message);
             if schema.starts_with("z.string()") {
-                schema = format!("z.string().max({})", max);
+                schema = format!("z.string().max({}{})", max, error);
             } else if schema.contains("z.array(") {
-                schema = format!("{}.max({})", schema, max);
+                schema = format!("{}.max({}{})", schema, max, error);
             }
         }
 
@@ -214,17 +227,28 @@ impl ZodBindingsGenerator {
 
     /// Apply range constraints to Zod schema
     fn apply_range_constraint(&self, mut schema: String, range: &RangeConstraint) -> String {
+        // Helper function to format error message parameter
+        let format_error = |msg: &Option<String>| -> String {
+            msg.as_ref()
+                .map(|m| format!(", {{ message: \"{}\" }}", Self::escape_for_js(m)))
+                .unwrap_or_default()
+        };
+
         if let (Some(min), Some(max)) = (range.min, range.max) {
             if schema == "z.number()" {
-                schema = format!("z.number().min({}).max({})", min, max);
+                let min_error = format_error(&range.message);
+                let max_error = format_error(&range.message);
+                schema = format!("z.number().min({}{}).max({}{})", min, min_error, max, max_error);
             }
         } else if let Some(min) = range.min {
             if schema == "z.number()" {
-                schema = format!("z.number().min({})", min);
+                let error = format_error(&range.message);
+                schema = format!("z.number().min({}{})", min, error);
             }
         } else if let Some(max) = range.max {
             if schema == "z.number()" {
-                schema = format!("z.number().max({})", max);
+                let error = format_error(&range.message);
+                schema = format!("z.number().max({}{})", max, error);
             }
         }
 
@@ -376,6 +400,15 @@ impl ZodBindingsGenerator {
                 .generate_standard_index(&files_to_export),
         );
         content
+    }
+
+    /// Escape a string for use in JavaScript/TypeScript string literals
+    fn escape_for_js(s: &str) -> String {
+        s.replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace('\n', "\\n")
+            .replace('\r', "\\r")
+            .replace('\t', "\\t")
     }
 
     /// Backward compatibility methods

@@ -71,7 +71,7 @@ impl ValidatorParser {
             message: None,
         };
 
-        // Simple regex-like parsing for length(min = X, max = Y)
+        // Simple regex-like parsing for length(min = X, max = Y, message = "...")
         if let Some(start) = tokens.find("length") {
             if let Some(paren_start) = tokens[start..].find('(') {
                 if let Some(paren_end) = tokens[start + paren_start..].find(')') {
@@ -112,6 +112,9 @@ impl ValidatorParser {
                             }
                         }
                     }
+
+                    // Parse message = "..."
+                    constraint.message = self.parse_message_from_content(content);
                 }
             }
         }
@@ -131,7 +134,7 @@ impl ValidatorParser {
             message: None,
         };
 
-        // Simple regex-like parsing for range(min = X, max = Y)
+        // Simple regex-like parsing for range(min = X, max = Y, message = "...")
         if let Some(start) = tokens.find("range") {
             if let Some(paren_start) = tokens[start..].find('(') {
                 if let Some(paren_end) = tokens[start + paren_start..].find(')') {
@@ -172,11 +175,58 @@ impl ValidatorParser {
                             }
                         }
                     }
+
+                    // Parse message = "..."
+                    constraint.message = self.parse_message_from_content(content);
                 }
             }
         }
 
         Some(constraint)
+    }
+
+    /// Parse message parameter from validator content
+    /// Handles both "message = \"text\"" and "message = 'text'" formats
+    fn parse_message_from_content(&self, content: &str) -> Option<String> {
+        if let Some(msg_pos) = content.find("message") {
+            if let Some(eq_pos) = content[msg_pos..].find('=') {
+                let after_eq = &content[msg_pos + eq_pos + 1..].trim_start();
+
+                // Try to find string in quotes (either " or ')
+                if let Some(quote_char) = after_eq.chars().next() {
+                    if quote_char == '"' || quote_char == '\'' {
+                        // Find the closing quote, handling escaped quotes
+                        let rest = &after_eq[1..];
+                        let mut chars = rest.chars().enumerate();
+                        let mut escaped = false;
+
+                        while let Some((i, ch)) = chars.next() {
+                            if escaped {
+                                escaped = false;
+                                continue;
+                            }
+                            if ch == '\\' {
+                                escaped = true;
+                                continue;
+                            }
+                            if ch == quote_char {
+                                // Found closing quote
+                                let message = &rest[..i];
+                                // Unescape common escape sequences
+                                let unescaped = message
+                                    .replace("\\\"", "\"")
+                                    .replace("\\'", "'")
+                                    .replace("\\n", "\n")
+                                    .replace("\\t", "\t")
+                                    .replace("\\\\", "\\");
+                                return Some(unescaped);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        None
     }
 }
 
