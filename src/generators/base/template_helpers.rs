@@ -10,9 +10,10 @@ impl TemplateHelpers {
 
         for field in fields {
             let optional_marker = if field.is_optional { "?" } else { "" };
+            let field_name = Self::to_camel_case(&field.name);
             result.push_str(&format!(
                 "  {}{}: {};\n",
-                field.name, optional_marker, field.typescript_type
+                field_name, optional_marker, field.typescript_type
             ));
         }
 
