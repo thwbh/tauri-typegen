@@ -389,3 +389,82 @@ fn test_generator_empty_commands_list() {
     assert!(types_content.contains("Auto-generated TypeScript types"));
     assert!(!types_content.contains("export interface"));
 }
+
+#[test]
+fn test_primitive_arrays_and_optional_custom_types() {
+    // Regression test for issue where Vec<String> became types.string[]
+    // and Option<CustomType> didn't get types. prefix
+    let temp_dir = TempDir::new().unwrap();
+    let output_path = temp_dir.path().to_str().unwrap();
+
+    let commands = vec![
+        CommandInfo {
+            name: "get_dates".to_string(),
+            file_path: "test_file.rs".to_string(),
+            line_number: 10,
+            parameters: vec![],
+            return_type: "string[]".to_string(), // Already converted from Vec<String>
+            is_async: true,
+        },
+        CommandInfo {
+            name: "get_user".to_string(),
+            file_path: "test_file.rs".to_string(),
+            line_number: 20,
+            parameters: vec![],
+            return_type: "User | null".to_string(), // Already converted from Option<User>
+            is_async: true,
+        },
+        CommandInfo {
+            name: "get_items".to_string(),
+            file_path: "test_file.rs".to_string(),
+            line_number: 30,
+            parameters: vec![],
+            return_type: "Item[]".to_string(), // Already converted from Vec<Item>
+            is_async: true,
+        },
+    ];
+
+    let mut discovered_structs = HashMap::new();
+    discovered_structs.insert(
+        "User".to_string(),
+        StructInfo {
+            name: "User".to_string(),
+            fields: vec![],
+            is_enum: false,
+            file_path: "test_file.rs".to_string(),
+        },
+    );
+    discovered_structs.insert(
+        "Item".to_string(),
+        StructInfo {
+            name: "Item".to_string(),
+            fields: vec![],
+            is_enum: false,
+            file_path: "test_file.rs".to_string(),
+        },
+    );
+
+    let mut generator = BindingsGenerator::new(Some("zod".to_string()));
+    generator
+        .generate_models(
+            &commands,
+            &discovered_structs,
+            output_path,
+            &CommandAnalyzer::new(),
+        )
+        .unwrap();
+
+    let commands_content = fs::read_to_string(temp_dir.path().join("commands.ts")).unwrap();
+
+    // Primitive arrays should NOT have types. prefix
+    assert!(commands_content.contains("Promise<string[]>"));
+    assert!(!commands_content.contains("types.string[]"));
+
+    // Custom types should have types. prefix
+    assert!(commands_content.contains("Promise<types.User | null>"));
+    assert!(!commands_content.contains("Promise<User | null>")); // Raw User should not appear
+
+    // Arrays of custom types should have types. prefix on the base type
+    assert!(commands_content.contains("Promise<types.Item[]>"));
+    assert!(!commands_content.contains("Promise<Item[]>")); // Raw Item should not appear
+}

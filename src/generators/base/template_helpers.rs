@@ -80,7 +80,8 @@ impl TemplateHelpers {
             )
         };
 
-        let return_type = Self::convert_rust_type_to_typescript(&command.return_type);
+        // command.return_type is already in TypeScript format, just need to add types. prefix for custom types
+        let return_type = Self::format_typescript_return_type(&command.return_type);
 
         // Tauri commands are always async from the frontend perspective
         let async_keyword = "async ";
@@ -107,7 +108,65 @@ impl TemplateHelpers {
         }
     }
 
-    /// Convert Rust type to TypeScript type  
+    /// Format a TypeScript type that's already been converted from Rust, adding types. prefix where needed
+    pub fn format_typescript_return_type(ts_type: &str) -> String {
+        // Handle primitives that don't need types. prefix
+        match ts_type {
+            "void" | "string" | "number" | "boolean" => return ts_type.to_string(),
+            _ => {}
+        }
+
+        // Handle arrays of primitives: string[], number[], boolean[]
+        if ts_type.ends_with("[]") {
+            let base_type = &ts_type[..ts_type.len() - 2];
+            match base_type {
+                "string" | "number" | "boolean" | "void" => return ts_type.to_string(),
+                _ => {
+                    // Arrays of custom types: CustomType[] -> types.CustomType[]
+                    let formatted_base = Self::format_typescript_return_type(base_type);
+                    return format!("{}[]", formatted_base);
+                }
+            }
+        }
+
+        // Handle Record<K, V>
+        if ts_type.starts_with("Record<") && ts_type.ends_with(">") {
+            return ts_type.to_string(); // Record types are fine as-is
+        }
+
+        // Handle Map<K, V>
+        if ts_type.starts_with("Map<") && ts_type.ends_with(">") {
+            return ts_type.to_string(); // Map types are fine as-is
+        }
+
+        // Handle union types with null: Type | null
+        if ts_type.contains(" | null") {
+            let base_type = ts_type.replace(" | null", "");
+            let formatted_base = Self::format_typescript_return_type(&base_type);
+            return format!("{} | null", formatted_base);
+        }
+
+        // Handle union types with undefined: Type | undefined
+        if ts_type.contains(" | undefined") {
+            let base_type = ts_type.replace(" | undefined", "");
+            let formatted_base = Self::format_typescript_return_type(&base_type);
+            return format!("{} | undefined", formatted_base);
+        }
+
+        // Handle tuple types [T, U, ...]
+        if ts_type.starts_with("[") && ts_type.ends_with("]") {
+            return ts_type.to_string(); // Tuples are fine as-is
+        }
+
+        // Custom type - add types. prefix if not already present
+        if ts_type.starts_with("types.") {
+            ts_type.to_string()
+        } else {
+            format!("types.{}", ts_type)
+        }
+    }
+
+    /// Convert Rust type to TypeScript type
     pub fn convert_rust_type_to_typescript(rust_type: &str) -> String {
         // Handle basic types
         match rust_type {
