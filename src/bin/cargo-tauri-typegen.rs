@@ -93,11 +93,12 @@ fn run_generate(
         for path in possible_paths {
             if path.exists() {
                 match GenerateConfig::from_tauri_config(&path) {
-                    Ok(loaded_config) => {
+                    Ok(Some(loaded_config)) => {
                         config = loaded_config;
                         config_loaded = true;
                         break;
                     }
+                    Ok(None) => break,
                     Err(_) => continue,
                 }
             }

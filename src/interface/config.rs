@@ -97,15 +97,15 @@ impl GenerateConfig {
     }
 
     /// Load configuration from Tauri configuration file
-    pub fn from_tauri_config<P: AsRef<Path>>(path: P) -> Result<Self, ConfigError> {
+    pub fn from_tauri_config<P: AsRef<Path>>(path: P) -> Result<Option<Self>, ConfigError> {
         let content = fs::read_to_string(path)?;
         let tauri_config: serde_json::Value = serde_json::from_str(&content)?;
-
-        let mut config = Self::default();
 
         // Look for typegen plugin configuration
         if let Some(plugins) = tauri_config.get("plugins") {
             if let Some(typegen) = plugins.get("typegen") {
+                let mut config = Self::default();
+
                 if let Some(project_path) = typegen.get("projectPath").and_then(|v| v.as_str()) {
                     config.project_path = project_path.to_string();
                 }
@@ -150,11 +150,13 @@ impl GenerateConfig {
                         config.include_patterns = Some(patterns);
                     }
                 }
+
+                config.validate()?;
+                return Ok(Some(config));
             }
         }
 
-        config.validate()?;
-        Ok(config)
+        Ok(None)
     }
 
     /// Save configuration to a file
@@ -222,7 +224,7 @@ impl GenerateConfig {
             _ => {
                 return Err(ConfigError::InvalidValidationLibrary(
                     self.validation_library.clone(),
-                ))
+                ));
             }
         }
 
