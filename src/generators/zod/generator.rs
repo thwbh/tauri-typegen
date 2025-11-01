@@ -200,11 +200,17 @@ impl ZodBindingsGenerator {
             if schema.starts_with("z.string()") {
                 let min_error = format_error(&length.message);
                 let max_error = format_error(&length.message);
-                schema = format!("z.string().min({}{}).max({}{})", min, min_error, max, max_error);
+                schema = format!(
+                    "z.string().min({}{}).max({}{})",
+                    min, min_error, max, max_error
+                );
             } else if schema.contains("z.array(") {
                 let min_error = format_error(&length.message);
                 let max_error = format_error(&length.message);
-                schema = format!("{}.min({}{}).max({}{})", schema, min, min_error, max, max_error);
+                schema = format!(
+                    "{}.min({}{}).max({}{})",
+                    schema, min, min_error, max, max_error
+                );
             }
         } else if let Some(min) = length.min {
             let error = format_error(&length.message);
@@ -238,7 +244,10 @@ impl ZodBindingsGenerator {
             if schema == "z.number()" {
                 let min_error = format_error(&range.message);
                 let max_error = format_error(&range.message);
-                schema = format!("z.number().min({}{}).max({}{})", min, min_error, max, max_error);
+                schema = format!(
+                    "z.number().min({}{}).max({}{})",
+                    min, min_error, max, max_error
+                );
             }
         } else if let Some(min) = range.min {
             if schema == "z.number()" {
@@ -370,7 +379,7 @@ impl ZodBindingsGenerator {
         content.push_str(
             TemplateHelpers::generate_type_imports(&[("zod", "{ ZodError }")]).trim_end(),
         );
-        content.push_str("\n");
+        content.push('\n');
         content.push_str(
             TemplateHelpers::generate_type_imports(&[("./types", "* as types")]).trim_end(),
         );

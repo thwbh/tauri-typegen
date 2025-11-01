@@ -82,9 +82,9 @@ fn run_generate(
     } else {
         // Try to find tauri.conf.json in common locations
         let possible_paths = vec![
-            PathBuf::from("tauri.conf.json"),              // Current directory
-            PathBuf::from("src-tauri/tauri.conf.json"),    // Common Tauri structure
-            PathBuf::from("../tauri.conf.json"),            // If running from src-tauri
+            PathBuf::from("tauri.conf.json"),           // Current directory
+            PathBuf::from("src-tauri/tauri.conf.json"), // Common Tauri structure
+            PathBuf::from("../tauri.conf.json"),        // If running from src-tauri
         ];
 
         let mut config_loaded = false;

@@ -265,19 +265,29 @@ pub async fn submit_form(data: FormData) -> Result<String, String> {
     // First, verify that messages were parsed correctly
     let form_data = discovered_structs.get("FormData").unwrap();
 
-    let username_field = form_data.fields.iter().find(|f| f.name == "username").unwrap();
+    let username_field = form_data
+        .fields
+        .iter()
+        .find(|f| f.name == "username")
+        .unwrap();
     assert!(username_field.validator_attributes.is_some());
     let username_attrs = username_field.validator_attributes.as_ref().unwrap();
     assert!(username_attrs.length.is_some());
     let length_constraint = username_attrs.length.as_ref().unwrap();
-    assert_eq!(length_constraint.message, Some("Username must be between 5 and 50 characters".to_string()));
+    assert_eq!(
+        length_constraint.message,
+        Some("Username must be between 5 and 50 characters".to_string())
+    );
 
     let age_field = form_data.fields.iter().find(|f| f.name == "age").unwrap();
     assert!(age_field.validator_attributes.is_some());
     let age_attrs = age_field.validator_attributes.as_ref().unwrap();
     assert!(age_attrs.range.is_some());
     let range_constraint = age_attrs.range.as_ref().unwrap();
-    assert_eq!(range_constraint.message, Some("Age must be between 18 and 120".to_string()));
+    assert_eq!(
+        range_constraint.message,
+        Some("Age must be between 18 and 120".to_string())
+    );
 
     // Generate the Zod bindings
     let mut generator = BindingsGenerator::new(Some("zod".to_string()));
@@ -299,5 +309,6 @@ pub async fn submit_form(data: FormData) -> Result<String, String> {
     assert!(types_content.contains("z.string().min(5, { message: \"Username must be between 5 and 50 characters\" }).max(50, { message: \"Username must be between 5 and 50 characters\" })"));
     assert!(types_content.contains("z.number().min(18, { message: \"Age must be between 18 and 120\" }).max(120, { message: \"Age must be between 18 and 120\" })"));
     assert!(types_content.contains("z.string().max(500, { message: \"Description is too long\" })"));
-    assert!(types_content.contains("z.number().min(0.01, { message: \"Price must be at least 0.01\" })"));
+    assert!(types_content
+        .contains("z.number().min(0.01, { message: \"Price must be at least 0.01\" })"));
 }

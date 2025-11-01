@@ -154,7 +154,8 @@ impl BaseGenerator {
                     self.collect_referenced_types(&field.rust_type, &mut nested_types);
 
                     for nested_type in nested_types {
-                        if !all_types.contains(&nested_type) && all_structs.contains_key(&nested_type)
+                        if !all_types.contains(&nested_type)
+                            && all_structs.contains_key(&nested_type)
                         {
                             all_types.insert(nested_type.clone());
                             to_process.push(nested_type);

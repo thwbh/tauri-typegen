@@ -84,7 +84,9 @@ fn test_command_with_hooks_parameter() {
     assert!(commands_content.contains("hooks?: CommandHooks<string>"));
 
     // Verify function signature includes hooks
-    assert!(commands_content.contains("params: types.TestCommandParams, hooks?: CommandHooks<string>"));
+    assert!(
+        commands_content.contains("params: types.TestCommandParams, hooks?: CommandHooks<string>")
+    );
 }
 
 #[test]

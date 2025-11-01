@@ -200,7 +200,7 @@ impl ValidatorParser {
                         let mut chars = rest.chars().enumerate();
                         let mut escaped = false;
 
-                        while let Some((i, ch)) = chars.next() {
+                        for (i, ch) in chars {
                             if escaped {
                                 escaped = false;
                                 continue;
