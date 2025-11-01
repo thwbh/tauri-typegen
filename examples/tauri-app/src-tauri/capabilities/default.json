@@ -7,6 +7,6 @@
   ],
   "permissions": [
     "core:default",
-    "typegen:default"
+    "tauri-typegen:default"
   ]
 }

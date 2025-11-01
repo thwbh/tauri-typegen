@@ -1,7 +1,7 @@
 use serial_test::serial;
 use std::fs;
-use tauri_plugin_typegen::analysis::CommandAnalyzer;
-use tauri_plugin_typegen::generators::generator::BindingsGenerator;
+use tauri_typegen::analysis::CommandAnalyzer;
+use tauri_typegen::generators::generator::BindingsGenerator;
 use tempfile::TempDir;
 
 fn create_complex_test_project() -> TempDir {

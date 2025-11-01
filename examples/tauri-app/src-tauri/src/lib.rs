@@ -37,7 +37,7 @@ fn greet_advanced(request: GreetRequest) -> Result<GreetingResponse, String> {
 pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![greet, greet_advanced])
-        .plugin(tauri_plugin_typegen::init())
+        .plugin(tauri_typegen::init())
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

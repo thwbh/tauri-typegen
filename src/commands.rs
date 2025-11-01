@@ -3,7 +3,8 @@ use crate::generators::generator::BindingsGenerator;
 use crate::models::*;
 use crate::Result;
 
-// Simple ping function for testing (removed Tauri runtime dependency)
+/// Simple ping function for testing plugin connectivity
+#[tauri::command]
 pub fn ping(payload: PingRequest) -> Result<PingResponse> {
     Ok(PingResponse {
         value: Some(format!(
@@ -13,6 +14,8 @@ pub fn ping(payload: PingRequest) -> Result<PingResponse> {
     })
 }
 
+/// Analyzes a Tauri project to discover all commands and their type information
+#[tauri::command]
 pub async fn analyze_commands(payload: AnalyzeCommandsRequest) -> Result<AnalyzeCommandsResponse> {
     let mut analyzer = CommandAnalyzer::new();
 
@@ -22,6 +25,8 @@ pub async fn analyze_commands(payload: AnalyzeCommandsRequest) -> Result<Analyze
     }
 }
 
+/// Generates TypeScript models and bindings for a Tauri project
+#[tauri::command]
 pub async fn generate_models(payload: GenerateModelsRequest) -> Result<GenerateModelsResponse> {
     let mut analyzer = CommandAnalyzer::new();
 

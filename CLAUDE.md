@@ -1,4 +1,4 @@
-# Project: tauri-plugin-typegen
+# Project: tauri-typegen
 
 ## Project Description
 Tauri currently does not provide an option to generate Javascript or Typescript bindings based on the tauri commands 

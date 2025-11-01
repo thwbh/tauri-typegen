@@ -35,7 +35,7 @@ A command-line tool that automatically generates TypeScript models and bindings 
 
 1. **Install the CLI tool**:
    ```bash
-   cargo install tauri-plugin-typegen
+   cargo install tauri-typegen
    ```
 
 2. **Generate TypeScript bindings** from your Tauri project:
@@ -86,7 +86,7 @@ Options:
 Install the CLI tool globally:
 
 ```bash
-cargo install tauri-plugin-typegen
+cargo install tauri-typegen
 ```
 
 ### TypeScript Bindings (Optional)
@@ -94,7 +94,7 @@ cargo install tauri-plugin-typegen
 If you need TypeScript bindings for frontend integration:
 
 ```bash
-npm install @thwbh/tauri-plugin-typegen
+npm install @thwbh/tauri-typegen
 ```
 
 **Note**: This plugin requires manual installation. The `cargo tauri add` command only works with official Tauri plugins.
@@ -304,7 +304,7 @@ For tighter integration, add type generation to your Rust build process.
 Add tauri-typegen as build dependency to your project.
 
 ```bash
-cargo add --build tauri-plugin-typegen
+cargo add --build tauri-typegen
 ```
 
 In `src-tauri/build.rs`:

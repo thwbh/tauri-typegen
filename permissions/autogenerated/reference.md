@@ -18,7 +18,7 @@ Default permissions for the plugin
 <tr>
 <td>
 
-`typegen:allow-analyze-commands`
+`tauri-typegen:allow-analyze-commands`
 
 </td>
 <td>
@@ -31,7 +31,7 @@ Enables the analyze_commands command without any pre-configured scope.
 <tr>
 <td>
 
-`typegen:deny-analyze-commands`
+`tauri-typegen:deny-analyze-commands`
 
 </td>
 <td>
@@ -44,7 +44,7 @@ Denies the analyze_commands command without any pre-configured scope.
 <tr>
 <td>
 
-`typegen:allow-generate-models`
+`tauri-typegen:allow-generate-models`
 
 </td>
 <td>
@@ -57,7 +57,7 @@ Enables the generate_models command without any pre-configured scope.
 <tr>
 <td>
 
-`typegen:deny-generate-models`
+`tauri-typegen:deny-generate-models`
 
 </td>
 <td>
@@ -70,7 +70,7 @@ Denies the generate_models command without any pre-configured scope.
 <tr>
 <td>
 
-`typegen:allow-ping`
+`tauri-typegen:allow-ping`
 
 </td>
 <td>
@@ -83,7 +83,7 @@ Enables the ping command without any pre-configured scope.
 <tr>
 <td>
 
-`typegen:deny-ping`
+`tauri-typegen:deny-ping`
 
 </td>
 <td>

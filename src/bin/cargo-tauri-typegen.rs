@@ -1,9 +1,9 @@
 use clap::Parser;
 use std::fs;
 use std::path::PathBuf;
-use tauri_plugin_typegen::analysis::CommandAnalyzer;
-use tauri_plugin_typegen::generators::generator::BindingsGenerator;
-use tauri_plugin_typegen::interface::{
+use tauri_typegen::analysis::CommandAnalyzer;
+use tauri_typegen::generators::generator::BindingsGenerator;
+use tauri_typegen::interface::{
     print_dependency_visualization_info, print_usage_info, CargoCli, CargoSubcommands,
     GenerateConfig, Logger, ProgressReporter, TypegenCommands,
 };

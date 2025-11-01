@@ -1,6 +1,6 @@
 use std::fs;
-use tauri_plugin_typegen::commands::{analyze_commands, generate_models};
-use tauri_plugin_typegen::models::*;
+use tauri_typegen::commands::{analyze_commands, generate_models};
+use tauri_typegen::models::*;
 use tempfile::TempDir;
 
 fn create_test_project_with_commands() -> TempDir {

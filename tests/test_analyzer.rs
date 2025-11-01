@@ -1,6 +1,6 @@
 use std::fs;
 use std::path::Path;
-use tauri_plugin_typegen::analysis::CommandAnalyzer;
+use tauri_typegen::analysis::CommandAnalyzer;
 use tempfile::TempDir;
 
 fn create_test_project(files: &[(&str, &str)]) -> TempDir {

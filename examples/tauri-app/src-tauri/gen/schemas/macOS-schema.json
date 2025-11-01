@@ -2123,19 +2123,43 @@
         {
           "description": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-ping`",
           "type": "string",
-          "const": "model-bindings:default",
+          "const": "tauri-typegen:default",
           "markdownDescription": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-ping`"
+        },
+        {
+          "description": "Enables the analyze_commands command without any pre-configured scope.",
+          "type": "string",
+          "const": "tauri-typegen:allow-analyze-commands",
+          "markdownDescription": "Enables the analyze_commands command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the generate_models command without any pre-configured scope.",
+          "type": "string",
+          "const": "tauri-typegen:allow-generate-models",
+          "markdownDescription": "Enables the generate_models command without any pre-configured scope."
         },
         {
           "description": "Enables the ping command without any pre-configured scope.",
           "type": "string",
-          "const": "model-bindings:allow-ping",
+          "const": "tauri-typegen:allow-ping",
           "markdownDescription": "Enables the ping command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the analyze_commands command without any pre-configured scope.",
+          "type": "string",
+          "const": "tauri-typegen:deny-analyze-commands",
+          "markdownDescription": "Denies the analyze_commands command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the generate_models command without any pre-configured scope.",
+          "type": "string",
+          "const": "tauri-typegen:deny-generate-models",
+          "markdownDescription": "Denies the generate_models command without any pre-configured scope."
         },
         {
           "description": "Denies the ping command without any pre-configured scope.",
           "type": "string",
-          "const": "model-bindings:deny-ping",
+          "const": "tauri-typegen:deny-ping",
           "markdownDescription": "Denies the ping command without any pre-configured scope."
         }
       ]

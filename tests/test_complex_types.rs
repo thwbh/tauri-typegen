@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
-use tauri_plugin_typegen::analysis::CommandAnalyzer;
-use tauri_plugin_typegen::generators::generator::BindingsGenerator;
-use tauri_plugin_typegen::models::StructInfo;
+use tauri_typegen::analysis::CommandAnalyzer;
+use tauri_typegen::generators::generator::BindingsGenerator;
+use tauri_typegen::models::StructInfo;
 use tempfile::TempDir;
 
 #[test]

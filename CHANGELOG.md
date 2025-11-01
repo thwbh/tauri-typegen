@@ -69,7 +69,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.0] - 2025-09-05
 
 ### Added
-- Initial release of tauri-plugin-typegen
+- Initial release of tauri-typegen
 - TypeScript bindings generation for Tauri commands
 - Support for Zod validation library integration
 - Support for vanilla TypeScript types (no validation)

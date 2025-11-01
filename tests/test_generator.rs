@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::fs;
-use tauri_plugin_typegen::analysis::CommandAnalyzer;
-use tauri_plugin_typegen::generators::generator::BindingsGenerator;
-use tauri_plugin_typegen::models::{CommandInfo, ParameterInfo, StructInfo};
+use tauri_typegen::analysis::CommandAnalyzer;
+use tauri_typegen::generators::generator::BindingsGenerator;
+use tauri_typegen::models::{CommandInfo, ParameterInfo, StructInfo};
 use tempfile::TempDir;
 
 fn create_sample_commands() -> Vec<CommandInfo> {

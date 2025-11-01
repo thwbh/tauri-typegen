@@ -1,12 +1,12 @@
 [package]
-name = "tauri-plugin-typegen"
+name = "tauri-typegen"
 version = "0.1.5"
 authors = [ "Stefan Poindl" ]
-description = "A Tauri plugin that automatically generates TypeScript models and bindings from your Tauri commands"
+description = "A rust crate that automatically generates TypeScript models and bindings from your Tauri commands"
 edition = "2021"
 rust-version = "1.77.2"
 exclude = ["/examples", "/dist-js", "/guest-js", "/node_modules"]
-links = "tauri-plugin-typegen"
+links = "tauri-typegen"
 license = "MIT"
 
 [dependencies]

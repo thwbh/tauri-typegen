@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use tauri_plugin_typegen::analysis::CommandAnalyzer;
+use tauri_typegen::analysis::CommandAnalyzer;
 
 #[test]
 fn test_extract_type_names_recursive() {
@@ -125,7 +125,7 @@ fn test_primitive_types_ignored() {
 #[test]
 fn test_collect_referenced_types_from_generator() {
     let analyzer = CommandAnalyzer::new();
-    let generator = tauri_plugin_typegen::generators::generator::BindingsGenerator::new(None);
+    let generator = tauri_typegen::generators::generator::BindingsGenerator::new(None);
     let mut used_types = HashSet::new();
 
     // Test complex nested structure

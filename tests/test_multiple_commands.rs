@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::fs;
-use tauri_plugin_typegen::analysis::CommandAnalyzer;
-use tauri_plugin_typegen::generators::generator::BindingsGenerator;
-use tauri_plugin_typegen::models::{CommandInfo, FieldInfo, ParameterInfo, StructInfo};
+use tauri_typegen::analysis::CommandAnalyzer;
+use tauri_typegen::generators::generator::BindingsGenerator;
+use tauri_typegen::models::{CommandInfo, FieldInfo, ParameterInfo, StructInfo};
 use tempfile::TempDir;
 
 // Helper function to create a test Rust file with mixed content
