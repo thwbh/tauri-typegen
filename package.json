@@ -1,6 +1,6 @@
 {
   "name": "tauri-typegen",
-  "version": "0.1.5",
+  "version": "0.2.0",
   "author": "Stefan Poindl",
   "description": "A rust crate that automatically generates TypeScript models and bindings from your Tauri commands",
   "type": "module",

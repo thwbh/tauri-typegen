@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2025-11-01
+
+### Added
+- Added optional hook feature for customizing generated TypeScript code
+  - Allows users to inject custom code transformations into the generation process
+  - Comprehensive test coverage for hook functionality
+- Added build timestamp and crate version information to generated files
+  - Generated files now include metadata about when and with which version they were created
+
+### Changed
+- **BREAKING**: Renamed crate from `tauri-plugin-typegen` to `tauri-typegen`
+  - Updated all references, imports, and documentation
+  - Updated package names in both Cargo.toml and package.json
+  - Updated capability permissions and schema references
+
+## [0.1.5] - 2025-10-31 
+
+### Fixed
+- Fixed regression where `Optional` custom types were not exported properly
+- Fixed regression where primitve types were not imported properly
+
 ## [0.1.4] - 2025-10-30
 
 ### Added
