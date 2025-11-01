@@ -199,13 +199,15 @@ fn test_commands_file_generation() {
     // Check specific command functions
     assert!(commands_content.contains("export async function greet"));
     assert!(commands_content.contains("params: types.GreetParams"));
+    assert!(commands_content.contains("hooks?: CommandHooks<string>"));
     assert!(commands_content.contains("Promise<string>"));
-    assert!(commands_content.contains("types.GreetParamsSchema.parse(params)"));
-    assert!(commands_content.contains("invoke('greet'"));
+    assert!(commands_content.contains("types.GreetParamsSchema.safeParse(params)"));
+    assert!(commands_content.contains("invoke<string>('greet'"));
 
-    // Check command without parameters
-    assert!(commands_content.contains("export async function getUserCount(): Promise<number>"));
-    assert!(commands_content.contains("return invoke('get_user_count');"));
+    // Check command without parameters has hooks
+    assert!(commands_content.contains("export async function getUserCount"));
+    assert!(commands_content.contains("hooks?: CommandHooks<number>"));
+    assert!(commands_content.contains("invoke<number>('get_user_count')"));
 }
 
 #[test]

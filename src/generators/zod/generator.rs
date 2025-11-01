@@ -368,9 +368,16 @@ impl ZodBindingsGenerator {
             &["invoke"],
         )]));
         content.push_str(
+            TemplateHelpers::generate_type_imports(&[("zod", "{ ZodError }")]).trim_end(),
+        );
+        content.push_str("\n");
+        content.push_str(
             TemplateHelpers::generate_type_imports(&[("./types", "* as types")]).trim_end(),
         );
         content.push_str("\n\n");
+
+        // Generate CommandHooks interface
+        content.push_str(&Self::generate_command_hooks_interface());
 
         // Generate command functions with validation
         for command in commands {
@@ -382,11 +389,28 @@ impl ZodBindingsGenerator {
         content
     }
 
+    /// Generate the CommandHooks interface
+    fn generate_command_hooks_interface() -> String {
+        r#"export interface CommandHooks<T> {
+  /** Called when Zod schema validation fails */
+  onValidationError?: (error: ZodError) => void;
+
+  /** Called when Tauri invoke fails (Rust error, serialization, etc.) */
+  onInvokeError?: (error: unknown) => void;
+
+  /** Called when command succeeds */
+  onSuccess?: (result: T) => void;
+
+  /** Called after command settles (success or error) */
+  onSettled?: () => void;
+}
+
+"#
+        .to_string()
+    }
+
     /// Generate index.ts file
     fn generate_index_file(&self, generated_files: &[String]) -> String {
-        let mut content = String::new();
-        content.push_str(&self.generate_index_file_header());
-
         // Export from all generated files except index.ts
         let files_to_export: Vec<&str> = generated_files
             .iter()
@@ -394,12 +418,10 @@ impl ZodBindingsGenerator {
             .map(|s| s.as_str())
             .collect();
 
-        content.push_str(
-            &FileWriter::new("")
-                .unwrap()
-                .generate_standard_index(&files_to_export),
-        );
-        content
+        // generate_standard_index already includes the header
+        FileWriter::new("")
+            .unwrap()
+            .generate_standard_index(&files_to_export)
     }
 
     /// Escape a string for use in JavaScript/TypeScript string literals

@@ -111,9 +111,6 @@ impl TypeScriptBindingsGenerator {
 
     /// Generate index.ts file
     fn generate_index_file(&self, generated_files: &[String]) -> String {
-        let mut content = String::new();
-        content.push_str(&self.generate_index_file_header());
-
         // Export from all generated files except index.ts
         let files_to_export: Vec<&str> = generated_files
             .iter()
@@ -121,12 +118,10 @@ impl TypeScriptBindingsGenerator {
             .map(|s| s.as_str())
             .collect();
 
-        content.push_str(
-            &FileWriter::new("")
-                .unwrap()
-                .generate_standard_index(&files_to_export),
-        );
-        content
+        // generate_standard_index already includes the header
+        FileWriter::new("")
+            .unwrap()
+            .generate_standard_index(&files_to_export)
     }
 
     /// Convert string to camelCase for backward compatibility

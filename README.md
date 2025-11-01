@@ -627,6 +627,176 @@ Your IDE will provide full autocomplete and type hints for all generated functio
 #### ✅ Automatic Updates
 When you change your Rust commands, just re-run the generator to get updated TypeScript bindings.
 
+### Command Hooks (Zod Only)
+
+When using Zod validation, generated commands support optional lifecycle hooks for side effects like notifications, logging, and analytics.
+
+#### Hook Interface
+
+```typescript
+export interface CommandHooks<T> {
+  /** Called when Zod schema validation fails */
+  onValidationError?: (error: ZodError) => void;
+
+  /** Called when Tauri invoke fails (Rust error, serialization, etc.) */
+  onInvokeError?: (error: unknown) => void;
+
+  /** Called when command succeeds */
+  onSuccess?: (result: T) => void;
+
+  /** Called after command settles (success or error) */
+  onSettled?: () => void;
+}
+```
+
+#### Basic Usage
+
+```typescript
+import { createProduct } from './generated';
+import { toast } from 'your-notification-library';
+
+await createProduct(
+  { request: productData },
+  {
+    onValidationError: (error) => {
+      toast.error(error.errors[0].message);
+    },
+    onInvokeError: (error) => {
+      toast.error('Failed to create product');
+    },
+    onSuccess: (product) => {
+      toast.success(`Created ${product.name}!`);
+    },
+    onSettled: () => {
+      console.log('Operation completed');
+    },
+  }
+);
+```
+
+#### Reusable Hook Patterns
+
+Create reusable hook factories for consistent error handling:
+
+```typescript
+// lib/api-hooks.ts
+import { CommandHooks } from './generated';
+import { toast } from 'your-notification-library';
+import { ZodError } from 'zod';
+
+export function withNotifications<T>(messages?: {
+  success?: string;
+  error?: string;
+}): CommandHooks<T> {
+  return {
+    onValidationError: (error: ZodError) => {
+      toast.error(error.errors[0].message);
+    },
+    onInvokeError: () => {
+      toast.error(messages?.error || 'Operation failed');
+    },
+    onSuccess: () => {
+      if (messages?.success) {
+        toast.success(messages.success);
+      }
+    },
+  };
+}
+
+// Usage across your app
+await createProduct(
+  { request: data },
+  withNotifications({ success: 'Product created!' })
+);
+
+await deleteProduct(
+  { id: productId },
+  withNotifications({ success: 'Product deleted!' })
+);
+```
+
+#### React Query Integration
+
+```typescript
+import { useMutation } from '@tanstack/react-query';
+import { createProduct } from './generated';
+import { toast } from 'sonner';
+
+function useCreateProduct() {
+  return useMutation({
+    mutationFn: (data) => createProduct(
+      { request: data },
+      {
+        onValidationError: (err) => toast.error(err.errors[0].message),
+        onSuccess: () => toast.success('Product created!'),
+      }
+    ),
+  });
+}
+```
+
+#### Hooks Are Optional
+
+Hooks are completely optional - commands work without them:
+
+```typescript
+// Without hooks (backward compatible)
+const product = await createProduct({ request: data });
+
+// With partial hooks
+const product = await createProduct(
+  { request: data },
+  { onSuccess: (p) => console.log('Created:', p) }
+);
+
+// Traditional try/catch still works
+try {
+  const product = await createProduct({ request: data });
+} catch (error) {
+  console.error(error);
+}
+```
+
+#### Mixing Hooks with Framework Control Flow
+
+Hooks work seamlessly with framework-specific async patterns. Here's a Svelte example using `{#await}` blocks:
+
+```svelte
+<script lang="ts">
+  import { createProduct } from './generated';
+  import { toast } from 'your-notification-library';
+
+  let productData = { name: '', price: 0, categoryId: 1 };
+
+  // Hooks handle side effects (notifications)
+  // Svelte's #await handles UI state (loading, success, error)
+  let productPromise = createProduct(
+    { request: productData },
+    {
+      onValidationError: (err) => toast.error(err.errors[0].message),
+      onSuccess: (product) => toast.success(`Created ${product.name}!`),
+    }
+  );
+</script>
+
+{#await productPromise}
+  <!-- Loading state -->
+  <p>Creating product...</p>
+{:then product}
+  <!-- Success state -->
+  <p>Product created: {product.name}</p>
+{:catch error}
+  <!-- Error state -->
+  <p>Error: {error.message}</p>
+{/await}
+```
+
+This pattern shows how hooks and normal control flow complement each other:
+- **Hooks** = Cross-cutting concerns (notifications, analytics, logging)
+- **await/catch/UI state** = Primary application logic and user feedback
+
+**Note**: Hooks are synchronous side effects that execute during the command lifecycle. Errors are always re-thrown after hooks execute to preserve normal control flow. **If a hook itself throws an error, it will propagate and terminate the command** - hooks are not wrapped in try-catch.
+
 ## TypeScript Compatibility
 
 The generated TypeScript code is compatible with modern TypeScript environments and follows current best practices.

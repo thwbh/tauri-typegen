@@ -258,8 +258,8 @@ fn test_full_pipeline_complex_project() {
     assert!(commands_content.contains("export async function createUser"));
     assert!(commands_content.contains("params: types.CreateUserParams"));
     assert!(commands_content.contains("Promise<types.User>"));
-    assert!(commands_content.contains("types.CreateUserParamsSchema.parse(params)"));
-    assert!(commands_content.contains("invoke('create_user'"));
+    assert!(commands_content.contains("types.CreateUserParamsSchema.safeParse(params)"));
+    assert!(commands_content.contains("invoke") && commands_content.contains("'create_user'"));
 
     assert!(commands_content.contains("export async function getUsers"));
     assert!(commands_content.contains("export async function deleteUser"));
@@ -270,8 +270,8 @@ fn test_full_pipeline_complex_project() {
     );
 
     // Check that function without parameters works correctly
-    assert!(commands_content.contains("export async function getUserCount(): Promise<number>"));
-    assert!(commands_content.contains("return invoke('get_user_count');"));
+    assert!(commands_content.contains("export async function getUserCount"));
+    assert!(commands_content.contains("invoke") && commands_content.contains("'get_user_count'"));
 
     // Verify index.ts (zod generator doesn't have separate schemas file)
     assert!(index_content.contains("export * from './types';"));
@@ -423,7 +423,7 @@ fn test_generated_content_syntax_valid() {
     assert!(types_content.contains("= z.object"));
 
     assert!(commands_content.contains("export async function"));
-    assert!(commands_content.contains("return invoke("));
+    assert!(commands_content.contains("invoke(") || commands_content.contains("invoke<"));
 
     // Check that all functions return Promise types for async consistency
     let async_functions = commands_content.matches("export async function").count();

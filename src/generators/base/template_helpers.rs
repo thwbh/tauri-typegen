@@ -90,19 +90,23 @@ impl TemplateHelpers {
         let camel_case_name = Self::to_camel_case(&command.name);
 
         if command.parameters.is_empty() {
+            // Commands without parameters
             format!(
-                "export {}function {}(): {} {{\n  return invoke('{}');\n}}\n\n",
-                async_keyword, camel_case_name, return_promise, command.name
+                "export {}function {}(hooks?: CommandHooks<{}>): {} {{\n  try {{\n    const data = await invoke<{}>('{}');\n    hooks?.onSuccess?.(data);\n    return data;\n  }} catch (error) {{\n    hooks?.onInvokeError?.(error);\n    throw error;\n  }} finally {{\n    hooks?.onSettled?.();\n  }}\n}}\n\n",
+                async_keyword, camel_case_name, return_type, return_promise, return_type, command.name
             )
         } else {
             let pascal_name = Self::to_pascal_case(&command.name);
+            // Commands with parameters
             format!(
-                "export {}function {}({}): {} {{\n  const validatedParams = types.{}ParamsSchema.parse(params);\n  return invoke('{}', validatedParams);\n}}\n\n",
+                "export {}function {}({}, hooks?: CommandHooks<{}>): {} {{\n  try {{\n    const result = types.{}ParamsSchema.safeParse(params);\n    \n    if (!result.success) {{\n      hooks?.onValidationError?.(result.error);\n      throw result.error;\n    }}\n    \n    const data = await invoke<{}>('{}', result.data);\n    hooks?.onSuccess?.(data);\n    return data;\n  }} catch (error) {{\n    if (!(error instanceof ZodError)) {{\n      hooks?.onInvokeError?.(error);\n    }}\n    throw error;\n  }} finally {{\n    hooks?.onSettled?.();\n  }}\n}}\n\n",
                 async_keyword,
                 camel_case_name,
                 param_type,
+                return_type,
                 return_promise,
                 pascal_name,
+                return_type,
                 command.name
             )
         }
