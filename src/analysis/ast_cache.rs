@@ -93,12 +93,12 @@ impl AstCache {
     }
 
     /// Get all cached file paths
-    pub fn keys(&self) -> std::collections::hash_map::Keys<PathBuf, ParsedFile> {
+    pub fn keys(&self) -> std::collections::hash_map::Keys<'_, PathBuf, ParsedFile> {
         self.cache.keys()
     }
 
     /// Get all cached files as an iterator
-    pub fn iter(&self) -> std::collections::hash_map::Iter<PathBuf, ParsedFile> {
+    pub fn iter(&self) -> std::collections::hash_map::Iter<'_, PathBuf, ParsedFile> {
         self.cache.iter()
     }
 

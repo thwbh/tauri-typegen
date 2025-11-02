@@ -116,9 +116,7 @@ impl OutputManager {
             "bindings.d.ts",
         ];
 
-        generated_patterns
-            .iter()
-            .any(|pattern| filename == *pattern)
+        generated_patterns.contains(&filename)
             || filename.starts_with("generated_")
             || filename.contains("_generated")
             || self.managed_files.contains(filename)

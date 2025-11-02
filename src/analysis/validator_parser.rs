@@ -197,7 +197,7 @@ impl ValidatorParser {
                     if quote_char == '"' || quote_char == '\'' {
                         // Find the closing quote, handling escaped quotes
                         let rest = &after_eq[1..];
-                        let mut chars = rest.chars().enumerate();
+                        let chars = rest.chars().enumerate();
                         let mut escaped = false;
 
                         for (i, ch) in chars {

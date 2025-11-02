@@ -121,8 +121,7 @@ impl TemplateHelpers {
         }
 
         // Handle arrays of primitives: string[], number[], boolean[]
-        if ts_type.ends_with("[]") {
-            let base_type = &ts_type[..ts_type.len() - 2];
+        if let Some(base_type) = ts_type.strip_suffix("[]") {
             match base_type {
                 "string" | "number" | "boolean" | "void" => return ts_type.to_string(),
                 _ => {
