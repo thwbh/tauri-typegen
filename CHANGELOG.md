@@ -2,8 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.2.1] - 2025-11-02
+
+### Fixed
+- **CRITICAL**: Fixed CLI arguments being ignored when configuration file exists
+  - CLI arguments (`--validation`, `--project-path`, `--output-path`) now properly override config file settings
+  - Previously, when a config file was present, CLI flags were replaced by their default values, causing user-specified options to be ignored
+  - Changed CLI argument types to `Option<T>` to distinguish between "not specified" and "specified with default value"
+  - Boolean flags (`--verbose`, `--visualize-deps`) now only override config when explicitly provided
+  - Fixes issue where running without `--validation` flag would ignore config file's validation library setting
+
+### Changed
+- CLI argument precedence is now: CLI Arguments > Config File > Hardcoded Defaults
+- Improved help text for CLI arguments to clarify default behavior and config file integration
 
 ## [0.2.0] - 2025-11-01
 
