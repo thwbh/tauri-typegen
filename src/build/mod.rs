@@ -86,11 +86,12 @@ impl BuildSystem {
         if let Some(tauri_config_path) = &project_info.tauri_config_path {
             if tauri_config_path.exists() {
                 match GenerateConfig::from_tauri_config(tauri_config_path) {
-                    Ok(config) => {
+                    Ok(Some(config)) => {
                         self.logger
                             .debug("Loaded configuration from tauri.conf.json");
                         return Ok(config);
                     }
+                    Ok(None) => {}
                     Err(e) => {
                         self.logger.warning(&format!(
                             "Failed to load config from tauri.conf.json: {}. Using defaults.",
