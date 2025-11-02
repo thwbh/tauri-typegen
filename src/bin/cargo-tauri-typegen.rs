@@ -60,9 +60,9 @@ fn main() {
 }
 
 fn run_generate(
-    project_path: PathBuf,
-    output_path: PathBuf,
-    validation_library: String,
+    project_path: Option<PathBuf>,
+    output_path: Option<PathBuf>,
+    validation_library: Option<String>,
     verbose: bool,
     visualize_deps: bool,
     config_file: Option<PathBuf>,
@@ -72,7 +72,7 @@ fn run_generate(
 
     // Load configuration
     reporter.start_step("Loading configuration");
-    let config = if let Some(config_path) = config_file {
+    let mut config = if let Some(config_path) = config_file {
         // Explicit config file specified
         if config_path.exists() {
             GenerateConfig::from_file(config_path)?
@@ -105,19 +105,30 @@ fn run_generate(
         }
 
         if !config_loaded {
-            // No config file found, use CLI defaults
-            config = GenerateConfig {
-                project_path: project_path.to_string_lossy().to_string(),
-                output_path: output_path.to_string_lossy().to_string(),
-                validation_library,
-                verbose: Some(verbose),
-                visualize_deps: Some(visualize_deps),
-                ..Default::default()
-            };
+            // No config file found, use defaults
+            config = GenerateConfig::default();
         }
 
         config
     };
+
+    // CLI arguments override config file settings only when explicitly provided
+    if let Some(path) = project_path {
+        config.project_path = path.to_string_lossy().to_string();
+    }
+    if let Some(path) = output_path {
+        config.output_path = path.to_string_lossy().to_string();
+    }
+    if let Some(validation) = validation_library {
+        config.validation_library = validation;
+    }
+    // For boolean flags: only override if flag was present (true)
+    if verbose {
+        config.verbose = Some(true);
+    }
+    if visualize_deps {
+        config.visualize_deps = Some(true);
+    }
 
     reporter.complete_step(Some(&format!(
         "Using {} validation",
@@ -204,10 +215,10 @@ fn run_generate(
 }
 
 fn run_init(
-    project_path: PathBuf,
-    generated_path: PathBuf,
-    mut output_path: PathBuf,
-    validation_library: String,
+    project_path: Option<PathBuf>,
+    generated_path: Option<PathBuf>,
+    output_path: Option<PathBuf>,
+    validation_library: Option<String>,
     verbose: bool,
     visualize_deps: bool,
     force: bool,
@@ -215,6 +226,12 @@ fn run_init(
     let logger = Logger::new(verbose, false);
 
     logger.info("🚀 Initializing Tauri TypeScript generation configuration");
+
+    // Resolve paths with defaults
+    let project_path = project_path.unwrap_or_else(|| PathBuf::from("./src-tauri"));
+    let generated_path = generated_path.unwrap_or_else(|| PathBuf::from("./src/generated"));
+    let mut output_path = output_path.unwrap_or_else(|| PathBuf::from("tauri.conf.json"));
+    let validation_library = validation_library.unwrap_or_else(|| "zod".to_string());
 
     // If output path is just "tauri.conf.json" (default), place it in the project path
     let has_no_meaningful_parent = output_path
@@ -294,9 +311,9 @@ fn run_init(
     logger.info("🔄 Running initial generation...");
 
     run_generate(
-        project_path,
-        generated_path,
-        config.validation_library.clone(),
+        Some(project_path),
+        Some(generated_path),
+        Some(config.validation_library.clone()),
         verbose,
         visualize_deps,
         None, // No config file since we just created one
