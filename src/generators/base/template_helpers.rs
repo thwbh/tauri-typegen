@@ -1,4 +1,4 @@
-use crate::models::{CommandInfo, FieldInfo};
+use crate::models::{CommandInfo, EventInfo, FieldInfo};
 
 /// Template helper functions for generating common TypeScript patterns
 pub struct TemplateHelpers;
@@ -444,6 +444,92 @@ impl TemplateHelpers {
         }
 
         result.push_str(" */\n");
+        result
+    }
+
+    /// Generate event listener helper function
+    /// Creates a type-safe wrapper around the Tauri listen() function
+    pub fn generate_event_listener_function(event: &EventInfo) -> String {
+        // Convert event-name to EventName for function naming
+        let function_name = Self::event_name_to_function_name(&event.event_name);
+        let payload_type = &event.typescript_payload_type;
+
+        format!(
+            r#"/**
+ * Listen for '{}' events
+ * @param handler - Callback function to handle the event
+ * @returns Promise that resolves to an unlisten function
+ */
+export async function {}(
+  handler: (payload: {}) => void
+): Promise<UnlistenFn> {{
+  return listen<{}>('{}', (event) => {{
+    handler(event.payload);
+  }});
+}}
+
+"#,
+            event.event_name,
+            function_name,
+            payload_type,
+            payload_type,
+            event.event_name
+        )
+    }
+
+    /// Convert event-name to eventName function name
+    /// Examples: "download-started" -> "onDownloadStarted", "user-logged-in" -> "onUserLoggedIn"
+    fn event_name_to_function_name(event_name: &str) -> String {
+        let pascal = event_name
+            .split('-')
+            .map(|word| {
+                let mut chars = word.chars();
+                match chars.next() {
+                    None => String::new(),
+                    Some(first) => {
+                        first.to_uppercase().collect::<String>() + chars.as_str()
+                    }
+                }
+            })
+            .collect::<String>();
+
+        format!("on{}", pascal)
+    }
+
+    /// Generate event constants for consistent event name usage
+    pub fn generate_event_constants(events: &[EventInfo]) -> String {
+        let mut result = String::from("// Event name constants\n");
+
+        for event in events {
+            let constant_name = event.event_name.to_uppercase().replace('-', "_");
+            result.push_str(&format!(
+                "export const {} = '{}';\n",
+                constant_name, event.event_name
+            ));
+        }
+
+        result.push('\n');
+        result
+    }
+
+    /// Generate all event listener functions
+    pub fn generate_all_event_listeners(events: &[EventInfo]) -> String {
+        let mut result = String::new();
+
+        // Add header comment
+        result.push_str(&Self::generate_comment_block(&[
+            "Event Listeners",
+            "Type-safe event listener helpers for Tauri events",
+        ]));
+
+        // Generate imports
+        result.push_str("import { listen, type UnlistenFn, type Event } from '@tauri-apps/api/event';\n\n");
+
+        // Generate each listener function
+        for event in events {
+            result.push_str(&Self::generate_event_listener_function(event));
+        }
+
         result
     }
 }

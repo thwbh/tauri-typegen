@@ -1,17 +1,19 @@
 pub mod ast_cache;
 pub mod command_parser;
 pub mod dependency_graph;
+pub mod event_parser;
 pub mod struct_parser;
 pub mod type_resolver;
 pub mod validator_parser;
 
-use crate::models::{CommandInfo, StructInfo};
+use crate::models::{CommandInfo, EventInfo, StructInfo};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use ast_cache::AstCache;
 use command_parser::CommandParser;
 use dependency_graph::TypeDependencyGraph;
+use event_parser::EventParser;
 use struct_parser::StructParser;
 use type_resolver::TypeResolver;
 
@@ -21,6 +23,8 @@ pub struct CommandAnalyzer {
     ast_cache: AstCache,
     /// Command parser for extracting Tauri commands
     command_parser: CommandParser,
+    /// Event parser for extracting event emissions
+    event_parser: EventParser,
     /// Struct parser for extracting type definitions
     struct_parser: StructParser,
     /// Type resolver for Rust to TypeScript type mappings
@@ -29,6 +33,8 @@ pub struct CommandAnalyzer {
     dependency_graph: TypeDependencyGraph,
     /// Discovered struct definitions
     discovered_structs: HashMap<String, StructInfo>,
+    /// Discovered event emissions
+    discovered_events: Vec<EventInfo>,
 }
 
 impl CommandAnalyzer {
@@ -36,10 +42,12 @@ impl CommandAnalyzer {
         Self {
             ast_cache: AstCache::new(),
             command_parser: CommandParser::new(),
+            event_parser: EventParser::new(),
             struct_parser: StructParser::new(),
             type_resolver: TypeResolver::new(),
             dependency_graph: TypeDependencyGraph::new(),
             discovered_structs: HashMap::new(),
+            discovered_events: Vec::new(),
         }
     }
 
@@ -80,6 +88,13 @@ impl CommandAnalyzer {
                     &mut self.type_resolver,
                 )?;
 
+                // Extract events from this file's AST
+                let file_events = self.event_parser.extract_events_from_ast(
+                    &parsed_file.ast,
+                    parsed_file.path.as_path(),
+                    &mut self.type_resolver,
+                )?;
+
                 // Collect type names from command parameters and return types using functional style
                 file_commands.iter().for_each(|cmd| {
                     cmd.parameters.iter().for_each(|param| {
@@ -88,7 +103,13 @@ impl CommandAnalyzer {
                     self.extract_type_names(&cmd.return_type, &mut type_names_to_discover);
                 });
 
+                // Collect type names from event payloads
+                file_events.iter().for_each(|event| {
+                    self.extract_type_names(&event.payload_type, &mut type_names_to_discover);
+                });
+
                 commands.extend(file_commands);
+                self.discovered_events.extend(file_events);
 
                 // Build type definition index from this file
                 self.index_type_definitions(&parsed_file.ast, parsed_file.path.as_path());
@@ -110,6 +131,13 @@ impl CommandAnalyzer {
             for (name, info) in &self.discovered_structs {
                 println!("  - {}: {} fields", name, info.fields.len());
             }
+            println!(
+                "📡 Discovered {} events total",
+                self.discovered_events.len()
+            );
+            for event in &self.discovered_events {
+                println!("  - '{}': {}", event.event_name, event.payload_type);
+            }
         }
 
         Ok(commands)
@@ -125,8 +153,17 @@ impl CommandAnalyzer {
         // Parse and cache this single file - handle syntax errors gracefully
         match self.ast_cache.parse_and_cache_file(&path_buf) {
             Ok(_) => {
-                // Extract commands from the cached AST
+                // Extract commands and events from the cached AST
                 if let Some(parsed_file) = self.ast_cache.get_cloned(&path_buf) {
+                    // Extract events
+                    let file_events = self.event_parser.extract_events_from_ast(
+                        &parsed_file.ast,
+                        path_buf.as_path(),
+                        &mut self.type_resolver,
+                    )?;
+                    self.discovered_events.extend(file_events);
+
+                    // Extract commands
                     self.command_parser.extract_commands_from_ast(
                         &parsed_file.ast,
                         path_buf.as_path(),
@@ -379,6 +416,11 @@ impl CommandAnalyzer {
     /// Get discovered structs
     pub fn get_discovered_structs(&self) -> &HashMap<String, StructInfo> {
         &self.discovered_structs
+    }
+
+    /// Get discovered events
+    pub fn get_discovered_events(&self) -> &[EventInfo] {
+        &self.discovered_events
     }
 
     /// Get the dependency graph for visualization

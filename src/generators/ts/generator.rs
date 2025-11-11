@@ -3,7 +3,7 @@ use crate::generators::base::file_writer::FileWriter;
 use crate::generators::base::template_helpers::TemplateHelpers;
 use crate::generators::base::type_conversion::TypeConverter;
 use crate::generators::base::{BaseBindingsGenerator, BaseGenerator};
-use crate::models::{CommandInfo, StructInfo};
+use crate::models::{CommandInfo, EventInfo, StructInfo};
 use std::collections::{HashMap, HashSet};
 
 /// Generator for vanilla TypeScript bindings without validation
@@ -156,6 +156,19 @@ impl TypeScriptBindingsGenerator {
         // Must not be a primitive type
         !self.type_converter.is_primitive_type(ts_type)
     }
+
+    /// Generate events file content
+    fn generate_events_file(&self, events: &[EventInfo]) -> String {
+        let mut content = String::new();
+
+        // Add file header
+        content.push_str(&self.generate_file_header());
+
+        // Generate event listeners
+        content.push_str(&TemplateHelpers::generate_all_event_listeners(events));
+
+        content
+    }
 }
 
 impl BaseBindingsGenerator for TypeScriptBindingsGenerator {
@@ -164,7 +177,7 @@ impl BaseBindingsGenerator for TypeScriptBindingsGenerator {
         commands: &[CommandInfo],
         discovered_structs: &HashMap<String, StructInfo>,
         output_path: &str,
-        _analyzer: &CommandAnalyzer,
+        analyzer: &CommandAnalyzer,
     ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
         // Set up the type converter with known structs
         self.type_converter
@@ -186,6 +199,13 @@ impl BaseBindingsGenerator for TypeScriptBindingsGenerator {
         // Generate and write commands file
         let commands_content = self.generate_command_bindings(commands);
         file_writer.write_commands_file(&commands_content)?;
+
+        // Generate and write events file if there are any events
+        let events = analyzer.get_discovered_events();
+        if !events.is_empty() {
+            let events_content = self.generate_events_file(events);
+            file_writer.write_events_file(&events_content)?;
+        }
 
         // Generate and write index file
         let index_content = self.generate_index_file(file_writer.get_generated_files());

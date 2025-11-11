@@ -106,3 +106,14 @@ pub struct RangeConstraint {
     pub max: Option<f64>,
     pub message: Option<String>,
 }
+
+// Event information for frontend event listeners
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EventInfo {
+    pub event_name: String,
+    pub payload_type: String,
+    pub typescript_payload_type: String,
+    pub file_path: String,
+    pub line_number: usize,
+}
