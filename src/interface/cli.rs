@@ -34,7 +34,7 @@ pub enum TypegenCommands {
         #[arg(short = 'o', long = "output-path")]
         output_path: Option<PathBuf>,
 
-        /// Validation library to use (zod or none). Defaults to config file value or "zod"
+        /// Validation library to use (zod or none). Defaults to config file value or "none"
         #[arg(short = 'v', long = "validation")]
         validation_library: Option<String>,
 
@@ -64,7 +64,7 @@ pub enum TypegenCommands {
         #[arg(short = 'o', long = "output")]
         output_path: Option<PathBuf>,
 
-        /// Validation library to use (zod or none). Defaults to "zod"
+        /// Validation library to use (zod or none). Defaults to "none"
         #[arg(short = 'v', long = "validation")]
         validation_library: Option<String>,
 

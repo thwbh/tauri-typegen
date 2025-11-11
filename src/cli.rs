@@ -16,7 +16,7 @@ impl Default for GenerateConfig {
         Self {
             project_path: "./src-tauri".to_string(),
             output_path: "./src/generated".to_string(),
-            validation_library: "zod".to_string(),
+            validation_library: "none".to_string(),
             verbose: Some(false),
         }
     }
