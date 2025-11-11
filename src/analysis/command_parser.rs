@@ -82,13 +82,13 @@ impl CommandParser {
                 if let FnArg::Typed(PatType { pat, ty, .. }) = input {
                     if let syn::Pat::Ident(pat_ident) = pat.as_ref() {
                         let name = pat_ident.ident.to_string();
-                        let rust_type = self.type_to_string(ty);
 
                         // Skip Tauri-specific parameters
-                        if self.is_tauri_parameter(&name, &rust_type) {
+                        if self.is_tauri_parameter_type(ty) {
                             return None;
                         }
 
+                        let rust_type = self.type_to_string(ty);
                         let typescript_type = type_resolver.map_rust_type_to_typescript(&rust_type);
                         let is_optional = self.is_optional_type(ty);
 
@@ -105,20 +105,53 @@ impl CommandParser {
             .collect()
     }
 
-    /// Check if a parameter is a Tauri-specific parameter that should be skipped
-    fn is_tauri_parameter(&self, name: &str, rust_type: &str) -> bool {
-        // Common Tauri parameter names
-        if matches!(name, "app" | "window" | "state" | "handle") {
-            return true;
-        }
+    /// Check if a parameter type is a Tauri-specific type that should be skipped
+    /// This checks the actual syn::Type to properly handle both imported and fully-qualified types
+    fn is_tauri_parameter_type(&self, ty: &Type) -> bool {
+        if let Type::Path(type_path) = ty {
+            let segments = &type_path.path.segments;
 
-        // Common Tauri parameter types
-        if rust_type.contains("AppHandle")
-            || rust_type.contains("Window")
-            || rust_type.contains("State")
-            || rust_type.contains("Manager")
-        {
-            return true;
+            // Check various patterns:
+            // 1. Fully qualified: tauri::AppHandle, tauri::State<T>, tauri::ipc::Request
+            // 2. Imported: AppHandle, State<T>, Window<T>
+
+            if segments.len() >= 2 {
+                // Check for tauri::* or tauri::ipc::*
+                if segments[0].ident == "tauri" {
+                    if segments.len() == 2 {
+                        // tauri::AppHandle, tauri::Window, etc.
+                        let second = &segments[1].ident;
+                        return second == "AppHandle"
+                            || second == "Window"
+                            || second == "WebviewWindow"
+                            || second == "State"
+                            || second == "Manager";
+                    } else if segments.len() == 3 && segments[1].ident == "ipc" {
+                        // tauri::ipc::Request, tauri::ipc::Channel
+                        let third = &segments[2].ident;
+                        return third == "Request" || third == "Channel";
+                    }
+                }
+            }
+
+            // Check for imported types (single segment)
+            if let Some(last_segment) = segments.last() {
+                let type_ident = &last_segment.ident;
+
+                // Only match specific Tauri types that are commonly imported
+                // Be careful not to match user types with similar names
+                if type_ident == "AppHandle" || type_ident == "WebviewWindow" {
+                    return true;
+                }
+
+                // State and Window are common names, only match if they have generic params
+                // (Tauri's State and Window types always have generics like State<T>, Window<R>)
+                if (type_ident == "State" || type_ident == "Window")
+                    && !last_segment.arguments.is_empty()
+                {
+                    return true;
+                }
+            }
         }
 
         false
