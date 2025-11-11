@@ -1,4 +1,5 @@
 pub mod ast_cache;
+pub mod channel_parser;
 pub mod command_parser;
 pub mod dependency_graph;
 pub mod event_parser;
@@ -6,11 +7,12 @@ pub mod struct_parser;
 pub mod type_resolver;
 pub mod validator_parser;
 
-use crate::models::{CommandInfo, EventInfo, StructInfo};
+use crate::models::{ChannelInfo, CommandInfo, EventInfo, StructInfo};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use ast_cache::AstCache;
+use channel_parser::ChannelParser;
 use command_parser::CommandParser;
 use dependency_graph::TypeDependencyGraph;
 use event_parser::EventParser;
@@ -23,6 +25,8 @@ pub struct CommandAnalyzer {
     ast_cache: AstCache,
     /// Command parser for extracting Tauri commands
     command_parser: CommandParser,
+    /// Channel parser for extracting channel parameters
+    channel_parser: ChannelParser,
     /// Event parser for extracting event emissions
     event_parser: EventParser,
     /// Struct parser for extracting type definitions
@@ -42,6 +46,7 @@ impl CommandAnalyzer {
         Self {
             ast_cache: AstCache::new(),
             command_parser: CommandParser::new(),
+            channel_parser: ChannelParser::new(),
             event_parser: EventParser::new(),
             struct_parser: StructParser::new(),
             type_resolver: TypeResolver::new(),
@@ -82,11 +87,30 @@ impl CommandAnalyzer {
                 }
 
                 // Extract commands from this file's AST
-                let file_commands = self.command_parser.extract_commands_from_ast(
+                let mut file_commands = self.command_parser.extract_commands_from_ast(
                     &parsed_file.ast,
                     parsed_file.path.as_path(),
                     &mut self.type_resolver,
                 )?;
+
+                // Extract channels for each command
+                for command in &mut file_commands {
+                    if let Some(func) = self.find_function_in_ast(&parsed_file.ast, &command.name) {
+                        let channels = self.channel_parser.extract_channels_from_command(
+                            func,
+                            &command.name,
+                            parsed_file.path.as_path(),
+                            &mut self.type_resolver,
+                        )?;
+
+                        // Collect type names from channel message types
+                        channels.iter().for_each(|ch| {
+                            self.extract_type_names(&ch.message_type, &mut type_names_to_discover);
+                        });
+
+                        command.channels = channels;
+                    }
+                }
 
                 // Extract events from this file's AST
                 let file_events = self.event_parser.extract_events_from_ast(
@@ -138,6 +162,14 @@ impl CommandAnalyzer {
             for event in &self.discovered_events {
                 println!("  - '{}': {}", event.event_name, event.payload_type);
             }
+            let all_channels = self.get_all_discovered_channels(&commands);
+            println!(
+                "📞 Discovered {} channels total",
+                all_channels.len()
+            );
+            for channel in &all_channels {
+                println!("  - '{}' in {}: {}", channel.parameter_name, channel.command_name, channel.message_type);
+            }
         }
 
         Ok(commands)
@@ -164,11 +196,26 @@ impl CommandAnalyzer {
                     self.discovered_events.extend(file_events);
 
                     // Extract commands
-                    self.command_parser.extract_commands_from_ast(
+                    let mut commands = self.command_parser.extract_commands_from_ast(
                         &parsed_file.ast,
                         path_buf.as_path(),
                         &mut self.type_resolver,
-                    )
+                    )?;
+
+                    // Extract channels for each command
+                    for command in &mut commands {
+                        if let Some(func) = self.find_function_in_ast(&parsed_file.ast, &command.name) {
+                            let channels = self.channel_parser.extract_channels_from_command(
+                                func,
+                                &command.name,
+                                path_buf.as_path(),
+                                &mut self.type_resolver,
+                            )?;
+                            command.channels = channels;
+                        }
+                    }
+
+                    Ok(commands)
                 } else {
                     Ok(vec![])
                 }
@@ -421,6 +468,30 @@ impl CommandAnalyzer {
     /// Get discovered events
     pub fn get_discovered_events(&self) -> &[EventInfo] {
         &self.discovered_events
+    }
+
+    /// Get all discovered channels from all commands
+    pub fn get_all_discovered_channels(&self, commands: &[CommandInfo]) -> Vec<ChannelInfo> {
+        commands
+            .iter()
+            .flat_map(|cmd| cmd.channels.clone())
+            .collect()
+    }
+
+    /// Find a function by name in an AST
+    fn find_function_in_ast<'a>(
+        &self,
+        ast: &'a syn::File,
+        function_name: &str,
+    ) -> Option<&'a syn::ItemFn> {
+        for item in &ast.items {
+            if let syn::Item::Fn(func) = item {
+                if func.sig.ident == function_name {
+                    return Some(func);
+                }
+            }
+        }
+        None
     }
 
     /// Get the dependency graph for visualization

@@ -49,6 +49,7 @@ pub struct CommandInfo {
     pub parameters: Vec<ParameterInfo>,
     pub return_type: String,
     pub is_async: bool,
+    pub channels: Vec<ChannelInfo>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -114,6 +115,18 @@ pub struct EventInfo {
     pub event_name: String,
     pub payload_type: String,
     pub typescript_payload_type: String,
+    pub file_path: String,
+    pub line_number: usize,
+}
+
+// Channel information for streaming data from Rust to frontend
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChannelInfo {
+    pub parameter_name: String,
+    pub message_type: String,
+    pub typescript_message_type: String,
+    pub command_name: String,
     pub file_path: String,
     pub line_number: usize,
 }

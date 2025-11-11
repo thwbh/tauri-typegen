@@ -81,6 +81,7 @@ fn create_sample_commands_with_unused_structs() -> Vec<CommandInfo> {
             }],
             return_type: "User".to_string(),
             is_async: true,
+            channels: vec![],
         },
         CommandInfo {
             name: "get_user_count".to_string(),
@@ -89,6 +90,7 @@ fn create_sample_commands_with_unused_structs() -> Vec<CommandInfo> {
             parameters: vec![],
             return_type: "number".to_string(),
             is_async: true,
+            channels: vec![],
         },
     ]
 }

@@ -54,8 +54,9 @@ impl TypeScriptBindingsGenerator {
         let mut content = String::new();
 
         for command in commands {
-            if !command.parameters.is_empty() {
-                if let Some(interface) = TemplateHelpers::generate_params_interface(command) {
+            // Generate interface if command has parameters or channels
+            if !command.parameters.is_empty() || !command.channels.is_empty() {
+                if let Some(interface) = TemplateHelpers::generate_params_interface_with_channels(command) {
                     content.push_str(&interface);
                 }
             }
@@ -75,6 +76,13 @@ impl TypeScriptBindingsGenerator {
         // Add file header
         content.push_str(&self.generate_file_header());
 
+        // Import Channel if any command has channels
+        let has_channels = commands.iter().any(|cmd| !cmd.channels.is_empty());
+        if has_channels {
+            content.push_str(&TemplateHelpers::generate_type_imports(&[("@tauri-apps/api/core", "{ Channel }")]));
+            content.push('\n');
+        }
+
         // Generate parameter interfaces
         content.push_str(&self.generate_param_interfaces(commands));
 
@@ -91,11 +99,21 @@ impl TypeScriptBindingsGenerator {
         // Add file header
         content.push_str(&self.generate_command_file_header());
 
-        // Add imports
-        content.push_str(&TemplateHelpers::generate_named_imports(&[(
-            "@tauri-apps/api/core",
-            &["invoke"],
-        )]));
+        // Check if any command has channels
+        let has_channels = commands.iter().any(|cmd| !cmd.channels.is_empty());
+
+        // Add imports - include Channel if needed
+        if has_channels {
+            content.push_str(&TemplateHelpers::generate_named_imports(&[(
+                "@tauri-apps/api/core",
+                &["invoke", "Channel"],
+            )]));
+        } else {
+            content.push_str(&TemplateHelpers::generate_named_imports(&[(
+                "@tauri-apps/api/core",
+                &["invoke"],
+            )]));
+        }
         content.push_str(
             TemplateHelpers::generate_type_imports(&[("./types", "* as types")]).trim_end(),
         );
@@ -103,7 +121,11 @@ impl TypeScriptBindingsGenerator {
 
         // Generate command functions
         for command in commands {
-            content.push_str(&TemplateHelpers::generate_command_function(command));
+            if !command.channels.is_empty() {
+                content.push_str(&TemplateHelpers::generate_command_function_with_channels(command));
+            } else {
+                content.push_str(&TemplateHelpers::generate_command_function(command));
+            }
         }
 
         content

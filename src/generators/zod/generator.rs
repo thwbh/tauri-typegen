@@ -270,6 +270,8 @@ impl ZodBindingsGenerator {
         let mut content = String::new();
 
         for command in commands {
+            // Only generate schema if command has regular parameters (not just channels)
+            // Channels are runtime objects and should not be validated
             if !command.parameters.is_empty() {
                 let schema_name = format!(
                     "{}ParamsSchema",
@@ -306,7 +308,13 @@ impl ZodBindingsGenerator {
 
         // Generate parameter types
         for command in commands {
-            if !command.parameters.is_empty() {
+            // If command has only channels (no regular params), generate interface manually
+            if command.parameters.is_empty() && !command.channels.is_empty() {
+                if let Some(interface) = TemplateHelpers::generate_params_interface_with_channels(command) {
+                    content.push_str(&interface);
+                }
+            } else if !command.parameters.is_empty() && command.channels.is_empty() {
+                // Only regular params, generate from schema
                 let type_name = format!("{}Params", TemplateHelpers::to_pascal_case(&command.name));
                 let schema_name = format!(
                     "{}ParamsSchema",
@@ -316,6 +324,11 @@ impl ZodBindingsGenerator {
                     &type_name,
                     &format!("z.infer<typeof {}>", schema_name),
                 ));
+            } else if !command.parameters.is_empty() && !command.channels.is_empty() {
+                // Both regular params and channels: generate interface with both
+                if let Some(interface) = TemplateHelpers::generate_params_interface_with_channels(command) {
+                    content.push_str(&interface);
+                }
             }
         }
 
@@ -345,6 +358,13 @@ impl ZodBindingsGenerator {
         // Import Zod
         content.push_str(&TemplateHelpers::generate_named_imports(&[("zod", &["z"])]));
 
+        // Import Channel if any command has channels
+        let has_channels = commands.iter().any(|cmd| !cmd.channels.is_empty());
+        if has_channels {
+            content.push_str(&TemplateHelpers::generate_type_imports(&[("@tauri-apps/api/core", "{ Channel }")]));
+        }
+        content.push('\n');
+
         // Sort structs topologically to ensure dependencies are defined before use
         let type_names: HashSet<String> = used_structs.keys().cloned().collect();
         let sorted_types = analyzer.topological_sort_types(&type_names);
@@ -372,11 +392,21 @@ impl ZodBindingsGenerator {
         // Add file header
         content.push_str(&self.generate_command_file_header());
 
-        // Add imports
-        content.push_str(&TemplateHelpers::generate_named_imports(&[(
-            "@tauri-apps/api/core",
-            &["invoke"],
-        )]));
+        // Check if any command has channels
+        let has_channels = commands.iter().any(|cmd| !cmd.channels.is_empty());
+
+        // Add imports - include Channel if needed
+        if has_channels {
+            content.push_str(&TemplateHelpers::generate_named_imports(&[(
+                "@tauri-apps/api/core",
+                &["invoke", "Channel"],
+            )]));
+        } else {
+            content.push_str(&TemplateHelpers::generate_named_imports(&[(
+                "@tauri-apps/api/core",
+                &["invoke"],
+            )]));
+        }
         content.push_str(
             TemplateHelpers::generate_type_imports(&[("zod", "{ ZodError }")]).trim_end(),
         );
@@ -391,9 +421,15 @@ impl ZodBindingsGenerator {
 
         // Generate command functions with validation
         for command in commands {
-            content.push_str(&TemplateHelpers::generate_command_function_with_validation(
-                command,
-            ));
+            if !command.channels.is_empty() {
+                content.push_str(&TemplateHelpers::generate_command_function_with_channels_and_validation(
+                    command,
+                ));
+            } else {
+                content.push_str(&TemplateHelpers::generate_command_function_with_validation(
+                    command,
+                ));
+            }
         }
 
         content

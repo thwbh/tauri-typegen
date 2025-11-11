@@ -67,6 +67,7 @@ impl CommandParser {
             file_path: file_path.to_string_lossy().to_string(),
             line_number,
             is_async,
+            channels: Vec::new(), // Will be populated by channel_parser
         })
     }
 
@@ -141,6 +142,11 @@ impl CommandParser {
                 // Only match specific Tauri types that are commonly imported
                 // Be careful not to match user types with similar names
                 if type_ident == "AppHandle" || type_ident == "WebviewWindow" {
+                    return true;
+                }
+
+                // Channel should be filtered if it has generic parameters (indicating it's the Tauri IPC channel)
+                if type_ident == "Channel" && matches!(last_segment.arguments, syn::PathArguments::AngleBracketed(_)) {
                     return true;
                 }
 
