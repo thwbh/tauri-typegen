@@ -162,7 +162,7 @@ mod tests {
         let config = GenerateConfig::from(&cmd);
         assert_eq!(config.project_path, "./src-tauri");
         assert_eq!(config.output_path, "./src/generated");
-        assert_eq!(config.validation_library, "zod");
+        assert_eq!(config.validation_library, "none");
         assert_eq!(config.verbose, Some(false));
         assert_eq!(config.visualize_deps, Some(false));
     }
@@ -221,7 +221,7 @@ mod tests {
         let config = GenerateConfig::from(&cmd);
         assert_eq!(config.project_path, "./src-tauri");
         assert_eq!(config.output_path, "./src/generated");
-        assert_eq!(config.validation_library, "zod");
+        assert_eq!(config.validation_library, "none");
         assert_eq!(config.verbose, Some(false));
         assert_eq!(config.visualize_deps, Some(false));
     }

@@ -297,7 +297,7 @@ mod tests {
         let config = GenerateConfig::default();
         assert_eq!(config.project_path, "./src-tauri");
         assert_eq!(config.output_path, "./src/generated");
-        assert_eq!(config.validation_library, "zod");
+        assert_eq!(config.validation_library, "none");
         assert!(!config.is_verbose());
         assert!(!config.should_visualize_deps());
         assert!(!config.should_include_private());

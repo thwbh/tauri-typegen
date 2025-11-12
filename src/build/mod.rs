@@ -234,7 +234,7 @@ mod tests {
         let build_system = BuildSystem::new(false, false);
         let config = build_system.load_configuration(&project_info).unwrap();
 
-        assert_eq!(config.validation_library, "zod");
+        assert_eq!(config.validation_library, "none");
         assert_eq!(config.project_path, "./src-tauri");
     }
 }

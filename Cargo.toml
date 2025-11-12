@@ -10,7 +10,7 @@ links = "tauri-typegen"
 license = "MIT"
 
 [dependencies]
-tauri = { version = "2.2.0" }
+tauri = { version = "2.2.0", default-features = false }
 serde = "1.0"
 serde_json = "1.0"
 thiserror = "2"
