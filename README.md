@@ -1,5 +1,7 @@
 # Tauri TypeGen
 
+[![codecov](https://codecov.io/gh/thwbh/tauri-typegen/branch/main/graph/badge.svg)](https://codecov.io/gh/thwbh/tauri-typegen)
+
 A command-line tool that automatically generates TypeScript bindings from your Tauri commands, eliminating manual frontend type creation.
 
 ## Features
