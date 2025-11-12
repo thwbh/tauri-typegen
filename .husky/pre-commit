@@ -1,3 +1,0 @@
-# Format Rust code in src-tauri
-echo "🦀 Formatting Rust code..."
-cargo fmt

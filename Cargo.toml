@@ -38,3 +38,8 @@ build-time-generation = []
 tokio = { version = "1.0", features = ["macros", "rt"] }
 tempfile = "3.0"
 serial_test = "3.0"
+
+[dev-dependencies.cargo-husky]
+version = "1"
+default-features = false
+features = ["user-hooks"]
