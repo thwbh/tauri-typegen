@@ -89,7 +89,7 @@ impl CommandParser {
                             return None;
                         }
 
-                        let rust_type = self.type_to_string(ty);
+                        let rust_type = Self::type_to_string(ty);
                         let typescript_type = type_resolver.map_rust_type_to_typescript(&rust_type);
                         let is_optional = self.is_optional_type(ty);
 
@@ -173,15 +173,14 @@ impl CommandParser {
         match output {
             ReturnType::Default => "void".to_string(),
             ReturnType::Type(_, ty) => {
-                let rust_type = self.type_to_string(ty);
+                let rust_type = Self::type_to_string(ty);
                 type_resolver.map_rust_type_to_typescript(&rust_type)
             }
         }
     }
 
     /// Convert a Type to its string representation
-    #[allow(clippy::only_used_in_recursion)]
-    fn type_to_string(&self, ty: &Type) -> String {
+    fn type_to_string(ty: &Type) -> String {
         match ty {
             Type::Path(type_path) => {
                 let segments: Vec<String> = type_path
@@ -199,7 +198,7 @@ impl CommandParser {
                                         .iter()
                                         .filter_map(|arg| {
                                             if let syn::GenericArgument::Type(inner_ty) = arg {
-                                                Some(self.type_to_string(inner_ty))
+                                                Some(Self::type_to_string(inner_ty))
                                             } else {
                                                 None
                                             }
@@ -215,17 +214,14 @@ impl CommandParser {
                 segments.join("::")
             }
             Type::Reference(type_ref) => {
-                format!("&{}", self.type_to_string(&type_ref.elem))
+                format!("&{}", Self::type_to_string(&type_ref.elem))
             }
             Type::Tuple(type_tuple) => {
                 if type_tuple.elems.is_empty() {
                     "()".to_string()
                 } else {
-                    let types: Vec<String> = type_tuple
-                        .elems
-                        .iter()
-                        .map(|t| self.type_to_string(t))
-                        .collect();
+                    let types: Vec<String> =
+                        type_tuple.elems.iter().map(Self::type_to_string).collect();
                     format!("({})", types.join(", "))
                 }
             }

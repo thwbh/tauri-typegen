@@ -251,7 +251,7 @@ impl EventParser {
 
         if let Some(event_name) = event_name {
             let payload_type = if let Some(payload_expr) = payload_expr {
-                self.infer_payload_type(payload_expr)
+                Self::infer_payload_type(payload_expr)
             } else {
                 "()".to_string()
             };
@@ -281,13 +281,12 @@ impl EventParser {
 
     /// Infer the type of the payload expression
     /// This is a best-effort heuristic based on the expression structure
-    #[allow(clippy::only_used_in_recursion)]
-    fn infer_payload_type(&self, expr: &Expr) -> String {
+    fn infer_payload_type(expr: &Expr) -> String {
         match expr {
             // Reference to a variable: &some_var
             Expr::Reference(expr_ref) => {
                 // Try to infer from the inner expression
-                self.infer_payload_type(&expr_ref.expr)
+                Self::infer_payload_type(&expr_ref.expr)
             }
             // Struct construction: User { ... }
             Expr::Struct(expr_struct) => {

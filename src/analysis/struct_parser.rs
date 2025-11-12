@@ -150,7 +150,7 @@ impl StructParser {
                             .iter()
                             .map(|field| {
                                 type_resolver
-                                    .map_rust_type_to_typescript(&self.type_to_string(&field.ty))
+                                    .map_rust_type_to_typescript(&Self::type_to_string(&field.ty))
                             })
                             .collect();
                         FieldInfo {
@@ -175,7 +175,7 @@ impl StructParser {
                             .filter_map(|field| {
                                 field.ident.as_ref().map(|field_name| {
                                     let field_type = type_resolver.map_rust_type_to_typescript(
-                                        &self.type_to_string(&field.ty),
+                                        &Self::type_to_string(&field.ty),
                                     );
                                     format!("{}: {}", field_name, field_type)
                                 })
@@ -234,7 +234,7 @@ impl StructParser {
 
         let is_public = matches!(field.vis, Visibility::Public(_));
         let is_optional = self.is_optional_type(&field.ty);
-        let rust_type = self.type_to_string(&field.ty);
+        let rust_type = Self::type_to_string(&field.ty);
         let typescript_type = type_resolver.map_rust_type_to_typescript(&rust_type);
         let validator_attributes = self
             .validator_parser
@@ -265,8 +265,7 @@ impl StructParser {
     }
 
     /// Convert a Type to its string representation
-    #[allow(clippy::only_used_in_recursion)]
-    fn type_to_string(&self, ty: &Type) -> String {
+    fn type_to_string(ty: &Type) -> String {
         match ty {
             Type::Path(type_path) => {
                 let path = &type_path.path;
@@ -282,7 +281,7 @@ impl StructParser {
                                     .args
                                     .iter()
                                     .map(|arg| match arg {
-                                        syn::GenericArgument::Type(t) => self.type_to_string(t),
+                                        syn::GenericArgument::Type(t) => Self::type_to_string(t),
                                         _ => "unknown".to_string(),
                                     })
                                     .collect();
@@ -295,21 +294,18 @@ impl StructParser {
                 segments.join("::")
             }
             Type::Reference(type_ref) => {
-                format!("&{}", self.type_to_string(&type_ref.elem))
+                format!("&{}", Self::type_to_string(&type_ref.elem))
             }
             Type::Tuple(type_tuple) => {
-                let elements: Vec<String> = type_tuple
-                    .elems
-                    .iter()
-                    .map(|elem| self.type_to_string(elem))
-                    .collect();
+                let elements: Vec<String> =
+                    type_tuple.elems.iter().map(Self::type_to_string).collect();
                 format!("({})", elements.join(", "))
             }
             Type::Array(type_array) => {
-                format!("[{}; _]", self.type_to_string(&type_array.elem))
+                format!("[{}; _]", Self::type_to_string(&type_array.elem))
             }
             Type::Slice(type_slice) => {
-                format!("[{}]", self.type_to_string(&type_slice.elem))
+                format!("[{}]", Self::type_to_string(&type_slice.elem))
             }
             _ => "unknown".to_string(),
         }

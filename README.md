@@ -3,7 +3,7 @@
 [![Crates.io](https://img.shields.io/crates/v/tauri-typegen.svg)](https://crates.io/crates/tauri-typegen)
 [![Documentation](https://docs.rs/tauri-typegen/badge.svg)](https://docs.rs/tauri-typegen)
 [![codecov](https://codecov.io/gh/thwbh/tauri-typegen/branch/main/graph/badge.svg)](https://codecov.io/gh/thwbh/tauri-typegen)
-[![CI](https://github.com/thwbh/tauri-typegen/workflows/CI/badge.svg)](https://github.com/thwbh/tauri-typegen/actions)
+[![Test](https://github.com/thwbh/tauri-typegen/actions/workflows/ci.yml/badge.svg)](https://github.com/thwbh/tauri-typegen/actions/workflows/ci.yml)
 
 A command-line tool that automatically generates TypeScript bindings from your Tauri commands, eliminating manual frontend type creation.
 

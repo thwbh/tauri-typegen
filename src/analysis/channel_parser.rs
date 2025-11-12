@@ -78,7 +78,7 @@ impl ChannelParser {
                     }) = &last_segment.arguments
                     {
                         if let Some(GenericArgument::Type(inner_type)) = args.first() {
-                            return Some(self.type_to_string(inner_type));
+                            return Some(Self::type_to_string(inner_type));
                         }
                     }
                 }
@@ -121,8 +121,7 @@ impl ChannelParser {
 
     /// Convert a syn::Type to a string representation
     /// Simplified version - handles common cases
-    #[allow(clippy::only_used_in_recursion)]
-    fn type_to_string(&self, ty: &Type) -> String {
+    fn type_to_string(ty: &Type) -> String {
         match ty {
             Type::Path(type_path) => {
                 let segments: Vec<String> = type_path
@@ -138,7 +137,7 @@ impl ChannelParser {
                                 .iter()
                                 .filter_map(|arg| {
                                     if let GenericArgument::Type(t) = arg {
-                                        Some(self.type_to_string(t))
+                                        Some(Self::type_to_string(t))
                                     } else {
                                         None
                                     }
@@ -154,19 +153,18 @@ impl ChannelParser {
                 segments.join("::")
             }
             Type::Reference(type_ref) => {
-                format!("&{}", self.type_to_string(&type_ref.elem))
+                format!("&{}", Self::type_to_string(&type_ref.elem))
             }
             Type::Tuple(tuple) => {
                 if tuple.elems.is_empty() {
                     "()".to_string()
                 } else {
-                    let types: Vec<String> =
-                        tuple.elems.iter().map(|t| self.type_to_string(t)).collect();
+                    let types: Vec<String> = tuple.elems.iter().map(Self::type_to_string).collect();
                     format!("({})", types.join(", "))
                 }
             }
             Type::Array(arr) => {
-                format!("[{}]", self.type_to_string(&arr.elem))
+                format!("[{}]", Self::type_to_string(&arr.elem))
             }
             _ => "unknown".to_string(),
         }
@@ -226,15 +224,15 @@ mod tests {
 
     #[test]
     fn test_type_to_string() {
-        let parser = ChannelParser::new();
+        let _parser = ChannelParser::new();
 
         let ty: Type = parse_quote!(String);
-        assert_eq!(parser.type_to_string(&ty), "String");
+        assert_eq!(ChannelParser::type_to_string(&ty), "String");
 
         let ty: Type = parse_quote!(Vec<i32>);
-        assert_eq!(parser.type_to_string(&ty), "Vec<i32>");
+        assert_eq!(ChannelParser::type_to_string(&ty), "Vec<i32>");
 
         let ty: Type = parse_quote!(Option<User>);
-        assert_eq!(parser.type_to_string(&ty), "Option<User>");
+        assert_eq!(ChannelParser::type_to_string(&ty), "Option<User>");
     }
 }
