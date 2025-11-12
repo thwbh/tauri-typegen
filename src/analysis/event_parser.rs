@@ -29,7 +29,12 @@ impl EventParser {
         for item in &ast.items {
             if let syn::Item::Fn(func) = item {
                 // Search within function bodies
-                self.extract_events_from_block(&func.block.stmts, file_path, type_resolver, &mut events);
+                self.extract_events_from_block(
+                    &func.block.stmts,
+                    file_path,
+                    type_resolver,
+                    &mut events,
+                );
             }
         }
 
@@ -83,10 +88,20 @@ impl EventParser {
                 self.handle_method_call(method_call, file_path, type_resolver, events);
             }
             Expr::Block(block) => {
-                self.extract_events_from_block(&block.block.stmts, file_path, type_resolver, events);
+                self.extract_events_from_block(
+                    &block.block.stmts,
+                    file_path,
+                    type_resolver,
+                    events,
+                );
             }
             Expr::If(expr_if) => {
-                self.extract_events_from_block(&expr_if.then_branch.stmts, file_path, type_resolver, events);
+                self.extract_events_from_block(
+                    &expr_if.then_branch.stmts,
+                    file_path,
+                    type_resolver,
+                    events,
+                );
                 if let Some((_, else_branch)) = &expr_if.else_branch {
                     self.extract_events_from_expr(else_branch, file_path, type_resolver, events);
                 }
@@ -97,13 +112,28 @@ impl EventParser {
                 }
             }
             Expr::Loop(expr_loop) => {
-                self.extract_events_from_block(&expr_loop.body.stmts, file_path, type_resolver, events);
+                self.extract_events_from_block(
+                    &expr_loop.body.stmts,
+                    file_path,
+                    type_resolver,
+                    events,
+                );
             }
             Expr::While(expr_while) => {
-                self.extract_events_from_block(&expr_while.body.stmts, file_path, type_resolver, events);
+                self.extract_events_from_block(
+                    &expr_while.body.stmts,
+                    file_path,
+                    type_resolver,
+                    events,
+                );
             }
             Expr::ForLoop(expr_for) => {
-                self.extract_events_from_block(&expr_for.body.stmts, file_path, type_resolver, events);
+                self.extract_events_from_block(
+                    &expr_for.body.stmts,
+                    file_path,
+                    type_resolver,
+                    events,
+                );
             }
             Expr::Await(expr_await) => {
                 self.extract_events_from_expr(&expr_await.base, file_path, type_resolver, events);
@@ -148,13 +178,11 @@ impl EventParser {
                 let segments = &path.path.segments;
 
                 // Check for fully qualified paths: tauri::AppHandle, tauri::WebviewWindow
-                if segments.len() >= 2 {
-                    if segments[0].ident == "tauri" {
-                        let second = &segments[1].ident;
-                        return second == "AppHandle"
-                            || second == "Window"
-                            || second == "WebviewWindow";
-                    }
+                if segments.len() >= 2 && segments[0].ident == "tauri" {
+                    let second = &segments[1].ident;
+                    return second == "AppHandle"
+                        || second == "Window"
+                        || second == "WebviewWindow";
                 }
 
                 // Check for simple identifiers - be conservative
@@ -243,13 +271,10 @@ impl EventParser {
 
     /// Extract a string literal from an expression
     fn extract_string_literal(&self, expr: &Expr) -> Option<String> {
-        match expr {
-            Expr::Lit(expr_lit) => {
-                if let Lit::Str(lit_str) = &expr_lit.lit {
-                    return Some(lit_str.value());
-                }
+        if let Expr::Lit(expr_lit) = expr {
+            if let Lit::Str(lit_str) = &expr_lit.lit {
+                return Some(lit_str.value());
             }
-            _ => {}
         }
         None
     }

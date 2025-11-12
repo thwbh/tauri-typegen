@@ -306,13 +306,22 @@ fn test_infers_primitive_payload_types() {
     assert_eq!(events.len(), 3);
 
     // Find each event and check its inferred type
-    let string_event = events.iter().find(|e| e.event_name == "string-event").unwrap();
+    let string_event = events
+        .iter()
+        .find(|e| e.event_name == "string-event")
+        .unwrap();
     assert_eq!(string_event.payload_type, "String");
 
-    let number_event = events.iter().find(|e| e.event_name == "number-event").unwrap();
+    let number_event = events
+        .iter()
+        .find(|e| e.event_name == "number-event")
+        .unwrap();
     assert_eq!(number_event.payload_type, "i32");
 
-    let bool_event = events.iter().find(|e| e.event_name == "bool-event").unwrap();
+    let bool_event = events
+        .iter()
+        .find(|e| e.event_name == "bool-event")
+        .unwrap();
     assert_eq!(bool_event.payload_type, "bool");
 }
 

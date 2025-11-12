@@ -66,14 +66,20 @@ impl StructParser {
         type_resolver: &mut TypeResolver,
     ) -> Option<StructInfo> {
         // Parse struct-level serde attributes
-        let struct_serde_attrs = self.serde_parser.parse_struct_serde_attrs(&item_struct.attrs);
+        let struct_serde_attrs = self
+            .serde_parser
+            .parse_struct_serde_attrs(&item_struct.attrs);
 
         let fields = match &item_struct.fields {
             syn::Fields::Named(fields_named) => fields_named
                 .named
                 .iter()
                 .filter_map(|field| {
-                    self.parse_field(field, type_resolver, struct_serde_attrs.rename_all.as_deref())
+                    self.parse_field(
+                        field,
+                        type_resolver,
+                        struct_serde_attrs.rename_all.as_deref(),
+                    )
                 })
                 .collect(),
             syn::Fields::Unnamed(_) => {
@@ -117,12 +123,11 @@ impl StructParser {
                 let serialized_name = if let Some(rename) = variant_serde_attrs.rename {
                     // Explicit variant-level rename takes precedence
                     Some(rename)
-                } else if let Some(convention) = enum_serde_attrs.rename_all.as_deref() {
-                    // Apply enum-level rename_all convention
-                    Some(apply_naming_convention(&variant_name, convention))
                 } else {
-                    // No serde attributes, leave as None (will use variant name)
-                    None
+                    enum_serde_attrs
+                        .rename_all
+                        .as_deref()
+                        .map(|convention| apply_naming_convention(&variant_name, convention))
                 };
 
                 match &variant.fields {
@@ -223,12 +228,8 @@ impl StructParser {
         let serialized_name = if let Some(rename) = field_serde_attrs.rename {
             // Explicit field-level rename takes precedence
             Some(rename)
-        } else if let Some(convention) = struct_rename_all {
-            // Apply struct-level rename_all convention
-            Some(apply_naming_convention(&name, convention))
         } else {
-            // No serde attributes, leave as None (will use field name)
-            None
+            struct_rename_all.map(|convention| apply_naming_convention(&name, convention))
         };
 
         let is_public = matches!(field.vis, Visibility::Public(_));

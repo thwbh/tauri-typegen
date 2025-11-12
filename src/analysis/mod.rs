@@ -164,12 +164,12 @@ impl CommandAnalyzer {
                 println!("  - '{}': {}", event.event_name, event.payload_type);
             }
             let all_channels = self.get_all_discovered_channels(&commands);
-            println!(
-                "📞 Discovered {} channels total",
-                all_channels.len()
-            );
+            println!("📞 Discovered {} channels total", all_channels.len());
             for channel in &all_channels {
-                println!("  - '{}' in {}: {}", channel.parameter_name, channel.command_name, channel.message_type);
+                println!(
+                    "  - '{}' in {}: {}",
+                    channel.parameter_name, channel.command_name, channel.message_type
+                );
             }
         }
 
@@ -205,7 +205,9 @@ impl CommandAnalyzer {
 
                     // Extract channels for each command
                     for command in &mut commands {
-                        if let Some(func) = self.find_function_in_ast(&parsed_file.ast, &command.name) {
+                        if let Some(func) =
+                            self.find_function_in_ast(&parsed_file.ast, &command.name)
+                        {
                             let channels = self.channel_parser.extract_channels_from_command(
                                 func,
                                 &command.name,

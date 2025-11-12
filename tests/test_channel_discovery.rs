@@ -385,7 +385,10 @@ fn test_discovers_channels_from_fixture_file() {
 
     // Find the complex_operation command
     let complex_cmd = commands.iter().find(|c| c.name == "complex_operation");
-    assert!(complex_cmd.is_some(), "Should find complex_operation command");
+    assert!(
+        complex_cmd.is_some(),
+        "Should find complex_operation command"
+    );
     let complex_cmd = complex_cmd.unwrap();
 
     assert_eq!(complex_cmd.channels.len(), 2);
@@ -426,7 +429,9 @@ fn test_channel_file_path_tracking() {
     assert_eq!(commands[0].channels.len(), 1);
 
     // Should track the file path
-    assert!(commands[0].channels[0].file_path.ends_with("src/channels.rs"));
+    assert!(commands[0].channels[0]
+        .file_path
+        .ends_with("src/channels.rs"));
     // Should track line number (non-zero)
     assert!(commands[0].channels[0].line_number > 0);
 }

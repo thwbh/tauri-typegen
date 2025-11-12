@@ -54,7 +54,11 @@ impl ZodBindingsGenerator {
         for field in &struct_info.fields {
             let field_schema = self.generate_field_schema(field);
             // Use get_serialized_name() which respects serde rename/rename_all attributes
-            content.push_str(&format!("  {}: {},\n", field.get_serialized_name(), field_schema));
+            content.push_str(&format!(
+                "  {}: {},\n",
+                field.get_serialized_name(),
+                field_schema
+            ));
         }
 
         content.push_str("});\n\n");
@@ -309,7 +313,9 @@ impl ZodBindingsGenerator {
         for command in commands {
             // If command has only channels (no regular params), generate interface manually
             if command.parameters.is_empty() && !command.channels.is_empty() {
-                if let Some(interface) = TemplateHelpers::generate_params_interface_with_channels(command) {
+                if let Some(interface) =
+                    TemplateHelpers::generate_params_interface_with_channels(command)
+                {
                     content.push_str(&interface);
                 }
             } else if !command.parameters.is_empty() && command.channels.is_empty() {
@@ -325,7 +331,9 @@ impl ZodBindingsGenerator {
                 ));
             } else if !command.parameters.is_empty() && !command.channels.is_empty() {
                 // Both regular params and channels: generate interface with both
-                if let Some(interface) = TemplateHelpers::generate_params_interface_with_channels(command) {
+                if let Some(interface) =
+                    TemplateHelpers::generate_params_interface_with_channels(command)
+                {
                     content.push_str(&interface);
                 }
             }
@@ -360,7 +368,10 @@ impl ZodBindingsGenerator {
         // Import Channel if any command has channels
         let has_channels = commands.iter().any(|cmd| !cmd.channels.is_empty());
         if has_channels {
-            content.push_str(&TemplateHelpers::generate_type_imports(&[("@tauri-apps/api/core", "{ Channel }")]));
+            content.push_str(&TemplateHelpers::generate_type_imports(&[(
+                "@tauri-apps/api/core",
+                "{ Channel }",
+            )]));
         }
         content.push('\n');
 
@@ -421,9 +432,11 @@ impl ZodBindingsGenerator {
         // Generate command functions with validation
         for command in commands {
             if !command.channels.is_empty() {
-                content.push_str(&TemplateHelpers::generate_command_function_with_channels_and_validation(
-                    command,
-                ));
+                content.push_str(
+                    &TemplateHelpers::generate_command_function_with_channels_and_validation(
+                        command,
+                    ),
+                );
             } else {
                 content.push_str(&TemplateHelpers::generate_command_function_with_validation(
                     command,

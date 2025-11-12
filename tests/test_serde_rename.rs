@@ -32,20 +32,42 @@ fn test_serde_rename_all_camel_case() {
     let item_struct = item_struct.unwrap();
 
     let struct_info = parser
-        .parse_struct(item_struct, std::path::Path::new("test.rs"), &mut type_resolver)
+        .parse_struct(
+            item_struct,
+            std::path::Path::new("test.rs"),
+            &mut type_resolver,
+        )
         .unwrap();
 
     // Check that rename_all="camelCase" was applied
     assert_eq!(struct_info.fields.len(), 3);
 
-    let user_id_field = struct_info.fields.iter().find(|f| f.name == "user_id").unwrap();
+    let user_id_field = struct_info
+        .fields
+        .iter()
+        .find(|f| f.name == "user_id")
+        .unwrap();
     assert_eq!(user_id_field.serialized_name, Some("userId".to_string()));
 
-    let user_name_field = struct_info.fields.iter().find(|f| f.name == "user_name").unwrap();
-    assert_eq!(user_name_field.serialized_name, Some("userName".to_string()));
+    let user_name_field = struct_info
+        .fields
+        .iter()
+        .find(|f| f.name == "user_name")
+        .unwrap();
+    assert_eq!(
+        user_name_field.serialized_name,
+        Some("userName".to_string())
+    );
 
-    let is_active_field = struct_info.fields.iter().find(|f| f.name == "is_active").unwrap();
-    assert_eq!(is_active_field.serialized_name, Some("isActive".to_string()));
+    let is_active_field = struct_info
+        .fields
+        .iter()
+        .find(|f| f.name == "is_active")
+        .unwrap();
+    assert_eq!(
+        is_active_field.serialized_name,
+        Some("isActive".to_string())
+    );
 }
 
 #[test]
@@ -77,17 +99,29 @@ fn test_serde_field_rename() {
     let item_struct = item_struct.unwrap();
 
     let struct_info = parser
-        .parse_struct(item_struct, std::path::Path::new("test.rs"), &mut type_resolver)
+        .parse_struct(
+            item_struct,
+            std::path::Path::new("test.rs"),
+            &mut type_resolver,
+        )
         .unwrap();
 
     assert_eq!(struct_info.fields.len(), 2);
 
     // Field with explicit rename
-    let user_id_field = struct_info.fields.iter().find(|f| f.name == "user_id").unwrap();
+    let user_id_field = struct_info
+        .fields
+        .iter()
+        .find(|f| f.name == "user_id")
+        .unwrap();
     assert_eq!(user_id_field.serialized_name, Some("userId".to_string()));
 
     // Field without rename and no rename_all should be None
-    let name_field = struct_info.fields.iter().find(|f| f.name == "name").unwrap();
+    let name_field = struct_info
+        .fields
+        .iter()
+        .find(|f| f.name == "name")
+        .unwrap();
     assert_eq!(name_field.serialized_name, None);
 }
 
@@ -121,18 +155,33 @@ fn test_serde_rename_override() {
     let item_struct = item_struct.unwrap();
 
     let struct_info = parser
-        .parse_struct(item_struct, std::path::Path::new("test.rs"), &mut type_resolver)
+        .parse_struct(
+            item_struct,
+            std::path::Path::new("test.rs"),
+            &mut type_resolver,
+        )
         .unwrap();
 
     assert_eq!(struct_info.fields.len(), 2);
 
     // Field without explicit rename uses rename_all
-    let user_id_field = struct_info.fields.iter().find(|f| f.name == "user_id").unwrap();
+    let user_id_field = struct_info
+        .fields
+        .iter()
+        .find(|f| f.name == "user_id")
+        .unwrap();
     assert_eq!(user_id_field.serialized_name, Some("userId".to_string()));
 
     // Field with explicit rename overrides rename_all
-    let user_name_field = struct_info.fields.iter().find(|f| f.name == "user_name").unwrap();
-    assert_eq!(user_name_field.serialized_name, Some("customName".to_string()));
+    let user_name_field = struct_info
+        .fields
+        .iter()
+        .find(|f| f.name == "user_name")
+        .unwrap();
+    assert_eq!(
+        user_name_field.serialized_name,
+        Some("customName".to_string())
+    );
 }
 
 #[test]
@@ -165,12 +214,19 @@ fn test_serde_skip() {
     let item_struct = item_struct.unwrap();
 
     let struct_info = parser
-        .parse_struct(item_struct, std::path::Path::new("test.rs"), &mut type_resolver)
+        .parse_struct(
+            item_struct,
+            std::path::Path::new("test.rs"),
+            &mut type_resolver,
+        )
         .unwrap();
 
     // internal_field should be skipped
     assert_eq!(struct_info.fields.len(), 2);
-    assert!(struct_info.fields.iter().all(|f| f.name != "internal_field"));
+    assert!(struct_info
+        .fields
+        .iter()
+        .all(|f| f.name != "internal_field"));
 
     // Other fields should be present
     assert!(struct_info.fields.iter().any(|f| f.name == "user_id"));
@@ -206,16 +262,31 @@ fn test_serde_rename_all_snake_case() {
     let item_struct = item_struct.unwrap();
 
     let struct_info = parser
-        .parse_struct(item_struct, std::path::Path::new("test.rs"), &mut type_resolver)
+        .parse_struct(
+            item_struct,
+            std::path::Path::new("test.rs"),
+            &mut type_resolver,
+        )
         .unwrap();
 
     assert_eq!(struct_info.fields.len(), 2);
 
-    let user_id_field = struct_info.fields.iter().find(|f| f.name == "userId").unwrap();
+    let user_id_field = struct_info
+        .fields
+        .iter()
+        .find(|f| f.name == "userId")
+        .unwrap();
     assert_eq!(user_id_field.serialized_name, Some("user_id".to_string()));
 
-    let user_name_field = struct_info.fields.iter().find(|f| f.name == "userName").unwrap();
-    assert_eq!(user_name_field.serialized_name, Some("user_name".to_string()));
+    let user_name_field = struct_info
+        .fields
+        .iter()
+        .find(|f| f.name == "userName")
+        .unwrap();
+    assert_eq!(
+        user_name_field.serialized_name,
+        Some("user_name".to_string())
+    );
 }
 
 #[test]
@@ -247,14 +318,29 @@ fn test_serde_rename_all_pascal_case() {
     let item_struct = item_struct.unwrap();
 
     let struct_info = parser
-        .parse_struct(item_struct, std::path::Path::new("test.rs"), &mut type_resolver)
+        .parse_struct(
+            item_struct,
+            std::path::Path::new("test.rs"),
+            &mut type_resolver,
+        )
         .unwrap();
 
     assert_eq!(struct_info.fields.len(), 2);
 
-    let user_id_field = struct_info.fields.iter().find(|f| f.name == "user_id").unwrap();
+    let user_id_field = struct_info
+        .fields
+        .iter()
+        .find(|f| f.name == "user_id")
+        .unwrap();
     assert_eq!(user_id_field.serialized_name, Some("UserId".to_string()));
 
-    let user_name_field = struct_info.fields.iter().find(|f| f.name == "user_name").unwrap();
-    assert_eq!(user_name_field.serialized_name, Some("UserName".to_string()));
+    let user_name_field = struct_info
+        .fields
+        .iter()
+        .find(|f| f.name == "user_name")
+        .unwrap();
+    assert_eq!(
+        user_name_field.serialized_name,
+        Some("UserName".to_string())
+    );
 }

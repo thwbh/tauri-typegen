@@ -159,11 +159,8 @@ impl ChannelParser {
                 if tuple.elems.is_empty() {
                     "()".to_string()
                 } else {
-                    let types: Vec<String> = tuple
-                        .elems
-                        .iter()
-                        .map(|t| self.type_to_string(t))
-                        .collect();
+                    let types: Vec<String> =
+                        tuple.elems.iter().map(|t| self.type_to_string(t)).collect();
                     format!("({})", types.join(", "))
                 }
             }

@@ -146,7 +146,12 @@ impl CommandParser {
                 }
 
                 // Channel should be filtered if it has generic parameters (indicating it's the Tauri IPC channel)
-                if type_ident == "Channel" && matches!(last_segment.arguments, syn::PathArguments::AngleBracketed(_)) {
+                if type_ident == "Channel"
+                    && matches!(
+                        last_segment.arguments,
+                        syn::PathArguments::AngleBracketed(_)
+                    )
+                {
                     return true;
                 }
 

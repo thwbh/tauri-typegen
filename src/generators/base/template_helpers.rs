@@ -1,4 +1,4 @@
-use crate::models::{ChannelInfo, CommandInfo, EventInfo, FieldInfo};
+use crate::models::{CommandInfo, EventInfo, FieldInfo};
 
 /// Template helper functions for generating common TypeScript patterns
 pub struct TemplateHelpers;
