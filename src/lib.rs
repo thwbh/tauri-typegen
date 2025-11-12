@@ -1,7 +1,7 @@
 // Core library modules for the CLI tool
 pub mod analysis;
 pub mod build;
-pub mod commands;
+// pub mod commands; // Removed: plugin commands are not used
 mod error;
 pub mod generators;
 pub mod interface;
@@ -24,32 +24,3 @@ pub use interface::output::{Logger, ProgressReporter};
 
 // Build system integration
 pub use build::BuildSystem;
-
-// Tauri plugin initialization
-use tauri::{
-    plugin::{Builder, TauriPlugin},
-    Runtime,
-};
-
-/// Initializes the typegen plugin for Tauri.
-///
-/// This allows the plugin's commands (ping, analyze_commands, generate_models)
-/// to be invoked from the frontend via the Tauri IPC.
-///
-/// # Example
-///
-/// ```rust,ignore
-/// tauri::Builder::default()
-///     .plugin(tauri_typegen::init())
-///     .run(tauri::generate_context!())
-///     .expect("error while running tauri application");
-/// ```
-pub fn init<R: Runtime>() -> TauriPlugin<R> {
-    Builder::new("typegen")
-        .invoke_handler(tauri::generate_handler![
-            commands::ping,
-            commands::analyze_commands,
-            commands::generate_models
-        ])
-        .build()
-}

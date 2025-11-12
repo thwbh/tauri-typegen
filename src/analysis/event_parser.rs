@@ -281,6 +281,7 @@ impl EventParser {
 
     /// Infer the type of the payload expression
     /// This is a best-effort heuristic based on the expression structure
+    #[allow(clippy::only_used_in_recursion)]
     fn infer_payload_type(&self, expr: &Expr) -> String {
         match expr {
             // Reference to a variable: &some_var

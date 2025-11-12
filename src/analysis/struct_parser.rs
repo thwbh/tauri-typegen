@@ -265,6 +265,7 @@ impl StructParser {
     }
 
     /// Convert a Type to its string representation
+    #[allow(clippy::only_used_in_recursion)]
     fn type_to_string(&self, ty: &Type) -> String {
         match ty {
             Type::Path(type_path) => {

@@ -128,6 +128,7 @@ impl ProjectScanner {
     }
 
     /// Recursively walk a directory to find Rust files
+    #[allow(clippy::only_used_in_recursion)]
     fn walk_directory(&self, dir: &Path, rust_files: &mut Vec<PathBuf>) -> Result<(), ScanError> {
         if !dir.exists() || !dir.is_dir() {
             return Ok(());

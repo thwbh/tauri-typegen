@@ -305,8 +305,10 @@ mod tests {
 
     #[test]
     fn test_config_validation() {
-        let mut config = GenerateConfig::default();
-        config.validation_library = "invalid".to_string();
+        let config = GenerateConfig {
+            validation_library: "invalid".to_string(),
+            ..Default::default()
+        };
 
         let result = config.validate();
         assert!(result.is_err());

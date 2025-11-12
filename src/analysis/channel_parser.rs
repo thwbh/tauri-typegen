@@ -121,6 +121,7 @@ impl ChannelParser {
 
     /// Convert a syn::Type to a string representation
     /// Simplified version - handles common cases
+    #[allow(clippy::only_used_in_recursion)]
     fn type_to_string(&self, ty: &Type) -> String {
         match ty {
             Type::Path(type_path) => {
@@ -181,7 +182,6 @@ impl Default for ChannelParser {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use quote::quote;
     use syn::parse_quote;
 
     #[test]

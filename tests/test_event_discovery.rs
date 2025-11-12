@@ -374,7 +374,7 @@ fn test_discovers_events_from_fixture_file() {
     let events = analyzer.get_discovered_events();
 
     // Should discover multiple events from the fixture
-    assert!(events.len() > 0, "Should discover at least one event");
+    assert!(!events.is_empty(), "Should discover at least one event");
 
     // Check for specific events we know are in the fixture
     let event_names: Vec<&str> = events.iter().map(|e| e.event_name.as_str()).collect();

@@ -372,7 +372,7 @@ fn test_discovers_channels_from_fixture_file() {
     let commands = analyzer.analyze_file(fixture_path).unwrap();
 
     // Should discover multiple commands with channels
-    assert!(commands.len() > 0, "Should discover at least one command");
+    assert!(!commands.is_empty(), "Should discover at least one command");
 
     // Find the download_file command
     let download_cmd = commands.iter().find(|c| c.name == "download_file");
