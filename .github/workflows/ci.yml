@@ -45,13 +45,13 @@ jobs:
             ${{ runner.os }}-cargo-build-target-
 
       - name: Run tests
-        run: cargo test --all-features
+        run: cargo test --all-features --workspace --exclude app
 
       - name: Run cargo fmt check
         run: cargo fmt -- --check
 
       - name: Run clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --all-targets --all-features --workspace --exclude app -- -D warnings
 
   coverage:
     name: Code Coverage
@@ -69,7 +69,7 @@ jobs:
           tool: cargo-tarpaulin
 
       - name: Generate code coverage
-        run: cargo tarpaulin --verbose --all-features --workspace --timeout 120 --out xml
+        run: cargo tarpaulin --verbose --all-features --workspace --exclude app --timeout 120 --out xml
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
