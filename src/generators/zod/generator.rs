@@ -37,7 +37,7 @@ impl ZodBindingsGenerator {
         let variants: Vec<String> = struct_info
             .fields
             .iter()
-            .map(|field| format!("\"{}\"", field.name))
+            .map(|field| format!("\"{}\"", field.get_serialized_name()))
             .collect();
 
         let enum_values = variants.join(", ");
@@ -53,9 +53,8 @@ impl ZodBindingsGenerator {
 
         for field in &struct_info.fields {
             let field_schema = self.generate_field_schema(field);
-            // Convert to camelCase to match serde serialization
-            let field_name = self.to_camel_case(&field.name);
-            content.push_str(&format!("  {}: {},\n", field_name, field_schema));
+            // Use get_serialized_name() which respects serde rename/rename_all attributes
+            content.push_str(&format!("  {}: {},\n", field.get_serialized_name(), field_schema));
         }
 
         content.push_str("});\n\n");

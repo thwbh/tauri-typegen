@@ -10,6 +10,7 @@ A command-line tool that automatically generates TypeScript bindings from your T
 - 🚀 **Command Bindings**: Strongly-typed frontend functions
 - 📡 **Event Support**: Discovers and types `app.emit()` events
 - 📞 **Channel Support**: Types for streaming `Channel<T>` parameters
+- 🏷️ **Serde Support**: Respects `#[serde(rename)]` and `#[serde(rename_all)]` attributes
 - 🎯 **Type Safety**: Keeps frontend and backend types in sync
 - 🛠️ **Build Integration**: Works as standalone CLI or build dependency
 
@@ -398,6 +399,87 @@ await createUser(
 | `(T,U)` | `[T,U]` |
 | `Channel<T>` | `Channel<T>` |
 | `Result<T,E>` | `T` (errors via Promise rejection) |
+
+### Serde Attribute Support
+
+Tauri-typegen respects serde serialization attributes to ensure generated TypeScript types match your JSON API:
+
+#### Field Renaming
+
+```rust
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize)]
+pub struct User {
+    #[serde(rename = "userId")]
+    pub user_id: i32,
+    pub name: String,
+}
+```
+
+Generates:
+
+```typescript
+export interface User {
+  userId: number;  // Field renamed as specified
+  name: string;
+}
+```
+
+#### Struct-Level Naming Convention
+
+```rust
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiResponse {
+    pub user_id: i32,
+    pub user_name: String,
+    pub is_active: bool,
+}
+```
+
+Generates:
+
+```typescript
+export interface ApiResponse {
+  userId: number;      // snake_case → camelCase
+  userName: string;    // snake_case → camelCase
+  isActive: boolean;   // snake_case → camelCase
+}
+```
+
+**Supported naming conventions:**
+- `camelCase`
+- `PascalCase`
+- `snake_case`
+- `SCREAMING_SNAKE_CASE`
+- `kebab-case`
+- `SCREAMING-KEBAB-CASE`
+
+#### Field Precedence
+
+Field-level `rename` takes precedence over struct-level `rename_all`:
+
+```rust
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct User {
+    pub user_id: i32,              // → userId
+    #[serde(rename = "fullName")]
+    pub user_name: String,          // → fullName (override)
+}
+```
+
+#### Skip Fields
+
+```rust
+#[derive(Serialize, Deserialize)]
+pub struct User {
+    pub id: i32,
+    #[serde(skip)]
+    pub internal_data: String,  // Not included in TypeScript
+}
+```
 
 ## API Reference
 

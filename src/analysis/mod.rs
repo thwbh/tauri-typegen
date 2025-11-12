@@ -3,6 +3,7 @@ pub mod channel_parser;
 pub mod command_parser;
 pub mod dependency_graph;
 pub mod event_parser;
+pub mod serde_parser;
 pub mod struct_parser;
 pub mod type_resolver;
 pub mod validator_parser;

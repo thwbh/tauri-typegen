@@ -1,3 +1,4 @@
+use crate::analysis::serde_parser::{apply_naming_convention, SerdeParser};
 use crate::analysis::type_resolver::TypeResolver;
 use crate::analysis::validator_parser::ValidatorParser;
 use crate::models::{FieldInfo, StructInfo};
@@ -9,12 +10,14 @@ use syn::{Attribute, ItemEnum, ItemStruct, Type, Visibility};
 #[derive(Debug)]
 pub struct StructParser {
     validator_parser: ValidatorParser,
+    serde_parser: SerdeParser,
 }
 
 impl StructParser {
     pub fn new() -> Self {
         Self {
             validator_parser: ValidatorParser::new(),
+            serde_parser: SerdeParser::new(),
         }
     }
 
@@ -62,11 +65,16 @@ impl StructParser {
         file_path: &Path,
         type_resolver: &mut TypeResolver,
     ) -> Option<StructInfo> {
+        // Parse struct-level serde attributes
+        let struct_serde_attrs = self.serde_parser.parse_struct_serde_attrs(&item_struct.attrs);
+
         let fields = match &item_struct.fields {
             syn::Fields::Named(fields_named) => fields_named
                 .named
                 .iter()
-                .filter_map(|field| self.parse_field(field, type_resolver))
+                .filter_map(|field| {
+                    self.parse_field(field, type_resolver, struct_serde_attrs.rename_all.as_deref())
+                })
                 .collect(),
             syn::Fields::Unnamed(_) => {
                 // Handle tuple structs if needed
@@ -107,6 +115,7 @@ impl StructParser {
                             is_optional: false,
                             is_public: true,
                             validator_attributes: None,
+                            serialized_name: None,
                         }
                     }
                     syn::Fields::Unnamed(fields_unnamed) => {
@@ -130,6 +139,7 @@ impl StructParser {
                             is_optional: false,
                             is_public: true,
                             validator_attributes: None,
+                            serialized_name: None,
                         }
                     }
                     syn::Fields::Named(fields_named) => {
@@ -157,6 +167,7 @@ impl StructParser {
                             is_optional: false,
                             is_public: true,
                             validator_attributes: None,
+                            serialized_name: None,
                         }
                     }
                 }
@@ -176,8 +187,30 @@ impl StructParser {
         &self,
         field: &syn::Field,
         type_resolver: &mut TypeResolver,
+        struct_rename_all: Option<&str>,
     ) -> Option<FieldInfo> {
         let name = field.ident.as_ref()?.to_string();
+
+        // Parse field-level serde attributes
+        let field_serde_attrs = self.serde_parser.parse_field_serde_attrs(&field.attrs);
+
+        // Skip fields with #[serde(skip)]
+        if field_serde_attrs.skip {
+            return None;
+        }
+
+        // Calculate the serialized name based on serde attributes
+        let serialized_name = if let Some(rename) = field_serde_attrs.rename {
+            // Explicit field-level rename takes precedence
+            Some(rename)
+        } else if let Some(convention) = struct_rename_all {
+            // Apply struct-level rename_all convention
+            Some(apply_naming_convention(&name, convention))
+        } else {
+            // No serde attributes, leave as None (will use field name)
+            None
+        };
+
         let is_public = matches!(field.vis, Visibility::Public(_));
         let is_optional = self.is_optional_type(&field.ty);
         let rust_type = self.type_to_string(&field.ty);
@@ -193,6 +226,7 @@ impl StructParser {
             is_optional,
             is_public,
             validator_attributes,
+            serialized_name,
         })
     }
 

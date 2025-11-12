@@ -80,6 +80,17 @@ pub struct FieldInfo {
     pub is_optional: bool,
     pub is_public: bool,
     pub validator_attributes: Option<ValidatorAttributes>,
+    /// The serialized name after applying serde rename/rename_all transformations.
+    /// If None, the field name will be used.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub serialized_name: Option<String>,
+}
+
+impl FieldInfo {
+    /// Get the effective serialized name, falling back to name if serialized_name is None
+    pub fn get_serialized_name(&self) -> &str {
+        self.serialized_name.as_deref().unwrap_or(&self.name)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -43,7 +43,7 @@ impl TypeScriptBindingsGenerator {
         let variants: Vec<String> = struct_info
             .fields
             .iter()
-            .map(|field| field.name.clone())
+            .map(|field| field.get_serialized_name().to_string())
             .collect();
 
         TemplateHelpers::generate_union_type(name, &variants)

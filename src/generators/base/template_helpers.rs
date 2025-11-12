@@ -10,10 +10,13 @@ impl TemplateHelpers {
 
         for field in fields {
             let optional_marker = if field.is_optional { "?" } else { "" };
-            let field_name = Self::to_camel_case(&field.name);
+            // Use get_serialized_name() which respects serde rename/rename_all attributes
+            // and falls back to the field name
             result.push_str(&format!(
                 "  {}{}: {};\n",
-                field_name, optional_marker, field.typescript_type
+                field.get_serialized_name(),
+                optional_marker,
+                field.typescript_type
             ));
         }
 
@@ -261,6 +264,8 @@ impl TemplateHelpers {
                 is_optional: param.is_optional,
                 is_public: true,
                 validator_attributes: None,
+                // For command parameters (not struct fields), use camelCase by default
+                serialized_name: Some(Self::to_camel_case(&param.name)),
             })
             .collect();
 
@@ -290,18 +295,23 @@ impl TemplateHelpers {
                 is_optional: param.is_optional,
                 is_public: true,
                 validator_attributes: None,
+                // For command parameters (not struct fields), use camelCase by default
+                serialized_name: Some(Self::to_camel_case(&param.name)),
             })
             .collect();
 
         // Add channel parameters
         for channel in &command.channels {
+            let param_name = channel.parameter_name.clone();
             fields.push(FieldInfo {
-                name: channel.parameter_name.clone(),
+                name: param_name.clone(),
                 rust_type: format!("Channel<{}>", channel.message_type),
                 typescript_type: format!("Channel<{}>", channel.typescript_message_type),
                 is_optional: false,
                 is_public: true,
                 validator_attributes: None,
+                // For channel parameters, use camelCase by default
+                serialized_name: Some(Self::to_camel_case(&param_name)),
             });
         }
 
@@ -595,11 +605,7 @@ export async function {}(
 }}
 
 "#,
-            event.event_name,
-            function_name,
-            payload_type,
-            payload_type,
-            event.event_name
+            event.event_name, function_name, payload_type, payload_type, event.event_name
         )
     }
 
@@ -612,9 +618,7 @@ export async function {}(
                 let mut chars = word.chars();
                 match chars.next() {
                     None => String::new(),
-                    Some(first) => {
-                        first.to_uppercase().collect::<String>() + chars.as_str()
-                    }
+                    Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
                 }
             })
             .collect::<String>();
@@ -649,7 +653,9 @@ export async function {}(
         ]));
 
         // Generate imports
-        result.push_str("import { listen, type UnlistenFn, type Event } from '@tauri-apps/api/event';\n\n");
+        result.push_str(
+            "import { listen, type UnlistenFn, type Event } from '@tauri-apps/api/event';\n\n",
+        );
 
         // Generate each listener function
         for event in events {
