@@ -115,6 +115,10 @@ impl BaseGenerator {
             }
             // Add return type
             self.collect_referenced_types(&command.return_type, &mut used_types);
+            // Add channel message types
+            for channel in &command.channels {
+                self.collect_referenced_types(&channel.message_type, &mut used_types);
+            }
         }
 
         // Clone to avoid borrow checker issues
@@ -190,6 +194,12 @@ impl BaseGenerator {
             return;
         }
 
+        // Handle Channel<T> (for streaming types)
+        if let Some(inner) = self.extract_channel_inner_type(type_str) {
+            self.collect_referenced_types(&inner, used_types);
+            return;
+        }
+
         // Handle references &T
         if type_str.starts_with('&') {
             let inner = type_str.trim_start_matches('&').trim();
@@ -226,6 +236,15 @@ impl BaseGenerator {
     fn extract_vec_inner_type(&self, type_str: &str) -> Option<String> {
         if type_str.starts_with("Vec<") && type_str.ends_with('>') {
             let inner = &type_str[4..type_str.len() - 1];
+            Some(inner.trim().to_string())
+        } else {
+            None
+        }
+    }
+
+    fn extract_channel_inner_type(&self, type_str: &str) -> Option<String> {
+        if type_str.starts_with("Channel<") && type_str.ends_with('>') {
+            let inner = &type_str[8..type_str.len() - 1];
             Some(inner.trim().to_string())
         } else {
             None

@@ -63,7 +63,7 @@ fn default_output_path() -> String {
 }
 
 fn default_validation_library() -> String {
-    "zod".to_string()
+    "none".to_string()
 }
 
 impl Default for GenerateConfig {
@@ -329,7 +329,7 @@ mod tests {
         base.merge(&override_config);
         assert_eq!(base.output_path, "./custom");
         assert!(base.is_verbose());
-        assert_eq!(base.validation_library, "zod"); // Should remain default
+        assert_eq!(base.validation_library, "none"); // Should remain default
     }
 
     #[test]

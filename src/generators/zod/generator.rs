@@ -612,7 +612,22 @@ impl BaseBindingsGenerator for ZodBindingsGenerator {
         self.base.known_structs = discovered_structs.clone();
 
         // Filter to only the types used by commands
-        let used_structs = self.base.collect_used_types(commands, discovered_structs);
+        let mut used_structs = self.base.collect_used_types(commands, discovered_structs);
+
+        // Also collect types used in events
+        let events = analyzer.get_discovered_events();
+        for event in events {
+            let mut event_types = std::collections::HashSet::new();
+            self.base
+                .collect_referenced_types(&event.payload_type, &mut event_types);
+
+            // Add event payload types to used_structs
+            for type_name in event_types {
+                if let Some(struct_info) = discovered_structs.get(&type_name) {
+                    used_structs.insert(type_name.clone(), struct_info.clone());
+                }
+            }
+        }
 
         // Create file writer
         let mut file_writer = FileWriter::new(output_path)?;

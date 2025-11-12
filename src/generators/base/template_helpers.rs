@@ -6,6 +6,15 @@ pub struct TemplateHelpers;
 impl TemplateHelpers {
     /// Generate TypeScript interface definition
     pub fn generate_interface(name: &str, fields: &[FieldInfo]) -> String {
+        Self::generate_interface_with_options(name, fields, false)
+    }
+
+    /// Generate TypeScript interface with optional index signature
+    pub fn generate_interface_with_options(
+        name: &str,
+        fields: &[FieldInfo],
+        add_index_signature: bool,
+    ) -> String {
         let mut result = format!("export interface {} {{\n", name);
 
         for field in fields {
@@ -18,6 +27,11 @@ impl TemplateHelpers {
                 optional_marker,
                 field.typescript_type
             ));
+        }
+
+        // Add index signature for parameter interfaces to satisfy InvokeArgs
+        if add_index_signature {
+            result.push_str("  [key: string]: unknown;\n");
         }
 
         result.push_str("}\n\n");
@@ -269,7 +283,12 @@ impl TemplateHelpers {
             })
             .collect();
 
-        Some(Self::generate_interface(&interface_name, &fields))
+        // Parameter interfaces need index signature for Tauri InvokeArgs compatibility
+        Some(Self::generate_interface_with_options(
+            &interface_name,
+            &fields,
+            true,
+        ))
     }
 
     /// Check if a command has channels
@@ -315,7 +334,12 @@ impl TemplateHelpers {
             });
         }
 
-        Some(Self::generate_interface(&interface_name, &fields))
+        // Parameter interfaces need index signature for Tauri InvokeArgs compatibility
+        Some(Self::generate_interface_with_options(
+            &interface_name,
+            &fields,
+            true,
+        ))
     }
 
     /// Generate command function for commands with channels (vanilla TypeScript)
@@ -654,8 +678,40 @@ export async function {}(
 
         // Generate imports
         result.push_str(
-            "import { listen, type UnlistenFn, type Event } from '@tauri-apps/api/event';\n\n",
+            "import { listen, type UnlistenFn, type Event } from '@tauri-apps/api/event';\n",
         );
+
+        // Collect unique payload types for imports
+        let mut payload_types: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for event in events {
+            // Extract the TypeScript type name (without generics, arrays, etc.)
+            let type_name = event
+                .typescript_payload_type
+                .split('<')
+                .next()
+                .unwrap_or(&event.typescript_payload_type);
+            let type_name = type_name.split('[').next().unwrap_or(type_name);
+            let type_name = type_name.trim();
+
+            // Only import if it's not a primitive type
+            if !matches!(
+                type_name,
+                "string" | "number" | "boolean" | "void" | "null" | "undefined"
+            ) {
+                payload_types.insert(type_name.to_string());
+            }
+        }
+
+        // Add imports from types file if needed
+        if !payload_types.is_empty() {
+            let types_list: Vec<String> = payload_types.into_iter().collect();
+            result.push_str(&format!(
+                "import type {{ {} }} from './types';\n\n",
+                types_list.join(", ")
+            ));
+        } else {
+            result.push('\n');
+        }
 
         // Generate each listener function
         for event in events {
