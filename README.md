@@ -481,6 +481,40 @@ pub struct User {
 }
 ```
 
+#### Enum Support
+
+Enums also support serde rename attributes:
+
+```rust
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum MyEnum {
+    HelloWorld,  // → HELLO_WORLD
+    ByeWorld,    // → BYE_WORLD
+}
+```
+
+Generates:
+
+```typescript
+export type MyEnum = "HELLO_WORLD" | "BYE_WORLD";
+
+// With Zod:
+export const MyEnumSchema = z.enum(["HELLO_WORLD", "BYE_WORLD"]);
+```
+
+Variant-level rename also works:
+
+```rust
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Status {
+    InProgress,           // → inProgress
+    #[serde(rename = "not-started")]
+    NotStarted,          // → not-started (override)
+}
+```
+
 ## API Reference
 
 ### CLI Commands

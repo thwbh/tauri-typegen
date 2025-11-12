@@ -101,21 +101,41 @@ impl StructParser {
         file_path: &Path,
         type_resolver: &mut TypeResolver,
     ) -> Option<StructInfo> {
+        // Parse enum-level serde attributes
+        let enum_serde_attrs = self.serde_parser.parse_struct_serde_attrs(&item_enum.attrs);
+
         let fields = item_enum
             .variants
             .iter()
             .map(|variant| {
+                let variant_name = variant.ident.to_string();
+
+                // Parse variant-level serde attributes
+                let variant_serde_attrs = self.serde_parser.parse_field_serde_attrs(&variant.attrs);
+
+                // Calculate serialized name for the variant
+                let serialized_name = if let Some(rename) = variant_serde_attrs.rename {
+                    // Explicit variant-level rename takes precedence
+                    Some(rename)
+                } else if let Some(convention) = enum_serde_attrs.rename_all.as_deref() {
+                    // Apply enum-level rename_all convention
+                    Some(apply_naming_convention(&variant_name, convention))
+                } else {
+                    // No serde attributes, leave as None (will use variant name)
+                    None
+                };
+
                 match &variant.fields {
                     syn::Fields::Unit => {
                         // Unit variant: Variant
                         FieldInfo {
-                            name: variant.ident.to_string(),
+                            name: variant_name,
                             rust_type: "enum_variant".to_string(),
                             typescript_type: format!("\"{}\"", variant.ident),
                             is_optional: false,
                             is_public: true,
                             validator_attributes: None,
-                            serialized_name: None,
+                            serialized_name,
                         }
                     }
                     syn::Fields::Unnamed(fields_unnamed) => {
@@ -129,7 +149,7 @@ impl StructParser {
                             })
                             .collect();
                         FieldInfo {
-                            name: variant.ident.to_string(),
+                            name: variant_name,
                             rust_type: "enum_variant_tuple".to_string(),
                             typescript_type: format!(
                                 "{{ type: \"{}\", data: [{}] }}",
@@ -139,7 +159,7 @@ impl StructParser {
                             is_optional: false,
                             is_public: true,
                             validator_attributes: None,
-                            serialized_name: None,
+                            serialized_name,
                         }
                     }
                     syn::Fields::Named(fields_named) => {
@@ -157,7 +177,7 @@ impl StructParser {
                             })
                             .collect();
                         FieldInfo {
-                            name: variant.ident.to_string(),
+                            name: variant_name,
                             rust_type: "enum_variant_struct".to_string(),
                             typescript_type: format!(
                                 "{{ type: \"{}\", data: {{ {} }} }}",
@@ -167,7 +187,7 @@ impl StructParser {
                             is_optional: false,
                             is_public: true,
                             validator_attributes: None,
-                            serialized_name: None,
+                            serialized_name,
                         }
                     }
                 }
