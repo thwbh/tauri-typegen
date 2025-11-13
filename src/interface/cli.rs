@@ -34,7 +34,7 @@ pub enum TypegenCommands {
         #[arg(short = 'o', long = "output-path")]
         output_path: Option<PathBuf>,
 
-        /// Validation library to use (zod or none). Defaults to config file value or "zod"
+        /// Validation library to use (zod or none). Defaults to config file value or "none"
         #[arg(short = 'v', long = "validation")]
         validation_library: Option<String>,
 
@@ -64,7 +64,7 @@ pub enum TypegenCommands {
         #[arg(short = 'o', long = "output")]
         output_path: Option<PathBuf>,
 
-        /// Validation library to use (zod or none). Defaults to "zod"
+        /// Validation library to use (zod or none). Defaults to "none"
         #[arg(short = 'v', long = "validation")]
         validation_library: Option<String>,
 
@@ -162,7 +162,7 @@ mod tests {
         let config = GenerateConfig::from(&cmd);
         assert_eq!(config.project_path, "./src-tauri");
         assert_eq!(config.output_path, "./src/generated");
-        assert_eq!(config.validation_library, "zod");
+        assert_eq!(config.validation_library, "none");
         assert_eq!(config.verbose, Some(false));
         assert_eq!(config.visualize_deps, Some(false));
     }
@@ -221,7 +221,7 @@ mod tests {
         let config = GenerateConfig::from(&cmd);
         assert_eq!(config.project_path, "./src-tauri");
         assert_eq!(config.output_path, "./src/generated");
-        assert_eq!(config.validation_library, "zod");
+        assert_eq!(config.validation_library, "none");
         assert_eq!(config.verbose, Some(false));
         assert_eq!(config.visualize_deps, Some(false));
     }

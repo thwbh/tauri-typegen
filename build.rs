@@ -1,12 +1,4 @@
-const COMMANDS: &[&str] = &["ping", "analyze_commands", "generate_models"];
-
 fn main() {
-    // Build the Tauri plugin
-    tauri_plugin::Builder::new(COMMANDS)
-        .android_path("android")
-        .ios_path("ios")
-        .build();
-
     // Run TypeScript generation at build time if configured
     if std::env::var("CARGO_FEATURE_BUILD_TIME_GENERATION").is_ok() {
         if let Err(e) = run_build_time_generation() {

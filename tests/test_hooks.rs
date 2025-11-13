@@ -18,6 +18,7 @@ fn create_test_command() -> CommandInfo {
         }],
         return_type: "string".to_string(),
         is_async: true,
+        channels: vec![],
     }
 }
 
@@ -29,6 +30,7 @@ fn create_command_without_params() -> CommandInfo {
         parameters: vec![],
         return_type: "void".to_string(),
         is_async: true,
+        channels: vec![],
     }
 }
 

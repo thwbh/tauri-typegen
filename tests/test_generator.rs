@@ -19,6 +19,7 @@ fn create_sample_commands() -> Vec<CommandInfo> {
             }],
             return_type: "string".to_string(),
             is_async: true,
+            channels: vec![],
         },
         CommandInfo {
             name: "get_user_count".to_string(),
@@ -27,6 +28,7 @@ fn create_sample_commands() -> Vec<CommandInfo> {
             parameters: vec![],
             return_type: "number".to_string(),
             is_async: false,
+            channels: vec![],
         },
     ]
 }
@@ -348,6 +350,7 @@ fn test_generator_with_void_return() {
         }],
         return_type: "void".to_string(),
         is_async: true,
+        channels: vec![],
     }];
     let discovered_structs = create_empty_structs();
 
@@ -407,6 +410,7 @@ fn test_primitive_arrays_and_optional_custom_types() {
             parameters: vec![],
             return_type: "string[]".to_string(), // Already converted from Vec<String>
             is_async: true,
+            channels: vec![],
         },
         CommandInfo {
             name: "get_user".to_string(),
@@ -415,6 +419,7 @@ fn test_primitive_arrays_and_optional_custom_types() {
             parameters: vec![],
             return_type: "User | null".to_string(), // Already converted from Option<User>
             is_async: true,
+            channels: vec![],
         },
         CommandInfo {
             name: "get_items".to_string(),
@@ -423,6 +428,7 @@ fn test_primitive_arrays_and_optional_custom_types() {
             parameters: vec![],
             return_type: "Item[]".to_string(), // Already converted from Vec<Item>
             is_async: true,
+            channels: vec![],
         },
     ];
 

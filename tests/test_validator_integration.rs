@@ -37,7 +37,7 @@ pub async fn create_user(request: CreateUserRequest) -> Result<String, String> {
 
     // Analyze the file
     let mut analyzer = CommandAnalyzer::new();
-    let commands = analyzer
+    let _commands = analyzer
         .analyze_project(temp_dir.path().to_str().unwrap())
         .unwrap();
     let discovered_structs = analyzer.get_discovered_structs();

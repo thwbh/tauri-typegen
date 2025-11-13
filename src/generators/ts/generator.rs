@@ -3,7 +3,7 @@ use crate::generators::base::file_writer::FileWriter;
 use crate::generators::base::template_helpers::TemplateHelpers;
 use crate::generators::base::type_conversion::TypeConverter;
 use crate::generators::base::{BaseBindingsGenerator, BaseGenerator};
-use crate::models::{CommandInfo, StructInfo};
+use crate::models::{CommandInfo, EventInfo, StructInfo};
 use std::collections::{HashMap, HashSet};
 
 /// Generator for vanilla TypeScript bindings without validation
@@ -43,7 +43,7 @@ impl TypeScriptBindingsGenerator {
         let variants: Vec<String> = struct_info
             .fields
             .iter()
-            .map(|field| field.name.clone())
+            .map(|field| field.get_serialized_name().to_string())
             .collect();
 
         TemplateHelpers::generate_union_type(name, &variants)
@@ -54,8 +54,11 @@ impl TypeScriptBindingsGenerator {
         let mut content = String::new();
 
         for command in commands {
-            if !command.parameters.is_empty() {
-                if let Some(interface) = TemplateHelpers::generate_params_interface(command) {
+            // Generate interface if command has parameters or channels
+            if !command.parameters.is_empty() || !command.channels.is_empty() {
+                if let Some(interface) =
+                    TemplateHelpers::generate_params_interface_with_channels(command)
+                {
                     content.push_str(&interface);
                 }
             }
@@ -75,6 +78,16 @@ impl TypeScriptBindingsGenerator {
         // Add file header
         content.push_str(&self.generate_file_header());
 
+        // Import Channel if any command has channels
+        let has_channels = commands.iter().any(|cmd| !cmd.channels.is_empty());
+        if has_channels {
+            content.push_str(&TemplateHelpers::generate_type_imports(&[(
+                "@tauri-apps/api/core",
+                "{ Channel }",
+            )]));
+            content.push('\n');
+        }
+
         // Generate parameter interfaces
         content.push_str(&self.generate_param_interfaces(commands));
 
@@ -91,11 +104,21 @@ impl TypeScriptBindingsGenerator {
         // Add file header
         content.push_str(&self.generate_command_file_header());
 
-        // Add imports
-        content.push_str(&TemplateHelpers::generate_named_imports(&[(
-            "@tauri-apps/api/core",
-            &["invoke"],
-        )]));
+        // Check if any command has channels
+        let has_channels = commands.iter().any(|cmd| !cmd.channels.is_empty());
+
+        // Add imports - include Channel if needed
+        if has_channels {
+            content.push_str(&TemplateHelpers::generate_named_imports(&[(
+                "@tauri-apps/api/core",
+                &["invoke", "Channel"],
+            )]));
+        } else {
+            content.push_str(&TemplateHelpers::generate_named_imports(&[(
+                "@tauri-apps/api/core",
+                &["invoke"],
+            )]));
+        }
         content.push_str(
             TemplateHelpers::generate_type_imports(&[("./types", "* as types")]).trim_end(),
         );
@@ -103,7 +126,13 @@ impl TypeScriptBindingsGenerator {
 
         // Generate command functions
         for command in commands {
-            content.push_str(&TemplateHelpers::generate_command_function(command));
+            if !command.channels.is_empty() {
+                content.push_str(&TemplateHelpers::generate_command_function_with_channels(
+                    command,
+                ));
+            } else {
+                content.push_str(&TemplateHelpers::generate_command_function(command));
+            }
         }
 
         content
@@ -156,6 +185,19 @@ impl TypeScriptBindingsGenerator {
         // Must not be a primitive type
         !self.type_converter.is_primitive_type(ts_type)
     }
+
+    /// Generate events file content
+    fn generate_events_file(&self, events: &[EventInfo]) -> String {
+        let mut content = String::new();
+
+        // Add file header
+        content.push_str(&self.generate_file_header());
+
+        // Generate event listeners
+        content.push_str(&TemplateHelpers::generate_all_event_listeners(events));
+
+        content
+    }
 }
 
 impl BaseBindingsGenerator for TypeScriptBindingsGenerator {
@@ -164,7 +206,7 @@ impl BaseBindingsGenerator for TypeScriptBindingsGenerator {
         commands: &[CommandInfo],
         discovered_structs: &HashMap<String, StructInfo>,
         output_path: &str,
-        _analyzer: &CommandAnalyzer,
+        analyzer: &CommandAnalyzer,
     ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
         // Set up the type converter with known structs
         self.type_converter
@@ -174,7 +216,22 @@ impl BaseBindingsGenerator for TypeScriptBindingsGenerator {
         self.base.known_structs = discovered_structs.clone();
 
         // Filter to only the types used by commands
-        let used_structs = self.base.collect_used_types(commands, discovered_structs);
+        let mut used_structs = self.base.collect_used_types(commands, discovered_structs);
+
+        // Also collect types used in events
+        let events = analyzer.get_discovered_events();
+        for event in events {
+            let mut event_types = std::collections::HashSet::new();
+            self.base
+                .collect_referenced_types(&event.payload_type, &mut event_types);
+
+            // Add event payload types to used_structs
+            for type_name in event_types {
+                if let Some(struct_info) = discovered_structs.get(&type_name) {
+                    used_structs.insert(type_name.clone(), struct_info.clone());
+                }
+            }
+        }
 
         // Create file writer
         let mut file_writer = FileWriter::new(output_path)?;
@@ -186,6 +243,13 @@ impl BaseBindingsGenerator for TypeScriptBindingsGenerator {
         // Generate and write commands file
         let commands_content = self.generate_command_bindings(commands);
         file_writer.write_commands_file(&commands_content)?;
+
+        // Generate and write events file if there are any events
+        let events = analyzer.get_discovered_events();
+        if !events.is_empty() {
+            let events_content = self.generate_events_file(events);
+            file_writer.write_events_file(&events_content)?;
+        }
 
         // Generate and write index file
         let index_content = self.generate_index_file(file_writer.get_generated_files());

@@ -4,7 +4,8 @@ use crate::generators::base::template_helpers::TemplateHelpers;
 use crate::generators::base::type_conversion::TypeConverter;
 use crate::generators::base::{BaseBindingsGenerator, BaseGenerator};
 use crate::models::{
-    CommandInfo, FieldInfo, LengthConstraint, RangeConstraint, StructInfo, ValidatorAttributes,
+    CommandInfo, EventInfo, FieldInfo, LengthConstraint, RangeConstraint, StructInfo,
+    ValidatorAttributes,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -36,7 +37,7 @@ impl ZodBindingsGenerator {
         let variants: Vec<String> = struct_info
             .fields
             .iter()
-            .map(|field| format!("\"{}\"", field.name))
+            .map(|field| format!("\"{}\"", field.get_serialized_name()))
             .collect();
 
         let enum_values = variants.join(", ");
@@ -52,9 +53,12 @@ impl ZodBindingsGenerator {
 
         for field in &struct_info.fields {
             let field_schema = self.generate_field_schema(field);
-            // Convert to camelCase to match serde serialization
-            let field_name = self.to_camel_case(&field.name);
-            content.push_str(&format!("  {}: {},\n", field_name, field_schema));
+            // Use get_serialized_name() which respects serde rename/rename_all attributes
+            content.push_str(&format!(
+                "  {}: {},\n",
+                field.get_serialized_name(),
+                field_schema
+            ));
         }
 
         content.push_str("});\n\n");
@@ -269,6 +273,8 @@ impl ZodBindingsGenerator {
         let mut content = String::new();
 
         for command in commands {
+            // Only generate schema if command has regular parameters (not just channels)
+            // Channels are runtime objects and should not be validated
             if !command.parameters.is_empty() {
                 let schema_name = format!(
                     "{}ParamsSchema",
@@ -305,7 +311,15 @@ impl ZodBindingsGenerator {
 
         // Generate parameter types
         for command in commands {
-            if !command.parameters.is_empty() {
+            // If command has only channels (no regular params), generate interface manually
+            if command.parameters.is_empty() && !command.channels.is_empty() {
+                if let Some(interface) =
+                    TemplateHelpers::generate_params_interface_with_channels(command)
+                {
+                    content.push_str(&interface);
+                }
+            } else if !command.parameters.is_empty() && command.channels.is_empty() {
+                // Only regular params, generate from schema
                 let type_name = format!("{}Params", TemplateHelpers::to_pascal_case(&command.name));
                 let schema_name = format!(
                     "{}ParamsSchema",
@@ -315,6 +329,13 @@ impl ZodBindingsGenerator {
                     &type_name,
                     &format!("z.infer<typeof {}>", schema_name),
                 ));
+            } else if !command.parameters.is_empty() && !command.channels.is_empty() {
+                // Both regular params and channels: generate interface with both
+                if let Some(interface) =
+                    TemplateHelpers::generate_params_interface_with_channels(command)
+                {
+                    content.push_str(&interface);
+                }
             }
         }
 
@@ -344,6 +365,16 @@ impl ZodBindingsGenerator {
         // Import Zod
         content.push_str(&TemplateHelpers::generate_named_imports(&[("zod", &["z"])]));
 
+        // Import Channel if any command has channels
+        let has_channels = commands.iter().any(|cmd| !cmd.channels.is_empty());
+        if has_channels {
+            content.push_str(&TemplateHelpers::generate_type_imports(&[(
+                "@tauri-apps/api/core",
+                "{ Channel }",
+            )]));
+        }
+        content.push('\n');
+
         // Sort structs topologically to ensure dependencies are defined before use
         let type_names: HashSet<String> = used_structs.keys().cloned().collect();
         let sorted_types = analyzer.topological_sort_types(&type_names);
@@ -371,11 +402,21 @@ impl ZodBindingsGenerator {
         // Add file header
         content.push_str(&self.generate_command_file_header());
 
-        // Add imports
-        content.push_str(&TemplateHelpers::generate_named_imports(&[(
-            "@tauri-apps/api/core",
-            &["invoke"],
-        )]));
+        // Check if any command has channels
+        let has_channels = commands.iter().any(|cmd| !cmd.channels.is_empty());
+
+        // Add imports - include Channel if needed
+        if has_channels {
+            content.push_str(&TemplateHelpers::generate_named_imports(&[(
+                "@tauri-apps/api/core",
+                &["invoke", "Channel"],
+            )]));
+        } else {
+            content.push_str(&TemplateHelpers::generate_named_imports(&[(
+                "@tauri-apps/api/core",
+                &["invoke"],
+            )]));
+        }
         content.push_str(
             TemplateHelpers::generate_type_imports(&[("zod", "{ ZodError }")]).trim_end(),
         );
@@ -390,9 +431,17 @@ impl ZodBindingsGenerator {
 
         // Generate command functions with validation
         for command in commands {
-            content.push_str(&TemplateHelpers::generate_command_function_with_validation(
-                command,
-            ));
+            if !command.channels.is_empty() {
+                content.push_str(
+                    &TemplateHelpers::generate_command_function_with_channels_and_validation(
+                        command,
+                    ),
+                );
+            } else {
+                content.push_str(&TemplateHelpers::generate_command_function_with_validation(
+                    command,
+                ));
+            }
         }
 
         content
@@ -532,6 +581,19 @@ impl ZodBindingsGenerator {
             }
         }
     }
+
+    /// Generate events file content
+    fn generate_events_file(&self, events: &[EventInfo]) -> String {
+        let mut content = String::new();
+
+        // Add file header
+        content.push_str(&self.generate_file_header());
+
+        // Generate event listeners
+        content.push_str(&TemplateHelpers::generate_all_event_listeners(events));
+
+        content
+    }
 }
 
 impl BaseBindingsGenerator for ZodBindingsGenerator {
@@ -550,7 +612,22 @@ impl BaseBindingsGenerator for ZodBindingsGenerator {
         self.base.known_structs = discovered_structs.clone();
 
         // Filter to only the types used by commands
-        let used_structs = self.base.collect_used_types(commands, discovered_structs);
+        let mut used_structs = self.base.collect_used_types(commands, discovered_structs);
+
+        // Also collect types used in events
+        let events = analyzer.get_discovered_events();
+        for event in events {
+            let mut event_types = std::collections::HashSet::new();
+            self.base
+                .collect_referenced_types(&event.payload_type, &mut event_types);
+
+            // Add event payload types to used_structs
+            for type_name in event_types {
+                if let Some(struct_info) = discovered_structs.get(&type_name) {
+                    used_structs.insert(type_name.clone(), struct_info.clone());
+                }
+            }
+        }
 
         // Create file writer
         let mut file_writer = FileWriter::new(output_path)?;
@@ -562,6 +639,13 @@ impl BaseBindingsGenerator for ZodBindingsGenerator {
         // Generate and write commands file
         let commands_content = self.generate_command_bindings(commands);
         file_writer.write_commands_file(&commands_content)?;
+
+        // Generate and write events file if there are any events
+        let events = analyzer.get_discovered_events();
+        if !events.is_empty() {
+            let events_content = self.generate_events_file(events);
+            file_writer.write_events_file(&events_content)?;
+        }
 
         // Generate and write index file
         let index_content = self.generate_index_file(file_writer.get_generated_files());

@@ -1,6 +1,6 @@
 [package]
 name = "tauri-typegen"
-version = "0.2.1"
+version = "0.3.0"
 authors = [ "Stefan Poindl" ]
 description = "A rust crate that automatically generates TypeScript models and bindings from your Tauri commands"
 edition = "2021"
@@ -10,8 +10,7 @@ links = "tauri-typegen"
 license = "MIT"
 
 [dependencies]
-tauri = { version = "2.2.0" }
-serde = "1.0"
+serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "2"
 syn = { version = "2.0.106", features = ["full", "extra-traits"] }
@@ -27,9 +26,6 @@ indicatif = "0.17"
 name = "cargo-tauri-typegen"
 path = "src/bin/cargo-tauri-typegen.rs"
 
-[build-dependencies]
-tauri-plugin = { version = "2.0.3", features = ["build"] }
-
 [features]
 default = []
 build-time-generation = []
@@ -38,3 +34,8 @@ build-time-generation = []
 tokio = { version = "1.0", features = ["macros", "rt"] }
 tempfile = "3.0"
 serial_test = "3.0"
+
+[dev-dependencies.cargo-husky]
+version = "1"
+default-features = false
+features = ["user-hooks"]

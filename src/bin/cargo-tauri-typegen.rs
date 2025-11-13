@@ -231,7 +231,7 @@ fn run_init(
     let project_path = project_path.unwrap_or_else(|| PathBuf::from("./src-tauri"));
     let generated_path = generated_path.unwrap_or_else(|| PathBuf::from("./src/generated"));
     let mut output_path = output_path.unwrap_or_else(|| PathBuf::from("tauri.conf.json"));
-    let validation_library = validation_library.unwrap_or_else(|| "zod".to_string());
+    let validation_library = validation_library.unwrap_or_else(|| "none".to_string());
 
     // If output path is just "tauri.conf.json" (default), place it in the project path
     let has_no_meaningful_parent = output_path

@@ -1,4 +1,4 @@
-use crate::models::{CommandInfo, FieldInfo};
+use crate::models::{CommandInfo, EventInfo, FieldInfo};
 
 /// Template helper functions for generating common TypeScript patterns
 pub struct TemplateHelpers;
@@ -6,15 +6,32 @@ pub struct TemplateHelpers;
 impl TemplateHelpers {
     /// Generate TypeScript interface definition
     pub fn generate_interface(name: &str, fields: &[FieldInfo]) -> String {
+        Self::generate_interface_with_options(name, fields, false)
+    }
+
+    /// Generate TypeScript interface with optional index signature
+    pub fn generate_interface_with_options(
+        name: &str,
+        fields: &[FieldInfo],
+        add_index_signature: bool,
+    ) -> String {
         let mut result = format!("export interface {} {{\n", name);
 
         for field in fields {
             let optional_marker = if field.is_optional { "?" } else { "" };
-            let field_name = Self::to_camel_case(&field.name);
+            // Use get_serialized_name() which respects serde rename/rename_all attributes
+            // and falls back to the field name
             result.push_str(&format!(
                 "  {}{}: {};\n",
-                field_name, optional_marker, field.typescript_type
+                field.get_serialized_name(),
+                optional_marker,
+                field.typescript_type
             ));
+        }
+
+        // Add index signature for parameter interfaces to satisfy InvokeArgs
+        if add_index_signature {
+            result.push_str("  [key: string]: unknown;\n");
         }
 
         result.push_str("}\n\n");
@@ -28,6 +45,8 @@ impl TemplateHelpers {
 
     /// Generate command function signature for vanilla TypeScript
     pub fn generate_command_function(command: &CommandInfo) -> String {
+        let camel_name = Self::to_camel_case(&command.name);
+
         let param_type = if command.parameters.is_empty() {
             String::new()
         } else {
@@ -65,7 +84,7 @@ impl TemplateHelpers {
 
         format!(
             "export {}function {}({}): {} {{\n  return invoke('{}'{});\n}}\n\n",
-            async_keyword, command.name, param_type, return_promise, command.name, invoke_params
+            async_keyword, camel_name, param_type, return_promise, command.name, invoke_params
         )
     }
 
@@ -261,10 +280,153 @@ impl TemplateHelpers {
                 is_optional: param.is_optional,
                 is_public: true,
                 validator_attributes: None,
+                // For command parameters (not struct fields), use camelCase by default
+                serialized_name: Some(Self::to_camel_case(&param.name)),
             })
             .collect();
 
-        Some(Self::generate_interface(&interface_name, &fields))
+        // Parameter interfaces need index signature for Tauri InvokeArgs compatibility
+        Some(Self::generate_interface_with_options(
+            &interface_name,
+            &fields,
+            true,
+        ))
+    }
+
+    /// Check if a command has channels
+    pub fn command_has_channels(command: &CommandInfo) -> bool {
+        !command.channels.is_empty()
+    }
+
+    /// Generate parameter interface that includes channels for commands with Channel parameters
+    pub fn generate_params_interface_with_channels(command: &CommandInfo) -> Option<String> {
+        // If no parameters and no channels, return None
+        if command.parameters.is_empty() && command.channels.is_empty() {
+            return None;
+        }
+
+        let interface_name = format!("{}Params", Self::to_pascal_case(&command.name));
+        let mut fields: Vec<FieldInfo> = command
+            .parameters
+            .iter()
+            .map(|param| FieldInfo {
+                name: param.name.clone(),
+                rust_type: param.rust_type.clone(),
+                typescript_type: param.typescript_type.clone(),
+                is_optional: param.is_optional,
+                is_public: true,
+                validator_attributes: None,
+                // For command parameters (not struct fields), use camelCase by default
+                serialized_name: Some(Self::to_camel_case(&param.name)),
+            })
+            .collect();
+
+        // Add channel parameters
+        for channel in &command.channels {
+            let param_name = channel.parameter_name.clone();
+            fields.push(FieldInfo {
+                name: param_name.clone(),
+                rust_type: format!("Channel<{}>", channel.message_type),
+                typescript_type: format!("Channel<{}>", channel.typescript_message_type),
+                is_optional: false,
+                is_public: true,
+                validator_attributes: None,
+                // For channel parameters, use camelCase by default
+                serialized_name: Some(Self::to_camel_case(&param_name)),
+            });
+        }
+
+        // Parameter interfaces need index signature for Tauri InvokeArgs compatibility
+        Some(Self::generate_interface_with_options(
+            &interface_name,
+            &fields,
+            true,
+        ))
+    }
+
+    /// Generate command function for commands with channels (vanilla TypeScript)
+    pub fn generate_command_function_with_channels(command: &CommandInfo) -> String {
+        let pascal_name = Self::to_pascal_case(&command.name);
+        let camel_name = Self::to_camel_case(&command.name);
+
+        // Build parameter type
+        let param_type = if command.parameters.is_empty() && command.channels.is_empty() {
+            String::new()
+        } else {
+            format!("params: types.{}Params", pascal_name)
+        };
+
+        // Format return type
+        let return_type = Self::format_typescript_return_type(&command.return_type);
+        let return_promise = format!("Promise<{}>", return_type);
+
+        // Build invoke parameters - pass the params object directly
+        let invoke_params = if command.parameters.is_empty() && command.channels.is_empty() {
+            String::new()
+        } else {
+            ", params".to_string()
+        };
+
+        format!(
+            "export async function {}({}): {} {{\n  return invoke('{}'{});\n}}\n\n",
+            camel_name, param_type, return_promise, command.name, invoke_params
+        )
+    }
+
+    /// Generate command function with channels for Zod validation
+    pub fn generate_command_function_with_channels_and_validation(command: &CommandInfo) -> String {
+        let pascal_name = Self::to_pascal_case(&command.name);
+        let camel_name = Self::to_camel_case(&command.name);
+
+        // Build parameter type
+        let param_type = if command.parameters.is_empty() && command.channels.is_empty() {
+            String::new()
+        } else {
+            format!("params: types.{}Params", pascal_name)
+        };
+
+        // Format return type
+        let return_type = Self::format_typescript_return_type(&command.return_type);
+        let return_promise = format!("Promise<{}>", return_type);
+
+        // If command has no parameters and no channels
+        if command.parameters.is_empty() && command.channels.is_empty() {
+            return format!(
+                "export async function {}(hooks?: CommandHooks<{}>): {} {{\n  try {{\n    const data = await invoke<{}>('{}');\n    hooks?.onSuccess?.(data);\n    return data;\n  }} catch (error) {{\n    hooks?.onInvokeError?.(error);\n    throw error;\n  }} finally {{\n    hooks?.onSettled?.();\n  }}\n}}\n\n",
+                camel_name, return_type, return_promise, return_type, command.name
+            );
+        }
+
+        // Build validation logic - only validate non-channel parameters
+        let validation_code = if command.parameters.is_empty() {
+            // Only channels, no validation needed
+            String::from("    // No validation needed for channel-only parameters\n")
+        } else {
+            // Has regular parameters that need validation
+            format!(
+                "    const result = types.{}ParamsSchema.safeParse(params);\n    \n    if (!result.success) {{\n      hooks?.onValidationError?.(result.error);\n      throw result.error;\n    }}\n    \n",
+                pascal_name
+            )
+        };
+
+        // Determine what to pass to invoke
+        let invoke_data = if command.parameters.is_empty() {
+            "params".to_string() // Pass channels directly
+        } else {
+            "{ ...result.data, ...extractChannels(params) }".to_string() // Merge validated data with channels
+        };
+
+        format!(
+            "export async function {}({}, hooks?: CommandHooks<{}>): {} {{\n  try {{\n{}    const data = await invoke<{}>('{}', {});\n    hooks?.onSuccess?.(data);\n    return data;\n  }} catch (error) {{\n    if (!(error instanceof ZodError)) {{\n      hooks?.onInvokeError?.(error);\n    }}\n    throw error;\n  }} finally {{\n    hooks?.onSettled?.();\n  }}\n}}\n\n",
+            camel_name,
+            param_type,
+            return_type,
+            return_promise,
+            validation_code,
+            return_type,
+            command.name,
+            invoke_data
+        )
     }
 
     /// Generate enum definition
@@ -444,6 +606,120 @@ impl TemplateHelpers {
         }
 
         result.push_str(" */\n");
+        result
+    }
+
+    /// Generate event listener helper function
+    /// Creates a type-safe wrapper around the Tauri listen() function
+    pub fn generate_event_listener_function(event: &EventInfo) -> String {
+        // Convert event-name to EventName for function naming
+        let function_name = Self::event_name_to_function_name(&event.event_name);
+        let payload_type = &event.typescript_payload_type;
+
+        format!(
+            r#"/**
+ * Listen for '{}' events
+ * @param handler - Callback function to handle the event
+ * @returns Promise that resolves to an unlisten function
+ */
+export async function {}(
+  handler: (payload: {}) => void
+): Promise<UnlistenFn> {{
+  return listen<{}>('{}', (event) => {{
+    handler(event.payload);
+  }});
+}}
+
+"#,
+            event.event_name, function_name, payload_type, payload_type, event.event_name
+        )
+    }
+
+    /// Convert event-name to eventName function name
+    /// Examples: "download-started" -> "onDownloadStarted", "user-logged-in" -> "onUserLoggedIn"
+    fn event_name_to_function_name(event_name: &str) -> String {
+        let pascal = event_name
+            .split('-')
+            .map(|word| {
+                let mut chars = word.chars();
+                match chars.next() {
+                    None => String::new(),
+                    Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                }
+            })
+            .collect::<String>();
+
+        format!("on{}", pascal)
+    }
+
+    /// Generate event constants for consistent event name usage
+    pub fn generate_event_constants(events: &[EventInfo]) -> String {
+        let mut result = String::from("// Event name constants\n");
+
+        for event in events {
+            let constant_name = event.event_name.to_uppercase().replace('-', "_");
+            result.push_str(&format!(
+                "export const {} = '{}';\n",
+                constant_name, event.event_name
+            ));
+        }
+
+        result.push('\n');
+        result
+    }
+
+    /// Generate all event listener functions
+    pub fn generate_all_event_listeners(events: &[EventInfo]) -> String {
+        let mut result = String::new();
+
+        // Add header comment
+        result.push_str(&Self::generate_comment_block(&[
+            "Event Listeners",
+            "Type-safe event listener helpers for Tauri events",
+        ]));
+
+        // Generate imports
+        result.push_str(
+            "import { listen, type UnlistenFn, type Event } from '@tauri-apps/api/event';\n",
+        );
+
+        // Collect unique payload types for imports
+        let mut payload_types: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for event in events {
+            // Extract the TypeScript type name (without generics, arrays, etc.)
+            let type_name = event
+                .typescript_payload_type
+                .split('<')
+                .next()
+                .unwrap_or(&event.typescript_payload_type);
+            let type_name = type_name.split('[').next().unwrap_or(type_name);
+            let type_name = type_name.trim();
+
+            // Only import if it's not a primitive type
+            if !matches!(
+                type_name,
+                "string" | "number" | "boolean" | "void" | "null" | "undefined"
+            ) {
+                payload_types.insert(type_name.to_string());
+            }
+        }
+
+        // Add imports from types file if needed
+        if !payload_types.is_empty() {
+            let types_list: Vec<String> = payload_types.into_iter().collect();
+            result.push_str(&format!(
+                "import type {{ {} }} from './types';\n\n",
+                types_list.join(", ")
+            ));
+        } else {
+            result.push('\n');
+        }
+
+        // Generate each listener function
+        for event in events {
+            result.push_str(&Self::generate_event_listener_function(event));
+        }
+
         result
     }
 }

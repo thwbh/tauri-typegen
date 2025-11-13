@@ -1,3 +1,4 @@
+use crate::analysis::serde_parser::{apply_naming_convention, SerdeParser};
 use crate::analysis::type_resolver::TypeResolver;
 use crate::analysis::validator_parser::ValidatorParser;
 use crate::models::{FieldInfo, StructInfo};
@@ -9,12 +10,14 @@ use syn::{Attribute, ItemEnum, ItemStruct, Type, Visibility};
 #[derive(Debug)]
 pub struct StructParser {
     validator_parser: ValidatorParser,
+    serde_parser: SerdeParser,
 }
 
 impl StructParser {
     pub fn new() -> Self {
         Self {
             validator_parser: ValidatorParser::new(),
+            serde_parser: SerdeParser::new(),
         }
     }
 
@@ -62,11 +65,22 @@ impl StructParser {
         file_path: &Path,
         type_resolver: &mut TypeResolver,
     ) -> Option<StructInfo> {
+        // Parse struct-level serde attributes
+        let struct_serde_attrs = self
+            .serde_parser
+            .parse_struct_serde_attrs(&item_struct.attrs);
+
         let fields = match &item_struct.fields {
             syn::Fields::Named(fields_named) => fields_named
                 .named
                 .iter()
-                .filter_map(|field| self.parse_field(field, type_resolver))
+                .filter_map(|field| {
+                    self.parse_field(
+                        field,
+                        type_resolver,
+                        struct_serde_attrs.rename_all.as_deref(),
+                    )
+                })
                 .collect(),
             syn::Fields::Unnamed(_) => {
                 // Handle tuple structs if needed
@@ -93,20 +107,40 @@ impl StructParser {
         file_path: &Path,
         type_resolver: &mut TypeResolver,
     ) -> Option<StructInfo> {
+        // Parse enum-level serde attributes
+        let enum_serde_attrs = self.serde_parser.parse_struct_serde_attrs(&item_enum.attrs);
+
         let fields = item_enum
             .variants
             .iter()
             .map(|variant| {
+                let variant_name = variant.ident.to_string();
+
+                // Parse variant-level serde attributes
+                let variant_serde_attrs = self.serde_parser.parse_field_serde_attrs(&variant.attrs);
+
+                // Calculate serialized name for the variant
+                let serialized_name = if let Some(rename) = variant_serde_attrs.rename {
+                    // Explicit variant-level rename takes precedence
+                    Some(rename)
+                } else {
+                    enum_serde_attrs
+                        .rename_all
+                        .as_deref()
+                        .map(|convention| apply_naming_convention(&variant_name, convention))
+                };
+
                 match &variant.fields {
                     syn::Fields::Unit => {
                         // Unit variant: Variant
                         FieldInfo {
-                            name: variant.ident.to_string(),
+                            name: variant_name,
                             rust_type: "enum_variant".to_string(),
                             typescript_type: format!("\"{}\"", variant.ident),
                             is_optional: false,
                             is_public: true,
                             validator_attributes: None,
+                            serialized_name,
                         }
                     }
                     syn::Fields::Unnamed(fields_unnamed) => {
@@ -116,11 +150,11 @@ impl StructParser {
                             .iter()
                             .map(|field| {
                                 type_resolver
-                                    .map_rust_type_to_typescript(&self.type_to_string(&field.ty))
+                                    .map_rust_type_to_typescript(&Self::type_to_string(&field.ty))
                             })
                             .collect();
                         FieldInfo {
-                            name: variant.ident.to_string(),
+                            name: variant_name,
                             rust_type: "enum_variant_tuple".to_string(),
                             typescript_type: format!(
                                 "{{ type: \"{}\", data: [{}] }}",
@@ -130,6 +164,7 @@ impl StructParser {
                             is_optional: false,
                             is_public: true,
                             validator_attributes: None,
+                            serialized_name,
                         }
                     }
                     syn::Fields::Named(fields_named) => {
@@ -140,14 +175,14 @@ impl StructParser {
                             .filter_map(|field| {
                                 field.ident.as_ref().map(|field_name| {
                                     let field_type = type_resolver.map_rust_type_to_typescript(
-                                        &self.type_to_string(&field.ty),
+                                        &Self::type_to_string(&field.ty),
                                     );
                                     format!("{}: {}", field_name, field_type)
                                 })
                             })
                             .collect();
                         FieldInfo {
-                            name: variant.ident.to_string(),
+                            name: variant_name,
                             rust_type: "enum_variant_struct".to_string(),
                             typescript_type: format!(
                                 "{{ type: \"{}\", data: {{ {} }} }}",
@@ -157,6 +192,7 @@ impl StructParser {
                             is_optional: false,
                             is_public: true,
                             validator_attributes: None,
+                            serialized_name,
                         }
                     }
                 }
@@ -176,11 +212,29 @@ impl StructParser {
         &self,
         field: &syn::Field,
         type_resolver: &mut TypeResolver,
+        struct_rename_all: Option<&str>,
     ) -> Option<FieldInfo> {
         let name = field.ident.as_ref()?.to_string();
+
+        // Parse field-level serde attributes
+        let field_serde_attrs = self.serde_parser.parse_field_serde_attrs(&field.attrs);
+
+        // Skip fields with #[serde(skip)]
+        if field_serde_attrs.skip {
+            return None;
+        }
+
+        // Calculate the serialized name based on serde attributes
+        let serialized_name = if let Some(rename) = field_serde_attrs.rename {
+            // Explicit field-level rename takes precedence
+            Some(rename)
+        } else {
+            struct_rename_all.map(|convention| apply_naming_convention(&name, convention))
+        };
+
         let is_public = matches!(field.vis, Visibility::Public(_));
         let is_optional = self.is_optional_type(&field.ty);
-        let rust_type = self.type_to_string(&field.ty);
+        let rust_type = Self::type_to_string(&field.ty);
         let typescript_type = type_resolver.map_rust_type_to_typescript(&rust_type);
         let validator_attributes = self
             .validator_parser
@@ -193,6 +247,7 @@ impl StructParser {
             is_optional,
             is_public,
             validator_attributes,
+            serialized_name,
         })
     }
 
@@ -210,7 +265,7 @@ impl StructParser {
     }
 
     /// Convert a Type to its string representation
-    fn type_to_string(&self, ty: &Type) -> String {
+    fn type_to_string(ty: &Type) -> String {
         match ty {
             Type::Path(type_path) => {
                 let path = &type_path.path;
@@ -226,7 +281,7 @@ impl StructParser {
                                     .args
                                     .iter()
                                     .map(|arg| match arg {
-                                        syn::GenericArgument::Type(t) => self.type_to_string(t),
+                                        syn::GenericArgument::Type(t) => Self::type_to_string(t),
                                         _ => "unknown".to_string(),
                                     })
                                     .collect();
@@ -239,21 +294,18 @@ impl StructParser {
                 segments.join("::")
             }
             Type::Reference(type_ref) => {
-                format!("&{}", self.type_to_string(&type_ref.elem))
+                format!("&{}", Self::type_to_string(&type_ref.elem))
             }
             Type::Tuple(type_tuple) => {
-                let elements: Vec<String> = type_tuple
-                    .elems
-                    .iter()
-                    .map(|elem| self.type_to_string(elem))
-                    .collect();
+                let elements: Vec<String> =
+                    type_tuple.elems.iter().map(Self::type_to_string).collect();
                 format!("({})", elements.join(", "))
             }
             Type::Array(type_array) => {
-                format!("[{}; _]", self.type_to_string(&type_array.elem))
+                format!("[{}; _]", Self::type_to_string(&type_array.elem))
             }
             Type::Slice(type_slice) => {
-                format!("[{}]", self.type_to_string(&type_slice.elem))
+                format!("[{}]", Self::type_to_string(&type_slice.elem))
             }
             _ => "unknown".to_string(),
         }

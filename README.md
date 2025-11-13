@@ -1,943 +1,618 @@
 # Tauri TypeGen
 
-A command-line tool that automatically generates TypeScript models and bindings from your Tauri commands, eliminating the manual process of creating frontend types and validation.
+[![Crates.io](https://img.shields.io/crates/v/tauri-typegen.svg)](https://crates.io/crates/tauri-typegen)
+[![Documentation](https://docs.rs/tauri-typegen/badge.svg)](https://docs.rs/tauri-typegen)
+[![codecov](https://codecov.io/gh/thwbh/tauri-typegen/branch/main/graph/badge.svg)](https://codecov.io/gh/thwbh/tauri-typegen)
+[![Test](https://github.com/thwbh/tauri-typegen/actions/workflows/ci.yml/badge.svg)](https://github.com/thwbh/tauri-typegen/actions/workflows/ci.yml)
+
+A command-line tool that automatically generates TypeScript bindings from your Tauri commands, eliminating manual frontend type creation.
 
 ## Features
 
-- 🔍 **Automatic Discovery**: Scans your Rust source files to find all `#[tauri::command]` functions
-- 📝 **TypeScript Generation**: Creates TypeScript interfaces for all command parameters and return types
-- ✅ **Validation Support**: Generates validation schemas using Zod or plain TypeScript types
-- 🚀 **Command Bindings**: Creates strongly-typed frontend functions that call your Tauri commands
-- 🎯 **Type Safety**: Ensures frontend and backend types stay in sync
-- 🛠️ **CLI Integration**: Generate types with a simple command: `cargo tauri-typegen generate`
-- 📊 **Dependency Visualization**: Optional dependency graph generation for complex projects
-- ⚙️ **Configuration Support**: Supports both standalone config files and Tauri project integration
+- 🔍 **Automatic Discovery**: Scans Rust source for `#[tauri::command]` functions
+- 📝 **TypeScript Generation**: Creates TypeScript interfaces for command parameters and return types
+- ✅ **Validation Support**: Optional Zod schema generation with runtime validation
+- 🚀 **Command Bindings**: Strongly-typed frontend functions
+- 📡 **Event Support**: Discovers and types `app.emit()` events
+- 📞 **Channel Support**: Types for streaming `Channel<T>` parameters
+- 🏷️ **Serde Support**: Respects `#[serde(rename)]` and `#[serde(rename_all)]` attributes
+- 🎯 **Type Safety**: Keeps frontend and backend types in sync
+- 🛠️ **Build Integration**: Works as standalone CLI or build dependency
 
 ## Table of Contents
 
-- [Quick Start](#quick-start)
 - [Installation](#installation)
-- [Usage Examples](#usage-examples)
-    - [E-commerce App Example](#example-e-commerce-app)
-    - [Generate TypeScript Bindings](#generate-typescript-bindings)
-    - [Generated Files Structure](#generated-files-structure)
-    - [Using Generated Bindings](#using-generated-bindings-in-frontend)
-        - [React Example](#react-example)
-        - [Vue Example](#vue-example)
-        - [Svelte Example](#svelte-example)
-    - [Benefits](#benefits-of-using-generated-bindings)
+- [Quick Setup](#quick-setup)
+- [Recommended Setup](#recommended-setup)
+- [Generated Code](#generated-code)
+- [Using Generated Bindings](#using-generated-bindings)
 - [TypeScript Compatibility](#typescript-compatibility)
 - [API Reference](#api-reference)
-- [Configuration Options](#configuration-options)
-- [Development](#development)
-
-## Quick Start
-
-1. **Install the CLI tool**:
-   ```bash
-   cargo install tauri-typegen
-   ```
-
-2. **Generate TypeScript bindings** from your Tauri project:
-   ```bash
-   # In your Tauri project root
-   cargo tauri-typegen generate
-   ```
-
-3. **Use the generated bindings** in your frontend:
-   ```typescript
-   import { createUser, getUsers } from './src/generated';
-   
-   const user = await createUser({ request: { name: "John", email: "john@example.com" } });
-   const users = await getUsers({ filter: null });
-   ```
-
-### CLI Commands
-
-```bash
-cargo tauri-typegen generate [OPTIONS]
-
-Options:
-  -p, --project-path <PATH>      Path to Tauri source directory [default: ./src-tauri]
-  -o, --output-path <PATH>       Output path for TypeScript files [default: ./src/generated]
-  -v, --validation <LIBRARY>     Validation library: zod or none [default: zod]
-      --verbose                  Verbose output
-      --visualize-deps           Generate dependency graph visualization
-  -c, --config <CONFIG_FILE>     Configuration file path
-```
-
-```bash
-cargo tauri-typegen init [OPTIONS]
-
-Options:
-  -p, --project-path <PATH>      Path to Tauri source directory [default: ./src-tauri]
-  -g, --generated-path <PATH>    Output path for generated files [default: ./src/generated]
-  -o, --output <PATH>            Output path for config file [default: tauri.conf.json]
-  -v, --validation <LIBRARY>     Validation library: zod or none [default: zod]
-      --verbose                  Verbose output
-      --visualize-deps           Generate dependency graph visualization
-      --force                    Force overwrite existing configuration
-```
+- [Configuration](#configuration)
 
 ## Installation
 
-### CLI Tool Installation
-
-Install the CLI tool globally:
+Install globally as a CLI tool:
 
 ```bash
 cargo install tauri-typegen
 ```
 
-### TypeScript Bindings (Optional)
-
-If you need TypeScript bindings for frontend integration:
-
-```bash
-npm install @thwbh/tauri-typegen
-```
-
-**Note**: This plugin requires manual installation. The `cargo tauri add` command only works with official Tauri plugins.
-
-### Configuration Setup
-
-#### Initialize Configuration
-
-Add typegen configuration to your existing Tauri project:
-
-```bash
-# Add configuration to your existing tauri.conf.json (default)
-cargo tauri-typegen init
-
-# Specify custom validation library
-cargo tauri-typegen init --validation none
-
-# Create a standalone config file
-cargo tauri-typegen init --output my-config.json --validation zod
-```
-
-**Note**: The `init` command requires an existing `tauri.conf.json` file in your Tauri project. It will update the file to add the `plugins.typegen` configuration section.
-
-#### Configuration File
-
-Configuration can be stored in a standalone JSON file or within your `tauri.conf.json`:
-
-```json
-{
-  "project_path": "./src-tauri",
-  "output_path": "./src/generated",
-  "validation_library": "zod",
-  "verbose": true,
-  "visualize_deps": false
-}
-```
-
-### Package.json Integration
-
-Add generation to your build scripts:
-
-```json
-{
-  "scripts": {
-    "generate-types": "cargo tauri-typegen generate",
-    "tauri:dev": "npm run generate-types && tauri dev", 
-    "tauri:build": "npm run generate-types && tauri build"
-  }
-}
-```
-
-## Usage Examples
-
-### Example: E-commerce App
-
-Let's say you have these Tauri commands in your Rust backend:
-
-**`src-tauri/src/commands/products.rs`:**
-```rust
-use serde::{Deserialize, Serialize};
-use tauri::command;
-use validator::Validate;
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Product {
-    pub id: i32,
-    pub name: String,
-    pub description: String,
-    pub price: f64,
-    pub in_stock: bool,
-    pub category_id: i32,
-}
-
-#[derive(Debug, Deserialize, Validate)]
-#[serde(rename_all = "camelCase")]
-pub struct CreateProductRequest {
-    #[validate(length(min = 1, max = 100))]
-    pub name: String,
-    #[validate(length(max = 500))]
-    pub description: String,
-    #[validate(range(min = 0.01, max = 10000.0))]
-    pub price: f64,
-    pub category_id: i32,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ProductFilter {
-    pub search: Option<String>,
-    pub category_id: Option<i32>,
-    pub min_price: Option<f64>,
-    pub max_price: Option<f64>,
-    pub in_stock_only: Option<bool>,
-}
-
-#[command]
-pub async fn create_product(request: CreateProductRequest) -> Result<Product, String> {
-    // Implementation here
-    Ok(Product {
-        id: 1,
-        name: request.name,
-        description: request.description,
-        price: request.price,
-        in_stock: true,
-        category_id: request.category_id,
-    })
-}
-
-#[command]
-pub async fn get_products(filter: Option<ProductFilter>) -> Result<Vec<Product>, String> {
-    // Implementation here
-    Ok(vec![])
-}
-
-#[command]
-pub async fn delete_product(id: i32) -> Result<(), String> {
-    // Implementation here
-    Ok(())
-}
-```
-
-### Generate TypeScript Bindings
-
-#### Command Line Generation
-
-Generate bindings with the CLI tool:
-
-```bash
-# Basic generation with defaults
-cargo tauri-typegen generate
-
-# Custom paths and validation
-cargo tauri-typegen generate \
-  --project-path ./src-tauri \
-  --output-path ./src/lib/generated \
-  --validation zod \
-  --verbose
-
-# Generate with dependency visualization
-cargo tauri-typegen generate --visualize-deps
-
-# Use configuration file
-cargo tauri-typegen generate --config my-config.json
-
-# Quick examples for different setups
-cargo tauri-typegen generate -p ./backend -o ./frontend/types -v zod
-cargo tauri-typegen generate --validation none  # No validation schemas
-```
-
-#### Build Integration
-
-The recommended approach is to use Tauri's built-in build hooks to ensure types are generated before the frontend build starts. This solves the chicken-and-egg problem where the frontend needs the generated types but builds before the Rust backend.
-
-**Method 1: Tauri Build Hooks (Recommended)**
-
-First, add configuration to your `tauri.conf.json`:
-
-```json
-{
-  "build": {
-    "beforeDevCommand": "cargo tauri-typegen generate && npm run dev",
-    "beforeBuildCommand": "cargo tauri-typegen generate && npm run build",
-    "devUrl": "http://localhost:1420",
-    "frontendDist": "../dist"
-  },
-  "plugins": {
-    "tauri-typegen": {
-      "project_path": "./src-tauri",
-      "output_path": "./src/generated",
-      "validation_library": "zod",
-      "verbose": false,
-      "visualize_deps": false
-    }
-  }
-}
-```
-
-Then use standard Tauri commands:
-```bash
-# Development - types generated automatically before frontend starts
-npm run tauri dev
-
-# Production build - types generated before frontend build
-npm run tauri build
-```
-
-**Method 2: Package.json Scripts (Alternative)**
-
-If you prefer explicit control in package.json:
-
-```json
-{
-  "scripts": {
-    "generate-types": "cargo tauri-typegen generate",
-    "dev": "npm run generate-types && npm run tauri dev", 
-    "build": "npm run generate-types && npm run tauri build",
-    "tauri": "tauri"
-  }
-}
-```
-
-**Method 3: Cargo Build Scripts (Advanced)**
-
-For tighter integration, add type generation to your Rust build process.
-
-Add tauri-typegen as build dependency to your project.
+**Or** add as a build dependency to your Tauri project:
 
 ```bash
 cargo add --build tauri-typegen
 ```
 
-In `src-tauri/build.rs`:
+## Quick Setup
+
+For trying it out or one-time generation:
+
+```bash
+# Install CLI
+cargo install tauri-typegen
+
+# Generate types once
+cargo tauri-typegen generate
+
+# Use generated bindings
+```
+
+This generates TypeScript files in `./src/generated/` from your `./src-tauri/` code.
+
+## Recommended Setup
+
+For integrated development workflow:
+
+### 1. Install and Initialize
+
+```bash
+# Install CLI
+cargo install tauri-typegen
+
+# Initialize configuration (adds to tauri.conf.json)
+cargo tauri-typegen init
+
+# Or with custom settings
+cargo tauri-typegen init --validation zod --output tauri.conf.json
+```
+
+This creates a configuration block in your `tauri.conf.json`:
+
+```json
+{
+  "plugins": {
+    "tauri-typegen": {
+      "project_path": "./src-tauri",
+      "output_path": "./src/generated",
+      "validation_library": "none",
+      "verbose": false
+    }
+  }
+}
+```
+
+### 2. Add Build Hook
+
+Add to `src-tauri/build.rs`:
 
 ```rust
 fn main() {
     // Generate TypeScript bindings before build
-    tauri_plugin_typegen::BuildSystem::generate_at_build_time()
+    tauri_typegen::generate_at_build_time()
         .expect("Failed to generate TypeScript bindings");
 
     tauri_build::build()
 }
 ```
 
-### Generated Files Structure
+Now types auto-generate on every Rust build:
 
-After running the generator:
+```bash
+npm run tauri dev   # Types generated automatically
+npm run tauri build # Types generated automatically
+```
+
+## Generated Code
+
+### Example Rust Code
+
+```rust
+use serde::{Deserialize, Serialize};
+use tauri::ipc::Channel;
+
+#[derive(Serialize, Deserialize)]
+pub struct User {
+    pub id: i32,
+    pub name: String,
+    pub email: String,
+}
+
+#[derive(Deserialize)]
+pub struct CreateUserRequest {
+    pub name: String,
+    pub email: String,
+}
+
+#[derive(Clone, Serialize)]
+pub struct ProgressUpdate {
+    pub percentage: f32,
+    pub message: String,
+}
+
+// Simple command
+#[tauri::command]
+pub async fn get_user(id: i32) -> Result<User, String> {
+    // Implementation
+}
+
+// Command with custom types
+#[tauri::command]
+pub async fn create_user(request: CreateUserRequest) -> Result<User, String> {
+    // Implementation
+}
+
+// Command with Channel for progress streaming
+#[tauri::command]
+pub async fn download_file(
+    url: String,
+    on_progress: Channel<ProgressUpdate>
+) -> Result<String, String> {
+    // Send progress updates
+    on_progress.send(ProgressUpdate {
+        percentage: 50.0,
+        message: "Halfway done".to_string()
+    })?;
+    // Implementation
+}
+
+// Event emission
+pub fn notify_user(app: &AppHandle, message: String) {
+    app.emit("user-notification", message).unwrap();
+}
+```
+
+### Generated Files
 
 ```
 src/generated/
-├── types.ts                 # TypeScript interfaces
-├── schemas.ts               # Zod validation schemas (if using zod)
-├── commands.ts              # Typed command functions
-├── index.ts                 # Barrel exports
-├── dependency-graph.txt     # Text dependency visualization (if --visualize-deps)
-└── dependency-graph.dot     # DOT format graph (if --visualize-deps)
+├── types.ts       # TypeScript interfaces
+├── commands.ts    # Typed command functions
+└── events.ts      # Event listener functions (if events detected)
 ```
 
 **Generated `types.ts`:**
+
 ```typescript
-export interface Product {
+import type { Channel } from '@tauri-apps/api/core';
+
+export interface User {
   id: number;
   name: string;
-  description: string;
-  price: number;
-  inStock: boolean;
-  categoryId: number;
+  email: string;
 }
 
-export interface CreateProductRequest {
+export interface CreateUserRequest {
   name: string;
-  description: string;
-  price: number;
-  categoryId: number;
+  email: string;
 }
 
-export interface CreateProductParams {
-  request: CreateProductRequest;
+export interface ProgressUpdate {
+  percentage: number;
+  message: string;
 }
 
-export interface GetProductsParams {
-  filter?: ProductFilter | null;
-}
-
-export interface DeleteProductParams {
+export interface GetUserParams {
   id: number;
+}
+
+export interface CreateUserParams {
+  request: CreateUserRequest;
+}
+
+export interface DownloadFileParams {
+  url: string;
+  onProgress: Channel<ProgressUpdate>;
 }
 ```
 
 **Generated `commands.ts`:**
+
 ```typescript
-import { invoke } from '@tauri-apps/api/core';
-import * as schemas from './schemas';
-import type * as types from './types';
+import { invoke, Channel } from '@tauri-apps/api/core';
+import * as types from './types';
 
-export async function createProduct(params: types.CreateProductParams): Promise<types.Product> {
-  const validatedParams = schemas.CreateProductParamsSchema.parse(params);
-  return invoke('create_product', validatedParams);
+export async function getUser(params: types.GetUserParams): Promise<types.User> {
+  return invoke('get_user', params);
 }
 
-export async function getProducts(params: types.GetProductsParams): Promise<types.Product[]> {
-  const validatedParams = schemas.GetProductsParamsSchema.parse(params);
-  return invoke('get_products', validatedParams);
+export async function createUser(params: types.CreateUserParams): Promise<types.User> {
+  return invoke('create_user', params);
 }
 
-export async function deleteProduct(params: types.DeleteProductParams): Promise<void> {
-  const validatedParams = schemas.DeleteProductParamsSchema.parse(params);
-  return invoke('delete_product', validatedParams);
+export async function downloadFile(params: types.DownloadFileParams): Promise<string> {
+  return invoke('download_file', params);
 }
 ```
 
-### Using Generated Bindings in Frontend
+**Generated `events.ts`:**
 
-#### React Example
+```typescript
+import { listen } from '@tauri-apps/api/event';
+
+export async function onUserNotification(handler: (event: string) => void) {
+  return listen('user-notification', (event) => handler(event.payload as string));
+}
+```
+
+### With Zod Validation
+
+When using `--validation zod`, generated commands include runtime validation:
+
+```typescript
+export async function createUser(
+  params: types.CreateUserParams,
+  hooks?: CommandHooks<types.User>
+): Promise<types.User> {
+  try {
+    const result = types.CreateUserParamsSchema.safeParse(params);
+
+    if (!result.success) {
+      hooks?.onValidationError?.(result.error);
+      throw result.error;
+    }
+
+    const data = await invoke<types.User>('create_user', result.data);
+    hooks?.onSuccess?.(data);
+    return data;
+  } catch (error) {
+    if (!(error instanceof ZodError)) {
+      hooks?.onInvokeError?.(error);
+    }
+    throw error;
+  } finally {
+    hooks?.onSettled?.();
+  }
+}
+```
+
+## Using Generated Bindings
+
+### Basic Usage
+
+```typescript
+import { getUser, createUser, downloadFile } from './generated';
+import { Channel } from '@tauri-apps/api/core';
+
+// Simple command
+const user = await getUser({ id: 1 });
+
+// With custom types
+const newUser = await createUser({
+  request: {
+    name: "John Doe",
+    email: "john@example.com"
+  }
+});
+
+// With Channel for streaming
+const onProgress = new Channel<ProgressUpdate>();
+onProgress.onmessage = (progress) => {
+  console.log(`${progress.percentage}%: ${progress.message}`);
+};
+
+const result = await downloadFile({
+  url: "https://example.com/file.zip",
+  onProgress
+});
+```
+
+### With Event Listeners
+
+```typescript
+import { onUserNotification } from './generated';
+
+// Listen for events
+const unlisten = await onUserNotification((message) => {
+  console.log('Notification:', message);
+});
+
+// Stop listening
+unlisten();
+```
+
+### React Example
 
 ```tsx
-import React, { useEffect, useState } from 'react';
-import { getProducts, createProduct, deleteProduct } from '../lib/generated';
-import type { Product, ProductFilter } from '../lib/generated';
+import React, { useState } from 'react';
+import { createUser } from './generated';
+import type { User } from './generated';
 
-export function ProductList() {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
+export function CreateUserForm() {
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
 
-  useEffect(() => {
-    loadProducts();
-  }, []);
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
 
-  const loadProducts = async () => {
-    try {
-      setLoading(true);
-      const result = await getProducts({ filter: null });
-      setProducts(result);
-    } catch (error) {
-      console.error('Failed to load products:', error);
-    } finally {
-      setLoading(false);
-    }
+    const user = await createUser({
+      request: { name, email }
+    });
+
+    console.log('Created:', user);
   };
-
-  const handleCreateProduct = async () => {
-    try {
-      const newProduct = await createProduct({
-        request: {
-          name: 'New Product',
-          description: 'A new product',
-          price: 19.99,
-          categoryId: 1,
-        }
-      });
-      
-      setProducts([...products, newProduct]);
-    } catch (error) {
-      console.error('Failed to create product:', error);
-    }
-  };
-
-  const handleDeleteProduct = async (productId: number) => {
-    try {
-      await deleteProduct({ id: productId });
-      setProducts(products.filter(p => p.id !== productId));
-    } catch (error) {
-      console.error('Failed to delete product:', error);
-    }
-  };
-
-  if (loading) return <div>Loading...</div>;
 
   return (
-    <div>
-      <h2>Products</h2>
-      <button onClick={handleCreateProduct}>Create Product</button>
-
-      <div className="products">
-        {products.map((product) => (
-          <div key={product.id} className="product-card">
-            <h3>{product.name}</h3>
-            <p>{product.description}</p>
-            <p>${product.price}</p>
-            <p>Stock: {product.inStock ? '✅' : '❌'}</p>
-            <button onClick={() => handleDeleteProduct(product.id)}>
-              Delete
-            </button>
-          </div>
-        ))}
-      </div>
-    </div>
+    <form onSubmit={handleSubmit}>
+      <input value={name} onChange={e => setName(e.target.value)} />
+      <input value={email} onChange={e => setEmail(e.target.value)} />
+      <button type="submit">Create User</button>
+    </form>
   );
 }
 ```
 
-#### Vue Example
-
-```vue
-<template>
-  <div class="product-manager">
-    <h2>Product Manager</h2>
-    
-    <form @submit.prevent="createProduct" class="create-form">
-      <input v-model="newProduct.name" placeholder="Product name" required />
-      <textarea v-model="newProduct.description" placeholder="Description"></textarea>
-      <input v-model.number="newProduct.price" type="number" step="0.01" placeholder="Price" required />
-      <button type="submit">Create Product</button>
-    </form>
-
-    <div class="products-list">
-      <div v-for="product in products" :key="product.id" class="product-item">
-        <h4>{{ product.name }}</h4>
-        <p>{{ product.description }}</p>
-        <p>${{ product.price }}</p>
-        <button @click="deleteProduct(product.id)">Delete</button>
-      </div>
-    </div>
-  </div>
-</template>
-
-<script setup lang="ts">
-import { ref, onMounted } from 'vue';
-import { getProducts, createProduct as createProductCmd, deleteProduct as deleteProductCmd } from '../lib/generated';
-import type { Product, CreateProductRequest } from '../lib/generated';
-
-const products = ref<Product[]>([]);
-const newProduct = ref<CreateProductRequest>({
-  name: '',
-  description: '',
-  price: 0,
-  categoryId: 1,
-});
-
-onMounted(async () => {
-  await loadProducts();
-});
-
-const loadProducts = async () => {
-  try {
-    const result = await getProducts({ filter: null });
-    products.value = result;
-  } catch (error) {
-    console.error('Failed to load products:', error);
-  }
-};
-
-const createProduct = async () => {
-  try {
-    const product = await createProductCmd({ request: { ...newProduct.value } });
-    products.value.push(product);
-    newProduct.value = { name: '', description: '', price: 0, categoryId: 1 };
-  } catch (error) {
-    console.error('Failed to create product:', error);
-  }
-};
-
-const deleteProduct = async (id: number) => {
-  try {
-    await deleteProductCmd({ id });
-    products.value = products.value.filter(p => p.id !== id);
-  } catch (error) {
-    console.error('Failed to delete product:', error);
-  }
-};
-</script>
-```
-
-#### Svelte Example
-
-**`src/lib/ProductStore.ts`:**
-```typescript
-import { writable } from 'svelte/store';
-import { getProducts, createProduct, deleteProduct } from './generated';
-import type { Product, ProductFilter } from './generated';
-
-export const products = writable<Product[]>([]);
-export const loading = writable(false);
-
-export const productStore = {
-  async loadProducts(filter: ProductFilter = {}) {
-    loading.set(true);
-    try {
-      const result = await getProducts({ filter });
-      products.set(result);
-    } catch (error) {
-      console.error('Failed to load products:', error);
-    } finally {
-      loading.set(false);
-    }
-  },
-
-  async createProduct(request: CreateProductRequest) {
-    try {
-      const newProduct = await createProduct({ request });
-      products.update(items => [...items, newProduct]);
-      return newProduct;
-    } catch (error) {
-      console.error('Failed to create product:', error);
-      throw error;
-    }
-  },
-
-  async deleteProduct(id: number) {
-    try {
-      await deleteProduct({ id });
-      products.update(items => items.filter(p => p.id !== id));
-    } catch (error) {
-      console.error('Failed to delete product:', error);
-      throw error;
-    }
-  }
-};
-```
-
-### Benefits of Using Generated Bindings
-
-#### ✅ Type Safety
-```typescript
-// ❌ Before: Manual typing, prone to errors
-const result = await invoke('create_product', {
-  name: 'Product',
-  price: '19.99', // Oops! Should be number
-  category_id: 1   // Oops! Should be camelCase
-});
-
-// ✅ After: Generated bindings with validation
-const result = await createProduct({
-  request: {
-    name: 'Product',
-    price: 19.99,      // Correct type
-    categoryId: 1      // Correct naming
-  }
-});
-```
-
-#### ✅ Runtime Validation
-```typescript
-// Automatically validates input at runtime
-try {
-  await createProduct({
-    request: {
-      name: '', // Will throw validation error
-      price: -5 // Will throw validation error
-    }
-  });
-} catch (error) {
-  console.error('Validation failed:', error);
-}
-```
-
-#### ✅ IntelliSense & Autocomplete
-Your IDE will provide full autocomplete and type hints for all generated functions and types.
-
-#### ✅ Automatic Updates
-When you change your Rust commands, just re-run the generator to get updated TypeScript bindings.
-
-### Command Hooks (Zod Only)
-
-When using Zod validation, generated commands support optional lifecycle hooks for side effects like notifications, logging, and analytics.
-
-#### Hook Interface
+### With Zod Validation Hooks
 
 ```typescript
-export interface CommandHooks<T> {
-  /** Called when Zod schema validation fails */
-  onValidationError?: (error: ZodError) => void;
-
-  /** Called when Tauri invoke fails (Rust error, serialization, etc.) */
-  onInvokeError?: (error: unknown) => void;
-
-  /** Called when command succeeds */
-  onSuccess?: (result: T) => void;
-
-  /** Called after command settles (success or error) */
-  onSettled?: () => void;
-}
-```
-
-#### Basic Usage
-
-```typescript
-import { createProduct } from './generated';
-import { toast } from 'your-notification-library';
-
-await createProduct(
-  { request: productData },
-  {
-    onValidationError: (error) => {
-      toast.error(error.errors[0].message);
-    },
-    onInvokeError: (error) => {
-      toast.error('Failed to create product');
-    },
-    onSuccess: (product) => {
-      toast.success(`Created ${product.name}!`);
-    },
-    onSettled: () => {
-      console.log('Operation completed');
-    },
-  }
-);
-```
-
-#### Reusable Hook Patterns
-
-Create reusable hook factories for consistent error handling:
-
-```typescript
-// lib/api-hooks.ts
-import { CommandHooks } from './generated';
-import { toast } from 'your-notification-library';
-import { ZodError } from 'zod';
-
-export function withNotifications<T>(messages?: {
-  success?: string;
-  error?: string;
-}): CommandHooks<T> {
-  return {
-    onValidationError: (error: ZodError) => {
-      toast.error(error.errors[0].message);
-    },
-    onInvokeError: () => {
-      toast.error(messages?.error || 'Operation failed');
-    },
-    onSuccess: () => {
-      if (messages?.success) {
-        toast.success(messages.success);
-      }
-    },
-  };
-}
-
-// Usage across your app
-await createProduct(
-  { request: data },
-  withNotifications({ success: 'Product created!' })
-);
-
-await deleteProduct(
-  { id: productId },
-  withNotifications({ success: 'Product deleted!' })
-);
-```
-
-#### React Query Integration
-
-```typescript
-import { useMutation } from '@tanstack/react-query';
-import { createProduct } from './generated';
+import { createUser } from './generated';
 import { toast } from 'sonner';
 
-function useCreateProduct() {
-  return useMutation({
-    mutationFn: (data) => createProduct(
-      { request: data },
-      {
-        onValidationError: (err) => toast.error(err.errors[0].message),
-        onSuccess: () => toast.success('Product created!'),
-      }
-    ),
-  });
-}
-```
-
-#### Hooks Are Optional
-
-Hooks are completely optional - commands work without them:
-
-```typescript
-// Without hooks (backward compatible)
-const product = await createProduct({ request: data });
-
-// With partial hooks
-const product = await createProduct(
-  { request: data },
-  { onSuccess: (p) => console.log('Created:', p) }
+await createUser(
+  { request: userData },
+  {
+    onValidationError: (err) => toast.error(err.errors[0].message),
+    onInvokeError: (err) => toast.error('Failed to create user'),
+    onSuccess: (user) => toast.success(`Created ${user.name}!`),
+  }
 );
-
-// Traditional try/catch still works
-try {
-  const product = await createProduct({ request: data });
-} catch (error) {
-  console.error(error);
-}
 ```
-
-#### Mixing Hooks with Framework Control Flow
-
-Hooks work seamlessly with framework-specific async patterns. Here's a Svelte example using `{#await}` blocks:
-
-```svelte
-<script lang="ts">
-  import { createProduct } from './generated';
-  import { toast } from 'your-notification-library';
-
-  let productData = { name: '', price: 0, categoryId: 1 };
-
-  // Hooks handle side effects (notifications)
-  // Svelte's #await handles UI state (loading, success, error)
-  let productPromise = createProduct(
-    { request: productData },
-    {
-      onValidationError: (err) => toast.error(err.errors[0].message),
-      onSuccess: (product) => toast.success(`Created ${product.name}!`),
-    }
-  );
-</script>
-
-{#await productPromise}
-  <!-- Loading state -->
-  <p>Creating product...</p>
-{:then product}
-  <!-- Success state -->
-  <p>Product created: {product.name}</p>
-{:catch error}
-  <!-- Error state -->
-  <p>Error: {error.message}</p>
-{/await}
-```
-
-This pattern shows how hooks and normal control flow complement each other:
-- **Hooks** = Cross-cutting concerns (notifications, analytics, logging)
-- **await/catch/UI state** = Primary application logic and user feedback
-
-**Note**: Hooks are synchronous side effects that execute during the command lifecycle. Errors are always re-thrown after hooks execute to preserve normal control flow. **If a hook itself throws an error, it will propagate and terminate the command** - hooks are not wrapped in try-catch.
 
 ## TypeScript Compatibility
 
-The generated TypeScript code is compatible with modern TypeScript environments and follows current best practices.
+### Requirements
 
-### Version Requirements
+- **TypeScript 5.0+**
+- **Zod 4.x** (when using Zod validation)
+- **ES2018+** target
 
-- **TypeScript 3.7+** (for optional chaining support)
-- **ES2018+** compilation target
-- **Zod 3.x** (when using Zod validation)
-
-### Generated Code Features
-
-The generated TypeScript code uses modern language features:
-
-- **ES Modules**: `import`/`export` statements
-- **Async/Await**: All command functions are async
-- **Union Types**: `string | null`, optional properties
-- **Generic Types**: `Array<T>`, `Promise<T>`, `Record<K, V>`
-- **Tuple Types**: `[string, number]` for Rust tuples
-- **Template Literal Types**: Advanced string manipulation (when needed)
-
-### TypeScript Configuration
-
-Ensure your `tsconfig.json` is compatible with the generated code:
+### tsconfig.json
 
 ```json
 {
   "compilerOptions": {
     "target": "ES2018",
     "module": "ESNext",
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "strict": true,
     "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
-    "allowSyntheticDefaultImports": true
+    "skipLibCheck": true
   }
 }
 ```
 
-### Generated Type Mappings
+### Type Mappings
 
-| Rust Type | Generated TypeScript | Notes |
-|-----------|---------------------|-------|
-| `String`, `&str` | `string` | Basic string types |
-| `i32`, `f64`, etc. | `number` | All numeric types → number |
-| `bool` | `boolean` | Boolean type |
-| `()` | `void` | Unit type |
-| `Option<T>` | `T \| null` | Nullable types |
-| `Vec<T>` | `T[]` | Arrays |
-| `HashMap<K, V>` | `Map<K, V>` | Map type |
-| `BTreeMap<K, V>` | `Map<K, V>` | Consistent with HashMap |
-| `HashSet<T>` | `T[]` | Arrays for JSON compatibility |
-| `(T, U)` | `[T, U]` | Tuple types |
-| `Result<T, E>` | `T` | Errors handled by Tauri runtime |
+| Rust Type | TypeScript |
+|-----------|-----------|
+| `String`, `&str` | `string` |
+| `i32`, `f64`, etc. | `number` |
+| `bool` | `boolean` |
+| `Option<T>` | `T \| null` |
+| `Vec<T>` | `T[]` |
+| `HashMap<K,V>` | `Map<K,V>` |
+| `(T,U)` | `[T,U]` |
+| `Channel<T>` | `Channel<T>` |
+| `Result<T,E>` | `T` (errors via Promise rejection) |
 
+### Serde Attribute Support
+
+Tauri-typegen respects serde serialization attributes to ensure generated TypeScript types match your JSON API:
+
+#### Field Renaming
+
+```rust
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize)]
+pub struct User {
+    #[serde(rename = "userId")]
+    pub user_id: i32,
+    pub name: String,
+}
+```
+
+Generates:
+
+```typescript
+export interface User {
+  userId: number;  // Field renamed as specified
+  name: string;
+}
+```
+
+#### Struct-Level Naming Convention
+
+```rust
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiResponse {
+    pub user_id: i32,
+    pub user_name: String,
+    pub is_active: bool,
+}
+```
+
+Generates:
+
+```typescript
+export interface ApiResponse {
+  userId: number;      // snake_case → camelCase
+  userName: string;    // snake_case → camelCase
+  isActive: boolean;   // snake_case → camelCase
+}
+```
+
+**Supported naming conventions:**
+- `camelCase`
+- `PascalCase`
+- `snake_case`
+- `SCREAMING_SNAKE_CASE`
+- `kebab-case`
+- `SCREAMING-KEBAB-CASE`
+
+#### Field Precedence
+
+Field-level `rename` takes precedence over struct-level `rename_all`:
+
+```rust
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct User {
+    pub user_id: i32,              // → userId
+    #[serde(rename = "fullName")]
+    pub user_name: String,          // → fullName (override)
+}
+```
+
+#### Skip Fields
+
+```rust
+#[derive(Serialize, Deserialize)]
+pub struct User {
+    pub id: i32,
+    #[serde(skip)]
+    pub internal_data: String,  // Not included in TypeScript
+}
+```
+
+#### Enum Support
+
+Enums also support serde rename attributes:
+
+```rust
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum MyEnum {
+    HelloWorld,  // → HELLO_WORLD
+    ByeWorld,    // → BYE_WORLD
+}
+```
+
+Generates:
+
+```typescript
+export type MyEnum = "HELLO_WORLD" | "BYE_WORLD";
+
+// With Zod:
+export const MyEnumSchema = z.enum(["HELLO_WORLD", "BYE_WORLD"]);
+```
+
+Variant-level rename also works:
+
+```rust
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Status {
+    InProgress,           // → inProgress
+    #[serde(rename = "not-started")]
+    NotStarted,          // → not-started (override)
+}
+```
 
 ## API Reference
 
 ### CLI Commands
 
 ```bash
+# Generate bindings
 cargo tauri-typegen generate [OPTIONS]
 
-OPTIONS:
-    -p, --project-path <PATH>      Path to the Tauri project source directory
-                                  [default: ./src-tauri]
-    -o, --output-path <PATH>       Output path for generated TypeScript files  
-                                  [default: ./src/generated]
-    -v, --validation <LIBRARY>     Validation library to use
-                                  [default: zod] [possible values: zod, none]
-        --verbose                 Enable verbose output
-        --visualize-deps          Generate dependency graph visualization
-    -c, --config <CONFIG_FILE>     Configuration file path
-    -h, --help                    Print help information
+Options:
+  -p, --project-path <PATH>     Tauri source directory [default: ./src-tauri]
+  -o, --output-path <PATH>      Output directory [default: ./src/generated]
+  -v, --validation <LIBRARY>    Validation library: zod or none [default: none]
+      --verbose                 Verbose output
+      --visualize-deps          Generate dependency graph
+  -c, --config <FILE>          Config file path
 ```
 
-### Library Usage (Advanced)
+```bash
+# Initialize configuration
+cargo tauri-typegen init [OPTIONS]
 
-For programmatic usage in build scripts:
+Options:
+  -p, --project-path <PATH>     Tauri source directory [default: ./src-tauri]
+  -g, --generated-path <PATH>   Output directory [default: ./src/generated]
+  -o, --output <FILE>          Config file [default: tauri.conf.json]
+  -v, --validation <LIBRARY>    Validation library [default: none]
+      --force                   Overwrite existing config
+```
+
+### Build Script API
 
 ```rust
-use tauri_plugin_typegen::interface::{GenerateConfig, generate_from_config};
+// In src-tauri/build.rs
+fn main() {
+    tauri_typegen::generate_at_build_time()
+        .expect("Failed to generate TypeScript bindings");
+
+    tauri_build::build()
+}
+```
+
+### Programmatic API
+
+```rust
+use tauri_typegen::{GenerateConfig, generate_from_config};
 
 let config = GenerateConfig {
     project_path: "./src-tauri".to_string(),
     output_path: "./src/generated".to_string(),
-    validation_library: "zod".to_string(),
+    validation_library: "none".to_string(),
     verbose: Some(true),
-    visualize_deps: Some(false),
-    ..Default::default()
 };
 
 let files = generate_from_config(&config)?;
 ```
 
-## Configuration Options
+## Configuration
 
-### Validation Libraries
+### Standalone Config File
 
-- **`zod`** - Generates Zod schemas with validation
-- **`none`** - No validation schemas generated, only TypeScript types
-
-## Example Project Structure
-
-```
-my-tauri-app/
-├── src-tauri/
-│   ├── src/
-│   │   ├── commands/
-│   │   │   ├── user.rs      # Contains #[command] functions
-│   │   │   └── mod.rs
-│   │   └── lib.rs
-│   └── Cargo.toml
-├── src/
-│   ├── generated/           # Generated by this plugin
-│   │   ├── types.ts
-│   │   ├── schemas.ts
-│   │   ├── commands.ts
-│   │   └── index.ts
-│   └── App.tsx
-└── package.json
+```json
+{
+  "project_path": "./src-tauri",
+  "output_path": "./src/generated",
+  "validation_library": "none",
+  "verbose": false
+}
 ```
 
-## Development
+### Tauri Config Integration
 
-### Building the Plugin
+In `tauri.conf.json`:
 
-```bash
-cargo build
+```json
+{
+  "plugins": {
+    "tauri-typegen": {
+      "project_path": "./src-tauri",
+      "output_path": "./src/generated",
+      "validation_library": "zod",
+      "verbose": true
+    }
+  }
+}
 ```
 
-### Running Tests
+### Validation Options
 
-```bash
-cargo test
-```
+- **`none`** (default): TypeScript types only, no runtime validation
+- **`zod`**: Generate Zod schemas with runtime validation and hooks
 
 ## Contributing
-
+ 
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
@@ -946,4 +621,4 @@ cargo test
 
 ## License
 
-This project is licensed under the MIT License.
+This project is licensed under the MIT license.

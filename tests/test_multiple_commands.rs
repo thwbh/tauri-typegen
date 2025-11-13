@@ -81,6 +81,7 @@ fn create_sample_commands_with_unused_structs() -> Vec<CommandInfo> {
             }],
             return_type: "User".to_string(),
             is_async: true,
+            channels: vec![],
         },
         CommandInfo {
             name: "get_user_count".to_string(),
@@ -89,6 +90,7 @@ fn create_sample_commands_with_unused_structs() -> Vec<CommandInfo> {
             parameters: vec![],
             return_type: "number".to_string(),
             is_async: true,
+            channels: vec![],
         },
     ]
 }
@@ -109,6 +111,7 @@ fn create_sample_structs_with_unused() -> HashMap<String, StructInfo> {
                     is_optional: false,
                     is_public: true,
                     validator_attributes: None,
+                    serialized_name: None,
                 },
                 FieldInfo {
                     name: "name".to_string(),
@@ -117,6 +120,7 @@ fn create_sample_structs_with_unused() -> HashMap<String, StructInfo> {
                     is_optional: false,
                     is_public: true,
                     validator_attributes: None,
+                    serialized_name: None,
                 },
                 FieldInfo {
                     name: "email".to_string(),
@@ -125,6 +129,7 @@ fn create_sample_structs_with_unused() -> HashMap<String, StructInfo> {
                     is_optional: true,
                     is_public: true,
                     validator_attributes: None,
+                    serialized_name: None,
                 },
             ],
             file_path: "test_file.rs".to_string(),
@@ -144,6 +149,7 @@ fn create_sample_structs_with_unused() -> HashMap<String, StructInfo> {
                     is_optional: false,
                     is_public: true,
                     validator_attributes: None,
+                    serialized_name: None,
                 },
                 FieldInfo {
                     name: "email".to_string(),
@@ -152,6 +158,7 @@ fn create_sample_structs_with_unused() -> HashMap<String, StructInfo> {
                     is_optional: true,
                     is_public: true,
                     validator_attributes: None,
+                    serialized_name: None,
                 },
             ],
             file_path: "test_file.rs".to_string(),
@@ -171,6 +178,7 @@ fn create_sample_structs_with_unused() -> HashMap<String, StructInfo> {
                 is_optional: false,
                 is_public: true,
                 validator_attributes: None,
+                serialized_name: None,
             }],
             file_path: "test_file.rs".to_string(),
             is_enum: false,
@@ -188,6 +196,7 @@ fn create_sample_structs_with_unused() -> HashMap<String, StructInfo> {
                 is_optional: false,
                 is_public: true,
                 validator_attributes: None,
+                serialized_name: None,
             }],
             file_path: "test_file.rs".to_string(),
             is_enum: false,
@@ -205,6 +214,7 @@ fn create_sample_structs_with_unused() -> HashMap<String, StructInfo> {
                 is_optional: false,
                 is_public: true,
                 validator_attributes: None,
+                serialized_name: None,
             }],
             file_path: "test_file.rs".to_string(),
             is_enum: false,

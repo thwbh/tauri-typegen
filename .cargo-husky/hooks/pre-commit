@@ -1,0 +1,12 @@
+#!/bin/sh
+# Pre-commit hook for tauri-typegen
+# Automatically format Rust code and stage changes
+
+echo "🦀 Formatting Rust code..."
+cargo fmt
+
+# Stage all formatted files
+git add -u
+
+echo "✅ Code formatted and staged!"
+exit 0

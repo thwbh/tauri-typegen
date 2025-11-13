@@ -49,6 +49,7 @@ pub struct CommandInfo {
     pub parameters: Vec<ParameterInfo>,
     pub return_type: String,
     pub is_async: bool,
+    pub channels: Vec<ChannelInfo>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -79,6 +80,17 @@ pub struct FieldInfo {
     pub is_optional: bool,
     pub is_public: bool,
     pub validator_attributes: Option<ValidatorAttributes>,
+    /// The serialized name after applying serde rename/rename_all transformations.
+    /// If None, the field name will be used.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub serialized_name: Option<String>,
+}
+
+impl FieldInfo {
+    /// Get the effective serialized name, falling back to name if serialized_name is None
+    pub fn get_serialized_name(&self) -> &str {
+        self.serialized_name.as_deref().unwrap_or(&self.name)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -105,4 +117,27 @@ pub struct RangeConstraint {
     pub min: Option<f64>,
     pub max: Option<f64>,
     pub message: Option<String>,
+}
+
+// Event information for frontend event listeners
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EventInfo {
+    pub event_name: String,
+    pub payload_type: String,
+    pub typescript_payload_type: String,
+    pub file_path: String,
+    pub line_number: usize,
+}
+
+// Channel information for streaming data from Rust to frontend
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChannelInfo {
+    pub parameter_name: String,
+    pub message_type: String,
+    pub typescript_message_type: String,
+    pub command_name: String,
+    pub file_path: String,
+    pub line_number: usize,
 }

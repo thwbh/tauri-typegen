@@ -123,12 +123,12 @@ impl ProjectScanner {
         project_info: &ProjectInfo,
     ) -> Result<Vec<PathBuf>, ScanError> {
         let mut rust_files = Vec::new();
-        self.walk_directory(&project_info.src_tauri_path, &mut rust_files)?;
+        Self::walk_directory(&project_info.src_tauri_path, &mut rust_files)?;
         Ok(rust_files)
     }
 
     /// Recursively walk a directory to find Rust files
-    fn walk_directory(&self, dir: &Path, rust_files: &mut Vec<PathBuf>) -> Result<(), ScanError> {
+    fn walk_directory(dir: &Path, rust_files: &mut Vec<PathBuf>) -> Result<(), ScanError> {
         if !dir.exists() || !dir.is_dir() {
             return Ok(());
         }
@@ -144,7 +144,7 @@ impl ProjectScanner {
                 let dir_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
 
                 if !["target", "node_modules", ".git", "dist"].contains(&dir_name) {
-                    self.walk_directory(&path, rust_files)?;
+                    Self::walk_directory(&path, rust_files)?;
                 }
             } else if path.extension().and_then(|s| s.to_str()) == Some("rs") {
                 rust_files.push(path);

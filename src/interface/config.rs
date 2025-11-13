@@ -63,7 +63,7 @@ fn default_output_path() -> String {
 }
 
 fn default_validation_library() -> String {
-    "zod".to_string()
+    "none".to_string()
 }
 
 impl Default for GenerateConfig {
@@ -297,7 +297,7 @@ mod tests {
         let config = GenerateConfig::default();
         assert_eq!(config.project_path, "./src-tauri");
         assert_eq!(config.output_path, "./src/generated");
-        assert_eq!(config.validation_library, "zod");
+        assert_eq!(config.validation_library, "none");
         assert!(!config.is_verbose());
         assert!(!config.should_visualize_deps());
         assert!(!config.should_include_private());
@@ -305,8 +305,10 @@ mod tests {
 
     #[test]
     fn test_config_validation() {
-        let mut config = GenerateConfig::default();
-        config.validation_library = "invalid".to_string();
+        let config = GenerateConfig {
+            validation_library: "invalid".to_string(),
+            ..Default::default()
+        };
 
         let result = config.validate();
         assert!(result.is_err());
@@ -329,7 +331,7 @@ mod tests {
         base.merge(&override_config);
         assert_eq!(base.output_path, "./custom");
         assert!(base.is_verbose());
-        assert_eq!(base.validation_library, "zod"); // Should remain default
+        assert_eq!(base.validation_library, "none"); // Should remain default
     }
 
     #[test]

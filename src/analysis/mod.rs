@@ -1,17 +1,22 @@
 pub mod ast_cache;
+pub mod channel_parser;
 pub mod command_parser;
 pub mod dependency_graph;
+pub mod event_parser;
+pub mod serde_parser;
 pub mod struct_parser;
 pub mod type_resolver;
 pub mod validator_parser;
 
-use crate::models::{CommandInfo, StructInfo};
+use crate::models::{ChannelInfo, CommandInfo, EventInfo, StructInfo};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use ast_cache::AstCache;
+use channel_parser::ChannelParser;
 use command_parser::CommandParser;
 use dependency_graph::TypeDependencyGraph;
+use event_parser::EventParser;
 use struct_parser::StructParser;
 use type_resolver::TypeResolver;
 
@@ -21,6 +26,10 @@ pub struct CommandAnalyzer {
     ast_cache: AstCache,
     /// Command parser for extracting Tauri commands
     command_parser: CommandParser,
+    /// Channel parser for extracting channel parameters
+    channel_parser: ChannelParser,
+    /// Event parser for extracting event emissions
+    event_parser: EventParser,
     /// Struct parser for extracting type definitions
     struct_parser: StructParser,
     /// Type resolver for Rust to TypeScript type mappings
@@ -29,6 +38,8 @@ pub struct CommandAnalyzer {
     dependency_graph: TypeDependencyGraph,
     /// Discovered struct definitions
     discovered_structs: HashMap<String, StructInfo>,
+    /// Discovered event emissions
+    discovered_events: Vec<EventInfo>,
 }
 
 impl CommandAnalyzer {
@@ -36,10 +47,13 @@ impl CommandAnalyzer {
         Self {
             ast_cache: AstCache::new(),
             command_parser: CommandParser::new(),
+            channel_parser: ChannelParser::new(),
+            event_parser: EventParser::new(),
             struct_parser: StructParser::new(),
             type_resolver: TypeResolver::new(),
             dependency_graph: TypeDependencyGraph::new(),
             discovered_structs: HashMap::new(),
+            discovered_events: Vec::new(),
         }
     }
 
@@ -74,7 +88,33 @@ impl CommandAnalyzer {
                 }
 
                 // Extract commands from this file's AST
-                let file_commands = self.command_parser.extract_commands_from_ast(
+                let mut file_commands = self.command_parser.extract_commands_from_ast(
+                    &parsed_file.ast,
+                    parsed_file.path.as_path(),
+                    &mut self.type_resolver,
+                )?;
+
+                // Extract channels for each command
+                for command in &mut file_commands {
+                    if let Some(func) = self.find_function_in_ast(&parsed_file.ast, &command.name) {
+                        let channels = self.channel_parser.extract_channels_from_command(
+                            func,
+                            &command.name,
+                            parsed_file.path.as_path(),
+                            &mut self.type_resolver,
+                        )?;
+
+                        // Collect type names from channel message types
+                        channels.iter().for_each(|ch| {
+                            self.extract_type_names(&ch.message_type, &mut type_names_to_discover);
+                        });
+
+                        command.channels = channels;
+                    }
+                }
+
+                // Extract events from this file's AST
+                let file_events = self.event_parser.extract_events_from_ast(
                     &parsed_file.ast,
                     parsed_file.path.as_path(),
                     &mut self.type_resolver,
@@ -88,7 +128,13 @@ impl CommandAnalyzer {
                     self.extract_type_names(&cmd.return_type, &mut type_names_to_discover);
                 });
 
+                // Collect type names from event payloads
+                file_events.iter().for_each(|event| {
+                    self.extract_type_names(&event.payload_type, &mut type_names_to_discover);
+                });
+
                 commands.extend(file_commands);
+                self.discovered_events.extend(file_events);
 
                 // Build type definition index from this file
                 self.index_type_definitions(&parsed_file.ast, parsed_file.path.as_path());
@@ -110,6 +156,21 @@ impl CommandAnalyzer {
             for (name, info) in &self.discovered_structs {
                 println!("  - {}: {} fields", name, info.fields.len());
             }
+            println!(
+                "📡 Discovered {} events total",
+                self.discovered_events.len()
+            );
+            for event in &self.discovered_events {
+                println!("  - '{}': {}", event.event_name, event.payload_type);
+            }
+            let all_channels = self.get_all_discovered_channels(&commands);
+            println!("📞 Discovered {} channels total", all_channels.len());
+            for channel in &all_channels {
+                println!(
+                    "  - '{}' in {}: {}",
+                    channel.parameter_name, channel.command_name, channel.message_type
+                );
+            }
         }
 
         Ok(commands)
@@ -125,13 +186,39 @@ impl CommandAnalyzer {
         // Parse and cache this single file - handle syntax errors gracefully
         match self.ast_cache.parse_and_cache_file(&path_buf) {
             Ok(_) => {
-                // Extract commands from the cached AST
+                // Extract commands and events from the cached AST
                 if let Some(parsed_file) = self.ast_cache.get_cloned(&path_buf) {
-                    self.command_parser.extract_commands_from_ast(
+                    // Extract events
+                    let file_events = self.event_parser.extract_events_from_ast(
                         &parsed_file.ast,
                         path_buf.as_path(),
                         &mut self.type_resolver,
-                    )
+                    )?;
+                    self.discovered_events.extend(file_events);
+
+                    // Extract commands
+                    let mut commands = self.command_parser.extract_commands_from_ast(
+                        &parsed_file.ast,
+                        path_buf.as_path(),
+                        &mut self.type_resolver,
+                    )?;
+
+                    // Extract channels for each command
+                    for command in &mut commands {
+                        if let Some(func) =
+                            self.find_function_in_ast(&parsed_file.ast, &command.name)
+                        {
+                            let channels = self.channel_parser.extract_channels_from_command(
+                                func,
+                                &command.name,
+                                path_buf.as_path(),
+                                &mut self.type_resolver,
+                            )?;
+                            command.channels = channels;
+                        }
+                    }
+
+                    Ok(commands)
                 } else {
                     Ok(vec![])
                 }
@@ -379,6 +466,35 @@ impl CommandAnalyzer {
     /// Get discovered structs
     pub fn get_discovered_structs(&self) -> &HashMap<String, StructInfo> {
         &self.discovered_structs
+    }
+
+    /// Get discovered events
+    pub fn get_discovered_events(&self) -> &[EventInfo] {
+        &self.discovered_events
+    }
+
+    /// Get all discovered channels from all commands
+    pub fn get_all_discovered_channels(&self, commands: &[CommandInfo]) -> Vec<ChannelInfo> {
+        commands
+            .iter()
+            .flat_map(|cmd| cmd.channels.clone())
+            .collect()
+    }
+
+    /// Find a function by name in an AST
+    fn find_function_in_ast<'a>(
+        &self,
+        ast: &'a syn::File,
+        function_name: &str,
+    ) -> Option<&'a syn::ItemFn> {
+        for item in &ast.items {
+            if let syn::Item::Fn(func) = item {
+                if func.sig.ident == function_name {
+                    return Some(func);
+                }
+            }
+        }
+        None
     }
 
     /// Get the dependency graph for visualization

@@ -290,6 +290,7 @@ fn test_full_generation_with_complex_types() {
     assert!(commands_content.contains("updateOrderStatus"));
 }
 
+#[allow(dead_code)]
 fn create_sample_structs() -> HashMap<String, StructInfo> {
     HashMap::new() // Use discovered structs from analyzer in real tests
 }
