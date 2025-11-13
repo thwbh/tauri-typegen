@@ -45,6 +45,8 @@ impl TemplateHelpers {
 
     /// Generate command function signature for vanilla TypeScript
     pub fn generate_command_function(command: &CommandInfo) -> String {
+        let camel_name = Self::to_camel_case(&command.name);
+
         let param_type = if command.parameters.is_empty() {
             String::new()
         } else {
@@ -82,7 +84,7 @@ impl TemplateHelpers {
 
         format!(
             "export {}function {}({}): {} {{\n  return invoke('{}'{});\n}}\n\n",
-            async_keyword, command.name, param_type, return_promise, command.name, invoke_params
+            async_keyword, camel_name, param_type, return_promise, command.name, invoke_params
         )
     }
 

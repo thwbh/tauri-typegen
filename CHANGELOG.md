@@ -6,6 +6,88 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2025-11-13
+
+### Added
+- **Tauri Channel Support**: Automatically generate TypeScript bindings for Tauri IPC Channels
+  - New `ChannelParser` detects `Channel<T>` parameters in commands
+  - Generates TypeScript channel listener boilerplate with proper typing
+  - Supports both bare `Channel<T>` and qualified `tauri::ipc::Channel<T>` syntax
+
+- **Tauri Event Support**: Automatically discover and generate TypeScript event listeners
+  - New `EventParser` detects `app.emit()`, `window.emit()`, and `app.emit_to()` calls
+  - Generates TypeScript event listener boilerplate with proper payload types
+  - Infers payload types from emitted expressions (structs, primitives, variables)
+  - Discovers events in conditionals, loops, match arms, and nested blocks
+  - Auto-imports event payload types in generated `events.ts`
+
+- **Serde Attribute Support**: Respect Serde serialization attributes
+  - `#[serde(rename = "customName")]` - field-level renaming
+  - `#[serde(rename_all = "camelCase")]` - struct-level naming convention (camelCase, snake_case, PascalCase, kebab-case, SCREAMING_SNAKE_CASE, SCREAMING-KEBAB-CASE)
+  - `#[serde(skip)]` - exclude fields from generated types
+  - Field renames properly override struct-level conventions
+  - Applies to both structs and enums with variant-level rename support
+
+- **Improved Tauri Parameter Filtering**: More robust detection of Tauri-specific parameters
+  - Properly filters `AppHandle`, `Window`, `WebviewWindow`, `State<T>`, `Manager`, `Channel<T>`, `Request`
+  - Handles both fully-qualified (`tauri::AppHandle`) and imported (`AppHandle`) types
+  - Uses AST-based type checking instead of string matching
+  - Prevents false positives for user types with similar names
+
+- **GitHub Actions CI/CD**: Automated testing and code coverage
+  - Runs tests, formatting checks, and Clippy linting on all PRs and pushes
+  - Generates code coverage reports with `cargo-tarpaulin`
+  - Uploads coverage to Codecov automatically
+
+- **Git Hooks with cargo-husky**: Automatic code formatting on commit
+  - Pre-commit hook runs `cargo fmt` automatically
+  - Auto-stages formatted files for commit
+
+### Changed
+- **BREAKING**: Default validation library changed from `"zod"` to `"none"`
+  - Running `generate` without `--validation` flag now generates vanilla TypeScript
+  - Explicit `--validation zod` required for Zod schema generation
+
+- **BREAKING**: Removed all Tauri runtime dependencies
+  - Removed `tauri` dependency from `Cargo.toml` (was only needed for plugin feature)
+  - Removed `tauri-plugin` build dependency
+  - Removed plugin-specific code from `build.rs`
+  - Removed mobile-specific error variant (`PluginInvokeError`)
+  - Project is now a pure code generation library with no runtime requirements
+  - Eliminates glib-sys dependency issues in CI environments
+
+- **Code Quality Improvements**:
+  - Converted recursive methods to associated functions (static methods) to eliminate clippy warnings
+  - Changed methods like `type_to_string(&self, ty)` to `type_to_string(ty)` where `self` was only used for recursion
+  - Cleaner, more honest API that accurately reflects function dependencies
+
+### Removed
+- **JavaScript/TypeScript Build Setup**: Removed all Node.js-based build infrastructure
+  - Removed `package.json`, `rollup.config.js`, `tsconfig.json`
+  - Removed `guest-js/` directory (was for plugin guest code)
+  - Tool is now purely a Rust CLI with no JavaScript build dependencies
+
+- **Old Example App**: Removed outdated `examples/tauri-app/` directory
+  - Example apps have been reorganized but not committed to repository
+  - Cleaner project structure focused on the core library
+
+### Fixed
+- Fixed vanilla TypeScript generator not using camelCase for function names
+  - Command functions now properly convert from snake_case to camelCase (e.g., `get_user_count` → `getUserCount()`)
+
+- Fixed Channel message types not being included in generated type files
+  - Channel generic types are now properly extracted and collected
+  - `Channel<T>` now ensures `T` is exported in `types.ts`
+  - Event payload types are now auto-imported in `events.ts`
+
+- Fixed TypeScript compilation errors for command parameter interfaces
+  - Parameter interfaces now include `[key: string]: unknown;` index signature
+  - Satisfies Tauri's `InvokeArgs` type requirement
+  - Only applies to parameter interfaces, not response types
+
+- Fixed verbose mode propagation through AST parsing steps
+  - Verbose logging now works consistently across all analysis phases
+
 ## [0.2.1] - 2025-11-02
 
 ### Fixed
