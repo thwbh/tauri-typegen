@@ -26,9 +26,6 @@ indicatif = "0.17"
 name = "cargo-tauri-typegen"
 path = "src/bin/cargo-tauri-typegen.rs"
 
-[build-dependencies]
-tauri-plugin = { version = "2.0.3", features = ["build"] }
-
 [features]
 default = []
 build-time-generation = []
