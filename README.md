@@ -29,6 +29,8 @@ A command-line tool that automatically generates TypeScript bindings from your T
 - [TypeScript Compatibility](#typescript-compatibility)
 - [API Reference](#api-reference)
 - [Configuration](#configuration)
+- [Examples](#examples)
+- [Contributing](#contributing)
 
 ## Installation
 
@@ -610,6 +612,10 @@ In `tauri.conf.json`:
 
 - **`none`** (default): TypeScript types only, no runtime validation
 - **`zod`**: Generate Zod schemas with runtime validation and hooks
+
+## Examples
+
+See the examples repository: https://github.com/thwbh/tauri-typegen-examples
 
 ## Contributing
  
