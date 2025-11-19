@@ -413,7 +413,21 @@ impl TemplateHelpers {
         let invoke_data = if command.parameters.is_empty() {
             "params".to_string() // Pass channels directly
         } else {
-            "{ ...result.data, ...extractChannels(params) }".to_string() // Merge validated data with channels
+            // Build explicit channel references from CommandInfo
+            let channel_refs: Vec<String> = command
+                .channels
+                .iter()
+                .map(|ch| {
+                    let camel_name = Self::to_camel_case(&ch.parameter_name);
+                    format!("{}: params.{}", camel_name, camel_name)
+                })
+                .collect();
+
+            if channel_refs.is_empty() {
+                "result.data".to_string()
+            } else {
+                format!("{{ ...result.data, {} }}", channel_refs.join(", "))
+            }
         };
 
         format!(
