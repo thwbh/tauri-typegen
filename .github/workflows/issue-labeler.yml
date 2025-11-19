@@ -10,35 +10,27 @@ jobs:
     permissions:
       issues: write
     steps:
-      - name: Apply labels based on issue form
+      - name: Apply module label based on issue form
         uses: actions/github-script@v7
         with:
           script: |
             const issue = context.payload.issue;
             const body = issue.body || '';
-            const labels = [];
+            let label = null;
 
-            // Extract issue type
-            if (body.includes('### Issue Type\n\nbug')) {
-              labels.push('bug');
-            } else if (body.includes('### Issue Type\n\nfeature')) {
-              labels.push('enhancement');
-            }
-
-            // Extract module
             if (body.includes('### Module\n\nts')) {
-              labels.push('module:ts');
+              label = 'module:ts';
             } else if (body.includes('### Module\n\nzod')) {
-              labels.push('module:zod');
+              label = 'module:zod';
             } else if (body.includes('### Module\n\ncommon')) {
-              labels.push('module:common');
+              label = 'module:common';
             }
 
-            if (labels.length > 0) {
+            if (label) {
               await github.rest.issues.addLabels({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issue.number,
-                labels: labels
+                labels: [label]
               });
             }
