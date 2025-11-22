@@ -54,7 +54,8 @@ impl CommandParser {
     ) -> Option<CommandInfo> {
         let name = func.sig.ident.to_string();
         let parameters = self.extract_parameters(&func.sig.inputs, type_resolver);
-        let return_type = self.extract_return_type(&func.sig.output, type_resolver);
+        let (return_type, return_type_ts) =
+            self.extract_return_types(&func.sig.output, type_resolver);
         let is_async = func.sig.asyncness.is_some();
 
         // Get line number from the function's span
@@ -64,6 +65,7 @@ impl CommandParser {
             name,
             parameters,
             return_type,
+            return_type_ts,
             file_path: file_path.to_string_lossy().to_string(),
             line_number,
             is_async,
@@ -168,13 +170,18 @@ impl CommandParser {
         false
     }
 
-    /// Extract return type from function signature
-    fn extract_return_type(&self, output: &ReturnType, type_resolver: &mut TypeResolver) -> String {
+    /// Extract return type from function signature - returns (rust_type, typescript_type)
+    fn extract_return_types(
+        &self,
+        output: &ReturnType,
+        type_resolver: &mut TypeResolver,
+    ) -> (String, String) {
         match output {
-            ReturnType::Default => "void".to_string(),
+            ReturnType::Default => ("()".to_string(), "void".to_string()),
             ReturnType::Type(_, ty) => {
                 let rust_type = Self::type_to_string(ty);
-                type_resolver.map_rust_type_to_typescript(&rust_type)
+                let typescript_type = type_resolver.map_rust_type_to_typescript(&rust_type);
+                (rust_type, typescript_type)
             }
         }
     }

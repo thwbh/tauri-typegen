@@ -16,7 +16,8 @@ fn create_test_command() -> CommandInfo {
             typescript_type: "string".to_string(),
             is_optional: false,
         }],
-        return_type: "string".to_string(),
+        return_type: "String".to_string(),
+        return_type_ts: "string".to_string(),
         is_async: true,
         channels: vec![],
     }
@@ -28,7 +29,8 @@ fn create_command_without_params() -> CommandInfo {
         file_path: "test.rs".to_string(),
         line_number: 1,
         parameters: vec![],
-        return_type: "void".to_string(),
+        return_type: "()".to_string(),
+        return_type_ts: "void".to_string(),
         is_async: true,
         channels: vec![],
     }

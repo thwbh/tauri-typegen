@@ -125,6 +125,7 @@ impl CommandAnalyzer {
                     cmd.parameters.iter().for_each(|param| {
                         self.extract_type_names(&param.rust_type, &mut type_names_to_discover);
                     });
+                    // Use the Rust return type (not TypeScript) to properly extract nested type names
                     self.extract_type_names(&cmd.return_type, &mut type_names_to_discover);
                 });
 

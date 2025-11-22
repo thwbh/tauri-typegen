@@ -56,7 +56,8 @@ fn test_analyzer_extracts_command_details() {
     assert_eq!(create_user.parameters.len(), 1);
     assert_eq!(create_user.parameters[0].name, "request");
     assert_eq!(create_user.parameters[0].rust_type, "CreateUserRequest");
-    assert_eq!(create_user.return_type, "User");
+    assert_eq!(create_user.return_type, "Result<User, String>");
+    assert_eq!(create_user.return_type_ts, "User");
 
     // Find the calculate_sum command
     let calculate_sum = commands
@@ -70,7 +71,8 @@ fn test_analyzer_extracts_command_details() {
     assert_eq!(calculate_sum.parameters[0].typescript_type, "number");
     assert_eq!(calculate_sum.parameters[1].name, "b");
     assert_eq!(calculate_sum.parameters[1].typescript_type, "number");
-    assert_eq!(calculate_sum.return_type, "number");
+    assert_eq!(calculate_sum.return_type, "i32");
+    assert_eq!(calculate_sum.return_type_ts, "number");
 }
 
 #[test]
@@ -118,7 +120,11 @@ fn test_analyzer_handles_no_parameters() {
         .expect("get_server_info command should be found");
 
     assert_eq!(get_server_info.parameters.len(), 0);
-    assert_eq!(get_server_info.return_type, "SimpleResponse");
+    assert_eq!(
+        get_server_info.return_type,
+        "Result<SimpleResponse, String>"
+    );
+    assert_eq!(get_server_info.return_type_ts, "SimpleResponse");
 }
 
 #[test]
