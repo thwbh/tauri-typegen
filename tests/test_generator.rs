@@ -18,6 +18,7 @@ fn create_sample_commands() -> Vec<CommandInfo> {
                 is_optional: false,
             }],
             return_type: "string".to_string(),
+            return_type_ts: "string".to_string(),
             is_async: true,
             channels: vec![],
         },
@@ -27,6 +28,7 @@ fn create_sample_commands() -> Vec<CommandInfo> {
             line_number: 15,
             parameters: vec![],
             return_type: "number".to_string(),
+            return_type_ts: "number".to_string(),
             is_async: false,
             channels: vec![],
         },
@@ -349,6 +351,7 @@ fn test_generator_with_void_return() {
             is_optional: false,
         }],
         return_type: "void".to_string(),
+        return_type_ts: "void".to_string(),
         is_async: true,
         channels: vec![],
     }];
@@ -408,7 +411,8 @@ fn test_primitive_arrays_and_optional_custom_types() {
             file_path: "test_file.rs".to_string(),
             line_number: 10,
             parameters: vec![],
-            return_type: "string[]".to_string(), // Already converted from Vec<String>
+            return_type: "Vec<String>".to_string(),
+            return_type_ts: "string[]".to_string(), // Already converted from Vec<String>
             is_async: true,
             channels: vec![],
         },
@@ -417,7 +421,8 @@ fn test_primitive_arrays_and_optional_custom_types() {
             file_path: "test_file.rs".to_string(),
             line_number: 20,
             parameters: vec![],
-            return_type: "User | null".to_string(), // Already converted from Option<User>
+            return_type: "Option<User>".to_string(),
+            return_type_ts: "User | null".to_string(), // Already converted from Option<User>
             is_async: true,
             channels: vec![],
         },
@@ -426,7 +431,8 @@ fn test_primitive_arrays_and_optional_custom_types() {
             file_path: "test_file.rs".to_string(),
             line_number: 30,
             parameters: vec![],
-            return_type: "Item[]".to_string(), // Already converted from Vec<Item>
+            return_type: "Vec<Item>".to_string(),
+            return_type_ts: "Item[]".to_string(), // Already converted from Vec<Item>
             is_async: true,
             channels: vec![],
         },

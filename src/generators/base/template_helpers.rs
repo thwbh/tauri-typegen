@@ -56,20 +56,20 @@ impl TemplateHelpers {
             )
         };
 
-        let return_type = if command.return_type == "void" || command.return_type == "()" {
+        let return_type = if command.return_type_ts == "void" || command.return_type_ts == "()" {
             "void".to_string()
-        } else if command.return_type == "string" || command.return_type == "String" {
+        } else if command.return_type_ts == "string" || command.return_type_ts == "String" {
             "string".to_string()
-        } else if command.return_type == "number"
-            || command.return_type.starts_with("i")
-            || command.return_type.starts_with("u")
-            || command.return_type.starts_with("f")
+        } else if command.return_type_ts == "number"
+            || command.return_type_ts.starts_with("i")
+            || command.return_type_ts.starts_with("u")
+            || command.return_type_ts.starts_with("f")
         {
             "number".to_string()
-        } else if command.return_type == "boolean" || command.return_type == "bool" {
+        } else if command.return_type_ts == "boolean" || command.return_type_ts == "bool" {
             "boolean".to_string()
         } else {
-            format!("types.{}", command.return_type)
+            format!("types.{}", command.return_type_ts)
         };
 
         // Tauri commands are always async from the frontend perspective
@@ -99,8 +99,8 @@ impl TemplateHelpers {
             )
         };
 
-        // command.return_type is already in TypeScript format, just need to add types. prefix for custom types
-        let return_type = Self::format_typescript_return_type(&command.return_type);
+        // command.return_type_ts is already in TypeScript format, just need to add types. prefix for custom types
+        let return_type = Self::format_typescript_return_type(&command.return_type_ts);
 
         // Tauri commands are always async from the frontend perspective
         let async_keyword = "async ";
@@ -357,7 +357,7 @@ impl TemplateHelpers {
         };
 
         // Format return type
-        let return_type = Self::format_typescript_return_type(&command.return_type);
+        let return_type = Self::format_typescript_return_type(&command.return_type_ts);
         let return_promise = format!("Promise<{}>", return_type);
 
         // Build invoke parameters - pass the params object directly
@@ -386,7 +386,7 @@ impl TemplateHelpers {
         };
 
         // Format return type
-        let return_type = Self::format_typescript_return_type(&command.return_type);
+        let return_type = Self::format_typescript_return_type(&command.return_type_ts);
         let return_promise = format!("Promise<{}>", return_type);
 
         // If command has no parameters and no channels

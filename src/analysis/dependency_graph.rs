@@ -136,7 +136,7 @@ impl TypeDependencyGraph {
             // Show return type
             output.push_str(&format!(
                 "  └─ returns: {} → {}\n",
-                cmd.return_type, cmd.return_type
+                cmd.return_type, cmd.return_type_ts
             ));
         }
 

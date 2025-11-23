@@ -6,6 +6,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2025-11-23
+
+### Fixed
+- **Nested Collection Type Discovery**: Fixed bug where nested collection types (e.g., `Vec<HashMap<String, Vec<T>>>`) were not properly discovered when the type was not referenced standalone
+  - Type analyzer now recursively traverses nested generic types to discover all referenced custom types
+  - Ensures all nested types are included in the generated TypeScript bindings
+
+### Changed
+- Cleaned up unused permissions directory from project structure
+
 ## [0.3.1] - 2025-11-19
 
 ### Fixed

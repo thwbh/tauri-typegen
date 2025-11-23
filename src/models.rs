@@ -47,7 +47,8 @@ pub struct CommandInfo {
     pub file_path: String,
     pub line_number: usize,
     pub parameters: Vec<ParameterInfo>,
-    pub return_type: String,
+    pub return_type: String,    // Rust return type (e.g., "Vec<Banana>")
+    pub return_type_ts: String, // TypeScript return type (e.g., "Banana[]")
     pub is_async: bool,
     pub channels: Vec<ChannelInfo>,
 }

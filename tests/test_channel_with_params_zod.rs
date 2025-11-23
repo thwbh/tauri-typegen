@@ -33,6 +33,7 @@ fn test_zod_command_with_params_and_channels_generates_valid_code() {
             },
         ],
         return_type: "string".to_string(),
+        return_type_ts: "string".to_string(),
         is_async: true,
         channels: vec![ChannelInfo {
             parameter_name: "on_progress".to_string(),
@@ -94,6 +95,7 @@ fn test_zod_command_with_multiple_channels_generates_all_references() {
             is_optional: false,
         }],
         return_type: "void".to_string(),
+        return_type_ts: "void".to_string(),
         is_async: true,
         channels: vec![
             ChannelInfo {
@@ -163,6 +165,7 @@ fn test_zod_command_with_only_params_no_channels() {
             is_optional: false,
         }],
         return_type: "string".to_string(),
+        return_type_ts: "string".to_string(),
         is_async: true,
         channels: vec![],
     }];
@@ -206,6 +209,7 @@ fn test_zod_command_with_only_channels_no_params() {
         line_number: 40,
         parameters: vec![],
         return_type: "void".to_string(),
+        return_type_ts: "void".to_string(),
         is_async: true,
         channels: vec![ChannelInfo {
             parameter_name: "on_data".to_string(),
@@ -261,6 +265,7 @@ fn test_vanilla_ts_command_with_params_and_channels() {
             is_optional: false,
         }],
         return_type: "string".to_string(),
+        return_type_ts: "string".to_string(),
         is_async: true,
         channels: vec![ChannelInfo {
             parameter_name: "on_progress".to_string(),

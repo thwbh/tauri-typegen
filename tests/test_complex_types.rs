@@ -138,8 +138,9 @@ fn test_tuple_return_type() {
         .find(|c| c.name == "get_tuple_data")
         .expect("get_tuple_data command should be found");
 
+    assert_eq!(get_tuple_data.return_type, "(String, i32, Option<f64>)");
     assert_eq!(
-        get_tuple_data.return_type,
+        get_tuple_data.return_type_ts,
         "[string, number, number | null]"
     );
 }
