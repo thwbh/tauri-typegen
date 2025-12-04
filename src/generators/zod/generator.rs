@@ -156,7 +156,7 @@ impl ZodBindingsGenerator {
             "String" | "str" | "&str" | "&String" => Some("z.string()".to_string()),
             "i8" | "i16" | "i32" | "i64" | "i128" | "isize" | "u8" | "u16" | "u32" | "u64"
             | "u128" | "usize" | "f32" | "f64" => Some("z.coerce.number()".to_string()),
-            "bool" => Some("z.coerce.boolean()".to_string()),
+            "bool" => Some("z.boolean()".to_string()),
             "()" => Some("z.void()".to_string()),
             _ => None,
         }
