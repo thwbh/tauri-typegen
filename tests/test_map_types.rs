@@ -148,4 +148,5 @@ pub async fn get_wizard_results() -> Result<WizardTargetDateResult, String> {
 
     // Verify that z.coerce.number() is NOT used for keys
     assert!(!types_content.contains("z.record(z.coerce.number()"));
+    assert!(types_content_zod.contains("z.record(z.string(), z.coerce.number())"));
 }
