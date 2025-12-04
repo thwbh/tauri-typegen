@@ -155,7 +155,7 @@ impl ZodBindingsGenerator {
         match rust_type {
             "String" | "str" | "&str" | "&String" => Some("z.string()".to_string()),
             "i8" | "i16" | "i32" | "i64" | "i128" | "isize" | "u8" | "u16" | "u32" | "u64"
-            | "u128" | "usize" | "f32" | "f64" => Some("z.number()".to_string()),
+            | "u128" | "usize" | "f32" | "f64" => Some("z.coerce.number()".to_string()),
             "bool" => Some("z.boolean()".to_string()),
             "()" => Some("z.void()".to_string()),
             _ => None,
@@ -245,23 +245,23 @@ impl ZodBindingsGenerator {
         };
 
         if let (Some(min), Some(max)) = (range.min, range.max) {
-            if schema == "z.number()" {
+            if schema == "z.coerce.number()" {
                 let min_error = format_error(&range.message);
                 let max_error = format_error(&range.message);
                 schema = format!(
-                    "z.number().min({}{}).max({}{})",
+                    "z.coerce.number().min({}{}).max({}{})",
                     min, min_error, max, max_error
                 );
             }
         } else if let Some(min) = range.min {
-            if schema == "z.number()" {
+            if schema == "z.coerce.number()" {
                 let error = format_error(&range.message);
-                schema = format!("z.number().min({}{})", min, error);
+                schema = format!("z.coerce.number().min({}{})", min, error);
             }
         } else if let Some(max) = range.max {
-            if schema == "z.number()" {
+            if schema == "z.coerce.number()" {
                 let error = format_error(&range.message);
-                schema = format!("z.number().max({}{})", max, error);
+                schema = format!("z.coerce.number().max({}{})", max, error);
             }
         }
 
@@ -525,7 +525,7 @@ impl ZodBindingsGenerator {
     pub fn typescript_to_zod_type(&self, ts_type: &str) -> String {
         match ts_type {
             "string" => "z.string()".to_string(),
-            "number" => "z.number()".to_string(),
+            "number" => "z.coerce.number()".to_string(),
             "boolean" => "z.boolean()".to_string(),
             "void" => "z.void()".to_string(),
             _ if ts_type.ends_with("[]") => {

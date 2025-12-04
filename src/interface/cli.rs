@@ -18,8 +18,12 @@ pub enum CargoSubcommands {
 
 #[derive(Args)]
 pub struct TauriTypegenArgs {
+    /// Print version information
+    #[arg(short = 'V', long = "version")]
+    pub version: bool,
+
     #[command(subcommand)]
-    pub command: TypegenCommands,
+    pub command: Option<TypegenCommands>,
 }
 
 #[derive(Subcommand)]

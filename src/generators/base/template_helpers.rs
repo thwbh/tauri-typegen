@@ -442,7 +442,6 @@ impl TemplateHelpers {
             invoke_data
         )
     }
-
     /// Generate enum definition
     pub fn generate_enum(name: &str, variants: &[String]) -> String {
         let variants_str = variants

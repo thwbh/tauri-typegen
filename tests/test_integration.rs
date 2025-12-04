@@ -226,7 +226,7 @@ fn test_full_pipeline_complex_project() {
 
     // Verify zod schemas are generated for parameters
     assert!(types_content.contains("= z.object({"));
-    assert!(types_content.contains("z.string()") || types_content.contains("z.number()"));
+    assert!(types_content.contains("z.string()") || types_content.contains("z.coerce.number()"));
     // Verify custom type schemas are generated (zod format)
     assert!(types_content.contains("UserSchema") || types_content.contains("export type User"));
     assert!(
@@ -246,7 +246,7 @@ fn test_full_pipeline_complex_project() {
     assert!(types_content.contains("ExportDataParamsSchema"));
     assert!(
         types_content.contains("z.string()")
-            || types_content.contains("z.number()")
+            || types_content.contains("z.coerce.number()")
             || types_content.contains("z.boolean()")
     );
 

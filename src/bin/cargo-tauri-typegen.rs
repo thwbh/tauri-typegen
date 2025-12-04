@@ -12,37 +12,42 @@ fn main() {
     let args = CargoCli::parse();
 
     match args.command {
-        CargoSubcommands::TauriTypegen(typegen_args) => match typegen_args.command {
-            TypegenCommands::Generate {
-                project_path,
-                output_path,
-                validation_library,
-                verbose,
-                visualize_deps,
-                config_file,
-            } => {
-                if let Err(e) = run_generate(
+        CargoSubcommands::TauriTypegen(typegen_args) => {
+            // Handle --version flag
+            if typegen_args.version {
+                println!("tauri-typegen {}", env!("CARGO_PKG_VERSION"));
+                return;
+            }
+
+            // If no subcommand provided, show error
+            let Some(command) = typegen_args.command else {
+                eprintln!("Error: No subcommand provided. Use 'generate' or 'init'.");
+                eprintln!("Run 'cargo tauri-typegen --help' for more information.");
+                std::process::exit(1);
+            };
+
+            match command {
+                TypegenCommands::Generate {
                     project_path,
                     output_path,
                     validation_library,
                     verbose,
                     visualize_deps,
                     config_file,
-                ) {
-                    eprintln!("Error: {}", e);
-                    std::process::exit(1);
+                } => {
+                    if let Err(e) = run_generate(
+                        project_path,
+                        output_path,
+                        validation_library,
+                        verbose,
+                        visualize_deps,
+                        config_file,
+                    ) {
+                        eprintln!("Error: {}", e);
+                        std::process::exit(1);
+                    }
                 }
-            }
-            TypegenCommands::Init {
-                project_path,
-                generated_path,
-                output_path,
-                validation_library,
-                verbose,
-                visualize_deps,
-                force,
-            } => {
-                if let Err(e) = run_init(
+                TypegenCommands::Init {
                     project_path,
                     generated_path,
                     output_path,
@@ -50,12 +55,22 @@ fn main() {
                     verbose,
                     visualize_deps,
                     force,
-                ) {
-                    eprintln!("Error: {}", e);
-                    std::process::exit(1);
+                } => {
+                    if let Err(e) = run_init(
+                        project_path,
+                        generated_path,
+                        output_path,
+                        validation_library,
+                        verbose,
+                        visualize_deps,
+                        force,
+                    ) {
+                        eprintln!("Error: {}", e);
+                        std::process::exit(1);
+                    }
                 }
             }
-        },
+        }
     }
 }
 

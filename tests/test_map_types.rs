@@ -87,5 +87,5 @@ pub async fn get_config() -> Result<BTreeMap<String, i32>, String> {
 
     // For Zod, z.record() should be used with explicit key and value types
     assert!(types_content_zod.contains("z.record(z.string(), z.string())"));
-    assert!(types_content_zod.contains("z.record(z.string(), z.number())"));
+    assert!(types_content_zod.contains("z.record(z.string(), z.coerce.number())"));
 }

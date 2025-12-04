@@ -145,7 +145,7 @@ pub async fn create_product(data: ProductData) -> Result<String, String> {
     assert!(types_content.contains("z.string().email()"));
 
     // Should contain range constraints for price field
-    assert!(types_content.contains("z.number().min(0.01).max(999.99)"));
+    assert!(types_content.contains("z.coerce.number().min(0.01).max(999.99)"));
 }
 
 #[test]
@@ -210,9 +210,9 @@ pub async fn update_profile(profile: UserProfile) -> Result<String, String> {
     assert!(types_content.contains("z.string().max(500, { message: \"Description must be less than 500 characters\" }).optional()"));
     assert!(!types_content.contains("z.string().optional().max(500"));
 
-    // Should be: z.number().min(1, { message: "..." }).max(120, { message: "..." }).optional() NOT z.number().optional().min(1).max(120)
-    assert!(types_content.contains("z.number().min(1, { message: \"Age must be between 1 and 120\" }).max(120, { message: \"Age must be between 1 and 120\" }).optional()"));
-    assert!(!types_content.contains("z.number().optional().min(1).max(120)"));
+    // Should be: z.coerce.number().min(1, { message: "..." }).max(120, { message: "..." }).optional() NOT z.coerce.number().optional().min(1).max(120)
+    assert!(types_content.contains("z.coerce.number().min(1, { message: \"Age must be between 1 and 120\" }).max(120, { message: \"Age must be between 1 and 120\" }).optional()"));
+    assert!(!types_content.contains("z.coerce.number().optional().min(1).max(120)"));
 
     // Should be: z.string().email().optional() NOT z.string().optional().email()
     assert!(types_content.contains("z.string().email().optional()"));
@@ -307,8 +307,8 @@ pub async fn submit_form(data: FormData) -> Result<String, String> {
 
     // Check that error messages are included in the Zod schemas
     assert!(types_content.contains("z.string().min(5, { message: \"Username must be between 5 and 50 characters\" }).max(50, { message: \"Username must be between 5 and 50 characters\" })"));
-    assert!(types_content.contains("z.number().min(18, { message: \"Age must be between 18 and 120\" }).max(120, { message: \"Age must be between 18 and 120\" })"));
+    assert!(types_content.contains("z.coerce.number().min(18, { message: \"Age must be between 18 and 120\" }).max(120, { message: \"Age must be between 18 and 120\" })"));
     assert!(types_content.contains("z.string().max(500, { message: \"Description is too long\" })"));
     assert!(types_content
-        .contains("z.number().min(0.01, { message: \"Price must be at least 0.01\" })"));
+        .contains("z.coerce.number().min(0.01, { message: \"Price must be at least 0.01\" })"));
 }
