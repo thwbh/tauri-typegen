@@ -279,7 +279,10 @@ fn test_typescript_to_zod_type_conversion() {
     let generator = BindingsGenerator::new(None);
 
     assert_eq!(generator.typescript_to_zod_type("string"), "z.string()");
-    assert_eq!(generator.typescript_to_zod_type("number"), "z.number()");
+    assert_eq!(
+        generator.typescript_to_zod_type("number"),
+        "z.coerce.number()"
+    );
     assert_eq!(generator.typescript_to_zod_type("boolean"), "z.boolean()");
     assert_eq!(
         generator.typescript_to_zod_type("string[]"),

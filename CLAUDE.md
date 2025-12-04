@@ -29,7 +29,7 @@ if the validator crate is being used.
 
 # Future plans
 - When using zod, the schema validation should match the parameters provided in the validator macro
-  - Example: `#[validate(range(min = 1, max = 10, message = "Must be between 1 and 10"))]` (rust) translates to `z.number().min(1).max(100)` and takes over the error message as defined here: https://zod.dev/api
+  - Example: `#[validate(range(min = 1, max = 10, message = "Must be between 1 and 10"))]` (rust) translates to `z.coerce.number().min(1).max(100)` and takes over the error message as defined here: https://zod.dev/api
 
 ## Modularization Plan
 

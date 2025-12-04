@@ -155,11 +155,11 @@ fn test_zod_schema_generation_for_maps() {
 
     // Test Record<number, User>
     let schema = generator.typescript_to_zod_type("Record<number, User>");
-    assert_eq!(schema, "z.record(z.number(), z.lazy(() => z.any()) /* User - define schema separately if needed */)");
+    assert_eq!(schema, "z.record(z.coerce.number(), z.lazy(() => z.any()) /* User - define schema separately if needed */)");
 
     // Test arrays of Records
     let schema = generator.typescript_to_zod_type("Record<string, number>[]");
-    assert_eq!(schema, "z.array(z.record(z.string(), z.number()))");
+    assert_eq!(schema, "z.array(z.record(z.string(), z.coerce.number()))");
 }
 
 #[test]
@@ -168,20 +168,20 @@ fn test_zod_schema_generation_for_tuples() {
 
     // Test [string, number]
     let schema = generator.typescript_to_zod_type("[string, number]");
-    assert_eq!(schema, "z.tuple([z.string(), z.number()])");
+    assert_eq!(schema, "z.tuple([z.string(), z.coerce.number()])");
 
     // Test [string, number, boolean | null] - the third element is nullable
     let schema = generator.typescript_to_zod_type("[string, number, boolean | null]");
     assert_eq!(
         schema,
-        "z.tuple([z.string(), z.number(), z.boolean().nullable()])"
+        "z.tuple([z.string(), z.coerce.number(), z.boolean().nullable()])"
     );
 
     // Test tuple with nullable modifier applied to whole tuple
     let schema = generator.typescript_to_zod_type("[string, number, boolean] | null");
     assert_eq!(
         schema,
-        "z.tuple([z.string(), z.number(), z.boolean()]).nullable()"
+        "z.tuple([z.string(), z.coerce.number(), z.boolean()]).nullable()"
     );
 }
 
