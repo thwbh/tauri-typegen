@@ -15,6 +15,7 @@ fn create_test_command() -> CommandInfo {
             rust_type: "String".to_string(),
             typescript_type: "string".to_string(),
             is_optional: false,
+            type_structure: Default::default(),
         }],
         return_type: "String".to_string(),
         return_type_ts: "string".to_string(),

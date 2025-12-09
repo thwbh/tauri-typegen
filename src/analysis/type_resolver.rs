@@ -1,3 +1,4 @@
+use crate::models::TypeStructure;
 use std::collections::HashMap;
 
 /// Type resolver for mapping Rust types to TypeScript types
@@ -241,6 +242,71 @@ impl TypeResolver {
     /// Add a custom type mapping
     pub fn add_type_mapping(&mut self, rust_type: String, typescript_type: String) {
         self.type_mappings.insert(rust_type, typescript_type);
+    }
+
+    /// Parse a Rust type string into a structured TypeStructure
+    /// This is the single source of truth for type parsing - generators use this instead of parsing strings
+    pub fn parse_type_structure(&self, rust_type: &str) -> TypeStructure {
+        let cleaned = rust_type.trim();
+
+        // Handle references &T -> T
+        if let Some(inner) = self.extract_reference_type(cleaned) {
+            return self.parse_type_structure(&inner);
+        }
+
+        // Handle Option<T> -> Optional(T)
+        if let Some(inner_type) = self.extract_option_inner_type(cleaned) {
+            return TypeStructure::Optional(Box::new(self.parse_type_structure(&inner_type)));
+        }
+
+        // Handle Result<T, E> -> Result(T)
+        if let Some(ok_type) = self.extract_result_ok_type(cleaned) {
+            return TypeStructure::Result(Box::new(self.parse_type_structure(&ok_type)));
+        }
+
+        // Handle Vec<T> -> Array(T)
+        if let Some(inner_type) = self.extract_vec_inner_type(cleaned) {
+            return TypeStructure::Array(Box::new(self.parse_type_structure(&inner_type)));
+        }
+
+        // Handle HashMap<K, V> and BTreeMap<K, V> -> Map { key, value }
+        if let Some((key_type, value_type)) = self
+            .extract_hashmap_types(cleaned)
+            .or_else(|| self.extract_btreemap_types(cleaned))
+        {
+            return TypeStructure::Map {
+                key: Box::new(self.parse_type_structure(&key_type)),
+                value: Box::new(self.parse_type_structure(&value_type)),
+            };
+        }
+
+        // Handle HashSet<T> and BTreeSet<T> -> Set(T)
+        if let Some(inner_type) = self
+            .extract_hashset_inner_type(cleaned)
+            .or_else(|| self.extract_btreeset_inner_type(cleaned))
+        {
+            return TypeStructure::Set(Box::new(self.parse_type_structure(&inner_type)));
+        }
+
+        // Handle tuple types (T1, T2, ...) -> Tuple([T1, T2, ...])
+        if let Some(tuple_types) = self.extract_tuple_types(cleaned) {
+            if tuple_types.is_empty() {
+                return TypeStructure::Primitive("void".to_string());
+            }
+            let parsed_types: Vec<TypeStructure> = tuple_types
+                .iter()
+                .map(|t| self.parse_type_structure(t.trim()))
+                .collect();
+            return TypeStructure::Tuple(parsed_types);
+        }
+
+        // Check if it's a primitive type
+        if let Some(ts_type) = self.type_mappings.get(cleaned) {
+            return TypeStructure::Primitive(ts_type.clone());
+        }
+
+        // Otherwise, it's a custom type
+        TypeStructure::Custom(cleaned.to_string())
     }
 }
 

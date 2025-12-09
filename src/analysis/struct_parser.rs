@@ -141,6 +141,9 @@ impl StructParser {
                             is_public: true,
                             validator_attributes: None,
                             serialized_name,
+                            type_structure: crate::models::TypeStructure::Primitive(
+                                "string".to_string(),
+                            ),
                         }
                     }
                     syn::Fields::Unnamed(fields_unnamed) => {
@@ -165,6 +168,10 @@ impl StructParser {
                             is_public: true,
                             validator_attributes: None,
                             serialized_name,
+                            // For enum variants, type structure is not used by generators
+                            type_structure: crate::models::TypeStructure::Custom(
+                                "enum_variant".to_string(),
+                            ),
                         }
                     }
                     syn::Fields::Named(fields_named) => {
@@ -193,6 +200,10 @@ impl StructParser {
                             is_public: true,
                             validator_attributes: None,
                             serialized_name,
+                            // For enum variants, type structure is not used by generators
+                            type_structure: crate::models::TypeStructure::Custom(
+                                "enum_variant".to_string(),
+                            ),
                         }
                     }
                 }
@@ -236,6 +247,7 @@ impl StructParser {
         let is_optional = self.is_optional_type(&field.ty);
         let rust_type = Self::type_to_string(&field.ty);
         let typescript_type = type_resolver.map_rust_type_to_typescript(&rust_type);
+        let type_structure = type_resolver.parse_type_structure(&rust_type);
         let validator_attributes = self
             .validator_parser
             .parse_validator_attributes(&field.attrs);
@@ -248,6 +260,7 @@ impl StructParser {
             is_public,
             validator_attributes,
             serialized_name,
+            type_structure,
         })
     }
 

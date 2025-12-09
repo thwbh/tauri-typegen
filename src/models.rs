@@ -1,5 +1,45 @@
 use serde::{Deserialize, Serialize};
 
+/// Represents the structure of a type for code generation
+/// This allows generators to work with parsed type information instead of string parsing
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub enum TypeStructure {
+    /// Primitive types: "string", "number", "boolean", "void"
+    Primitive(String),
+
+    /// Array/Vec types: Vec<T> -> Array(T)
+    Array(Box<TypeStructure>),
+
+    /// Map types: HashMap<K, V>, BTreeMap<K, V> -> Map { key: K, value: V }
+    Map {
+        key: Box<TypeStructure>,
+        value: Box<TypeStructure>,
+    },
+
+    /// Set types: HashSet<T>, BTreeSet<T> -> Set(T)
+    Set(Box<TypeStructure>),
+
+    /// Tuple types: (T, U, V) -> Tuple([T, U, V])
+    Tuple(Vec<TypeStructure>),
+
+    /// Optional types: Option<T> -> Optional(T)
+    Optional(Box<TypeStructure>),
+
+    /// Result types: Result<T, E> -> Result(T) (error type ignored for TS)
+    Result(Box<TypeStructure>),
+
+    /// Custom/User-defined types
+    Custom(String),
+}
+
+impl Default for TypeStructure {
+    fn default() -> Self {
+        // Default to string for test compatibility
+        TypeStructure::Primitive("string".to_string())
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PingRequest {
@@ -60,6 +100,9 @@ pub struct ParameterInfo {
     pub rust_type: String,
     pub typescript_type: String,
     pub is_optional: bool,
+    /// Structured representation of the type for generators
+    #[serde(default)]
+    pub type_structure: TypeStructure,
 }
 
 // New: Struct field information for better type generation
@@ -85,6 +128,9 @@ pub struct FieldInfo {
     /// If None, the field name will be used.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub serialized_name: Option<String>,
+    /// Structured representation of the type for generators
+    #[serde(default)]
+    pub type_structure: TypeStructure,
 }
 
 impl FieldInfo {

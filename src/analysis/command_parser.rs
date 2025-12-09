@@ -93,6 +93,7 @@ impl CommandParser {
 
                         let rust_type = Self::type_to_string(ty);
                         let typescript_type = type_resolver.map_rust_type_to_typescript(&rust_type);
+                        let type_structure = type_resolver.parse_type_structure(&rust_type);
                         let is_optional = self.is_optional_type(ty);
 
                         return Some(ParameterInfo {
@@ -100,6 +101,7 @@ impl CommandParser {
                             rust_type,
                             typescript_type,
                             is_optional,
+                            type_structure,
                         });
                     }
                 }
