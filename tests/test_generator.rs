@@ -275,30 +275,6 @@ fn test_pascal_case_conversion() {
 }
 
 #[test]
-fn test_typescript_to_zod_type_conversion() {
-    let generator = BindingsGenerator::new(None);
-
-    assert_eq!(generator.typescript_to_zod_type("string"), "z.string()");
-    assert_eq!(
-        generator.typescript_to_zod_type("number"),
-        "z.coerce.number()"
-    );
-    assert_eq!(generator.typescript_to_zod_type("boolean"), "z.boolean()");
-    assert_eq!(
-        generator.typescript_to_zod_type("string[]"),
-        "z.array(z.string())"
-    );
-    assert_eq!(
-        generator.typescript_to_zod_type("string | null"),
-        "z.string().nullable()"
-    );
-    assert_eq!(
-        generator.typescript_to_zod_type("CustomType"),
-        "z.lazy(() => z.any()) /* CustomType - define schema separately if needed */"
-    );
-}
-
-#[test]
 fn test_typescript_to_yup_type_conversion() {
     let generator = BindingsGenerator::new(None);
 

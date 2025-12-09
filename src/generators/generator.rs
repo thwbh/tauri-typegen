@@ -84,11 +84,6 @@ impl BindingsGenerator {
         }
     }
 
-    pub fn typescript_to_zod_type(&self, ts_type: &str) -> String {
-        let generator = ZodBindingsGenerator::new();
-        generator.typescript_to_zod_type(ts_type)
-    }
-
     pub fn typescript_to_yup_type(&self, ts_type: &str) -> String {
         // Yup support removed
         format!("yup.mixed() /* {} - yup support removed */", ts_type)
