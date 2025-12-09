@@ -67,7 +67,7 @@ impl ZodBindingsGenerator {
 
     /// Generate Zod schema for a field
     fn generate_field_schema(&self, field: &FieldInfo) -> String {
-        let base_schema = self.rust_type_to_zod_schema(&field.rust_type);
+        let base_schema = self.rust_type_to_zod_schema(&field.rust_type, false);
         let mut schema = base_schema;
 
         // Apply validation attributes if present
@@ -84,22 +84,26 @@ impl ZodBindingsGenerator {
     }
 
     /// Convert Rust type to Zod schema
-    fn rust_type_to_zod_schema(&self, rust_type: &str) -> String {
+    ///
+    /// # Arguments
+    /// * `rust_type` - The Rust type to convert
+    /// * `is_record_key` - Whether this type is being used as a record/map key
+    fn rust_type_to_zod_schema(&self, rust_type: &str, is_record_key: bool) -> String {
         let cleaned = self.type_converter.strip_reference(rust_type);
 
         // Handle Option<T> -> T (will be made optional later)
         if let Some(inner) = self.type_converter.extract_option_inner_type(&cleaned) {
-            return self.rust_type_to_zod_schema(&inner);
+            return self.rust_type_to_zod_schema(&inner, is_record_key);
         }
 
         // Handle Result<T, E> -> T
         if let Some(ok_type) = self.type_converter.extract_result_ok_type(&cleaned) {
-            return self.rust_type_to_zod_schema(&ok_type);
+            return self.rust_type_to_zod_schema(&ok_type, is_record_key);
         }
 
         // Handle Vec<T> -> z.array(T)
         if let Some(inner) = self.type_converter.extract_vec_inner_type(&cleaned) {
-            let inner_schema = self.rust_type_to_zod_schema(&inner);
+            let inner_schema = self.rust_type_to_zod_schema(&inner, false);
             return format!("z.array({})", inner_schema);
         }
 
@@ -109,8 +113,9 @@ impl ZodBindingsGenerator {
             .extract_hashmap_types(&cleaned)
             .or_else(|| self.type_converter.extract_btreemap_types(&cleaned))
         {
-            let key_schema = self.rust_type_to_zod_schema(&key_type);
-            let value_schema = self.rust_type_to_zod_schema(&value_type);
+            // Keys must not use coerce - pass true for is_record_key
+            let key_schema = self.rust_type_to_zod_schema(&key_type, true);
+            let value_schema = self.rust_type_to_zod_schema(&value_type, false);
             return format!("z.record({}, {})", key_schema, value_schema);
         }
 
@@ -120,7 +125,7 @@ impl ZodBindingsGenerator {
             .extract_hashset_inner_type(&cleaned)
             .or_else(|| self.type_converter.extract_btreeset_inner_type(&cleaned))
         {
-            let inner_schema = self.rust_type_to_zod_schema(&inner);
+            let inner_schema = self.rust_type_to_zod_schema(&inner, false);
             return format!("z.array({})", inner_schema);
         }
 
@@ -131,13 +136,13 @@ impl ZodBindingsGenerator {
             }
             let tuple_schemas: Vec<String> = tuple_types
                 .iter()
-                .map(|t| self.rust_type_to_zod_schema(t))
+                .map(|t| self.rust_type_to_zod_schema(t, false))
                 .collect();
             return format!("z.tuple([{}])", tuple_schemas.join(", "));
         }
 
         // Handle primitive types
-        if let Some(zod_type) = self.map_primitive_to_zod(&cleaned) {
+        if let Some(zod_type) = self.map_primitive_to_zod(&cleaned, is_record_key) {
             return zod_type;
         }
 
@@ -151,11 +156,22 @@ impl ZodBindingsGenerator {
     }
 
     /// Map primitive Rust types to Zod schemas
-    fn map_primitive_to_zod(&self, rust_type: &str) -> Option<String> {
+    ///
+    /// # Arguments
+    /// * `rust_type` - The Rust type to map
+    /// * `is_record_key` - Whether this type is being used as a record/map key
+    fn map_primitive_to_zod(&self, rust_type: &str, is_record_key: bool) -> Option<String> {
         match rust_type {
             "String" | "str" | "&str" | "&String" => Some("z.string()".to_string()),
             "i8" | "i16" | "i32" | "i64" | "i128" | "isize" | "u8" | "u16" | "u32" | "u64"
-            | "u128" | "usize" | "f32" | "f64" => Some("z.coerce.number()".to_string()),
+            | "u128" | "usize" | "f32" | "f64" => {
+                // Record keys must not use coerce - they must resolve to string | number | symbol
+                if is_record_key {
+                    Some("z.number()".to_string())
+                } else {
+                    Some("z.coerce.number()".to_string())
+                }
+            }
             "bool" => Some("z.boolean()".to_string()),
             "()" => Some("z.void()".to_string()),
             _ => None,
@@ -283,7 +299,7 @@ impl ZodBindingsGenerator {
                 content.push_str(&format!("export const {} = z.object({{\n", schema_name));
 
                 for param in &command.parameters {
-                    let param_schema = self.rust_type_to_zod_schema(&param.rust_type);
+                    let param_schema = self.rust_type_to_zod_schema(&param.rust_type, false);
                     let final_schema = if param.is_optional {
                         format!("{}.optional()", param_schema)
                     } else {
