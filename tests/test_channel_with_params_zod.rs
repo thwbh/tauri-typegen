@@ -14,13 +14,14 @@ fn test_zod_command_with_params_and_channels_generates_valid_code() {
     let output_path = temp_dir.path().to_str().unwrap();
 
     // Create a command with both regular parameters and a channel
-    let commands = vec![CommandInfo {
-        name: "download_file".to_string(),
-        file_path: "test_file.rs".to_string(),
-        line_number: 10,
-        parameters: vec![
+    let commands = vec![CommandInfo::new_for_test(
+        "download_file",
+        "test_file.rs",
+        10,
+        vec![
             ParameterInfo {
                 name: "url".to_string(),
+                serialized_name: "url".to_string(),
                 rust_type: "String".to_string(),
                 typescript_type: "string".to_string(),
                 is_optional: false,
@@ -28,24 +29,25 @@ fn test_zod_command_with_params_and_channels_generates_valid_code() {
             },
             ParameterInfo {
                 name: "timeout".to_string(),
+                serialized_name: "timeout".to_string(),
                 rust_type: "i32".to_string(),
                 typescript_type: "number".to_string(),
                 is_optional: false,
                 type_structure: Default::default(),
             },
         ],
-        return_type: "string".to_string(),
-        return_type_ts: "string".to_string(),
-        is_async: true,
-        channels: vec![ChannelInfo {
-            parameter_name: "on_progress".to_string(),
-            message_type: "DownloadProgress".to_string(),
-            typescript_message_type: "DownloadProgress".to_string(),
-            command_name: "download_file".to_string(),
-            file_path: "test_file.rs".to_string(),
-            line_number: 10,
-        }],
-    }];
+        "string",
+        "string",
+        true,
+        vec![ChannelInfo::new_for_test(
+            "on_progress",
+            "DownloadProgress",
+            "DownloadProgress",
+            "download_file",
+            "test_file.rs",
+            10,
+        )],
+    )];
 
     let discovered_structs = HashMap::new();
 
@@ -86,39 +88,40 @@ fn test_zod_command_with_multiple_channels_generates_all_references() {
     let output_path = temp_dir.path().to_str().unwrap();
 
     // Create a command with regular parameters and multiple channels
-    let commands = vec![CommandInfo {
-        name: "complex_operation".to_string(),
-        file_path: "test_file.rs".to_string(),
-        line_number: 20,
-        parameters: vec![ParameterInfo {
+    let commands = vec![CommandInfo::new_for_test(
+        "complex_operation",
+        "test_file.rs",
+        20,
+        vec![ParameterInfo {
             name: "config".to_string(),
+            serialized_name: "config".to_string(),
             rust_type: "String".to_string(),
             typescript_type: "string".to_string(),
             is_optional: false,
             type_structure: Default::default(),
         }],
-        return_type: "void".to_string(),
-        return_type_ts: "void".to_string(),
-        is_async: true,
-        channels: vec![
-            ChannelInfo {
-                parameter_name: "on_progress".to_string(),
-                message_type: "Progress".to_string(),
-                typescript_message_type: "Progress".to_string(),
-                command_name: "complex_operation".to_string(),
-                file_path: "test_file.rs".to_string(),
-                line_number: 20,
-            },
-            ChannelInfo {
-                parameter_name: "on_log".to_string(),
-                message_type: "LogMessage".to_string(),
-                typescript_message_type: "LogMessage".to_string(),
-                command_name: "complex_operation".to_string(),
-                file_path: "test_file.rs".to_string(),
-                line_number: 20,
-            },
+        "void",
+        "void",
+        true,
+        vec![
+            ChannelInfo::new_for_test(
+                "on_progress",
+                "Progress",
+                "Progress",
+                "complex_operation",
+                "test_file.rs",
+                20,
+            ),
+            ChannelInfo::new_for_test(
+                "on_log",
+                "LogMessage",
+                "LogMessage",
+                "complex_operation",
+                "test_file.rs",
+                20,
+            ),
         ],
-    }];
+    )];
 
     let discovered_structs = HashMap::new();
 
@@ -157,22 +160,23 @@ fn test_zod_command_with_only_params_no_channels() {
     let output_path = temp_dir.path().to_str().unwrap();
 
     // Create a command with only regular parameters, no channels
-    let commands = vec![CommandInfo {
-        name: "simple_command".to_string(),
-        file_path: "test_file.rs".to_string(),
-        line_number: 30,
-        parameters: vec![ParameterInfo {
+    let commands = vec![CommandInfo::new_for_test(
+        "simple_command",
+        "test_file.rs",
+        30,
+        vec![ParameterInfo {
             name: "data".to_string(),
+            serialized_name: "data".to_string(),
             rust_type: "String".to_string(),
             typescript_type: "string".to_string(),
             is_optional: false,
             type_structure: Default::default(),
         }],
-        return_type: "string".to_string(),
-        return_type_ts: "string".to_string(),
-        is_async: true,
-        channels: vec![],
-    }];
+        "string",
+        "string",
+        true,
+        vec![],
+    )];
 
     let discovered_structs = HashMap::new();
 
@@ -207,23 +211,23 @@ fn test_zod_command_with_only_channels_no_params() {
     let output_path = temp_dir.path().to_str().unwrap();
 
     // Create a command with only channels, no regular parameters
-    let commands = vec![CommandInfo {
-        name: "stream_only".to_string(),
-        file_path: "test_file.rs".to_string(),
-        line_number: 40,
-        parameters: vec![],
-        return_type: "void".to_string(),
-        return_type_ts: "void".to_string(),
-        is_async: true,
-        channels: vec![ChannelInfo {
-            parameter_name: "on_data".to_string(),
-            message_type: "StreamData".to_string(),
-            typescript_message_type: "StreamData".to_string(),
-            command_name: "stream_only".to_string(),
-            file_path: "test_file.rs".to_string(),
-            line_number: 40,
-        }],
-    }];
+    let commands = vec![CommandInfo::new_for_test(
+        "stream_only",
+        "test_file.rs",
+        40,
+        vec![],
+        "void",
+        "void",
+        true,
+        vec![ChannelInfo::new_for_test(
+            "on_data",
+            "StreamData",
+            "StreamData",
+            "stream_only",
+            "test_file.rs",
+            40,
+        )],
+    )];
 
     let discovered_structs = HashMap::new();
 
@@ -258,29 +262,30 @@ fn test_vanilla_ts_command_with_params_and_channels() {
     let output_path = temp_dir.path().to_str().unwrap();
 
     // Create a command with both regular parameters and a channel
-    let commands = vec![CommandInfo {
-        name: "download_file".to_string(),
-        file_path: "test_file.rs".to_string(),
-        line_number: 10,
-        parameters: vec![ParameterInfo {
+    let commands = vec![CommandInfo::new_for_test(
+        "download_file",
+        "test_file.rs",
+        10,
+        vec![ParameterInfo {
             name: "url".to_string(),
+            serialized_name: "url".to_string(),
             rust_type: "String".to_string(),
             typescript_type: "string".to_string(),
             is_optional: false,
             type_structure: Default::default(),
         }],
-        return_type: "string".to_string(),
-        return_type_ts: "string".to_string(),
-        is_async: true,
-        channels: vec![ChannelInfo {
-            parameter_name: "on_progress".to_string(),
-            message_type: "DownloadProgress".to_string(),
-            typescript_message_type: "DownloadProgress".to_string(),
-            command_name: "download_file".to_string(),
-            file_path: "test_file.rs".to_string(),
-            line_number: 10,
-        }],
-    }];
+        "string",
+        "string",
+        true,
+        vec![ChannelInfo::new_for_test(
+            "on_progress",
+            "DownloadProgress",
+            "DownloadProgress",
+            "download_file",
+            "test_file.rs",
+            10,
+        )],
+    )];
 
     let discovered_structs = HashMap::new();
 

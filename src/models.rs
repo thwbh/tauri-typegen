@@ -1,3 +1,4 @@
+use heck::{ToLowerCamelCase, ToUpperCamelCase};
 use serde::{Deserialize, Serialize};
 
 /// Represents the structure of a type for code generation
@@ -40,47 +41,7 @@ impl Default for TypeStructure {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PingRequest {
-    pub value: Option<String>,
-}
-
-#[derive(Debug, Clone, Default, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PingResponse {
-    pub value: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GenerateModelsRequest {
-    pub project_path: String,
-    pub output_path: Option<String>,
-    pub validation_library: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GenerateModelsResponse {
-    pub generated_files: Vec<String>,
-    pub commands_found: i32,
-    pub types_generated: i32,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AnalyzeCommandsRequest {
-    pub project_path: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AnalyzeCommandsResponse {
-    pub commands: Vec<CommandInfo>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandInfo {
     pub name: String,
@@ -91,9 +52,44 @@ pub struct CommandInfo {
     pub return_type_ts: String, // TypeScript return type (e.g., "Banana[]")
     pub is_async: bool,
     pub channels: Vec<ChannelInfo>,
+    /// TypeScript function name (camelCase by convention)
+    /// Example: "getUserById" for Rust function "get_user_by_id"
+    pub ts_function_name: String,
+    /// TypeScript type name prefix (PascalCase by convention)
+    /// Example: "GetUserById" used for GetUserByIdParams, GetUserByIdParamsSchema, etc.
+    pub ts_type_name: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+impl CommandInfo {
+    /// Helper for tests: Create a CommandInfo with computed TypeScript names
+    #[doc(hidden)]
+    pub fn new_for_test(
+        name: impl Into<String>,
+        file_path: impl Into<String>,
+        line_number: usize,
+        parameters: Vec<ParameterInfo>,
+        return_type: impl Into<String>,
+        return_type_ts: impl Into<String>,
+        is_async: bool,
+        channels: Vec<ChannelInfo>,
+    ) -> Self {
+        let name = name.into();
+        Self {
+            name: name.clone(),
+            file_path: file_path.into(),
+            line_number,
+            parameters,
+            return_type: return_type.into(),
+            return_type_ts: return_type_ts.into(),
+            is_async,
+            channels,
+            ts_function_name: to_camel_case(&name),
+            ts_type_name: to_pascal_case(&name),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ParameterInfo {
     pub name: String,
@@ -103,6 +99,24 @@ pub struct ParameterInfo {
     /// Structured representation of the type for generators
     #[serde(default)]
     pub type_structure: TypeStructure,
+    /// Serialized name for the parameter (typically camelCase for Tauri)
+    pub serialized_name: String,
+}
+
+/// Convert snake_case to camelCase using heck
+pub(crate) fn to_camel_case(s: &str) -> String {
+    s.to_lower_camel_case()
+}
+
+/// Convert snake_case to PascalCase using heck
+pub(crate) fn to_pascal_case(s: &str) -> String {
+    s.to_upper_camel_case()
+}
+
+/// Convert event-name to onEventName pattern using heck
+/// Examples: "download-started" -> "onDownloadStarted", "user-logged-in" -> "onUserLoggedIn"
+pub(crate) fn event_name_to_function(event_name: &str) -> String {
+    format!("on{}", event_name.to_upper_camel_case())
 }
 
 // New: Struct field information for better type generation
@@ -124,20 +138,11 @@ pub struct FieldInfo {
     pub is_optional: bool,
     pub is_public: bool,
     pub validator_attributes: Option<ValidatorAttributes>,
-    /// The serialized name after applying serde rename/rename_all transformations.
-    /// If None, the field name will be used.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub serialized_name: Option<String>,
+    /// The serialized name after applying serde rename/rename_all transformations
+    pub serialized_name: String,
     /// Structured representation of the type for generators
     #[serde(default)]
     pub type_structure: TypeStructure,
-}
-
-impl FieldInfo {
-    /// Get the effective serialized name, falling back to name if serialized_name is None
-    pub fn get_serialized_name(&self) -> &str {
-        self.serialized_name.as_deref().unwrap_or(&self.name)
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -175,6 +180,9 @@ pub struct EventInfo {
     pub typescript_payload_type: String,
     pub file_path: String,
     pub line_number: usize,
+    /// TypeScript listener function name (onEventName pattern)
+    /// Example: "download-started" -> "onDownloadStarted"
+    pub ts_function_name: String,
 }
 
 // Channel information for streaming data from Rust to frontend
@@ -187,4 +195,30 @@ pub struct ChannelInfo {
     pub command_name: String,
     pub file_path: String,
     pub line_number: usize,
+    /// Serialized parameter name for TypeScript (camelCase by convention)
+    pub serialized_parameter_name: String,
+}
+
+impl ChannelInfo {
+    /// Helper for tests: Create a ChannelInfo with computed serialized name
+    #[doc(hidden)]
+    pub fn new_for_test(
+        parameter_name: impl Into<String>,
+        message_type: impl Into<String>,
+        typescript_message_type: impl Into<String>,
+        command_name: impl Into<String>,
+        file_path: impl Into<String>,
+        line_number: usize,
+    ) -> Self {
+        let param_name = parameter_name.into();
+        Self {
+            parameter_name: param_name.clone(),
+            message_type: message_type.into(),
+            typescript_message_type: typescript_message_type.into(),
+            command_name: command_name.into(),
+            file_path: file_path.into(),
+            line_number,
+            serialized_parameter_name: to_camel_case(&param_name),
+        }
+    }
 }

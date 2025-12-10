@@ -7,32 +7,33 @@ use tempfile::TempDir;
 
 fn create_sample_commands() -> Vec<CommandInfo> {
     vec![
-        CommandInfo {
-            name: "greet".to_string(),
-            file_path: "test_file.rs".to_string(),
-            line_number: 10,
-            parameters: vec![ParameterInfo {
+        CommandInfo::new_for_test(
+            "greet",
+            "test_file.rs",
+            10,
+            vec![ParameterInfo {
                 name: "name".to_string(),
+                serialized_name: "name".to_string(),
                 rust_type: "String".to_string(),
                 typescript_type: "string".to_string(),
                 is_optional: false,
                 type_structure: Default::default(),
             }],
-            return_type: "string".to_string(),
-            return_type_ts: "string".to_string(),
-            is_async: true,
-            channels: vec![],
-        },
-        CommandInfo {
-            name: "get_user_count".to_string(),
-            file_path: "test_file.rs".to_string(),
-            line_number: 15,
-            parameters: vec![],
-            return_type: "number".to_string(),
-            return_type_ts: "number".to_string(),
-            is_async: false,
-            channels: vec![],
-        },
+            "string",
+            "string",
+            true,
+            vec![],
+        ),
+        CommandInfo::new_for_test(
+            "get_user_count",
+            "test_file.rs",
+            15,
+            vec![],
+            "number",
+            "number",
+            false,
+            vec![],
+        ),
     ]
 }
 
@@ -320,22 +321,23 @@ fn test_generator_with_void_return() {
     let temp_dir = TempDir::new().unwrap();
     let output_path = temp_dir.path().to_str().unwrap();
 
-    let commands = vec![CommandInfo {
-        name: "delete_item".to_string(),
-        file_path: "test_file.rs".to_string(),
-        line_number: 10,
-        parameters: vec![ParameterInfo {
+    let commands = vec![CommandInfo::new_for_test(
+        "delete_item",
+        "test_file.rs",
+        10,
+        vec![ParameterInfo {
             name: "id".to_string(),
+            serialized_name: "id".to_string(),
             rust_type: "i32".to_string(),
             typescript_type: "number".to_string(),
             is_optional: false,
             type_structure: Default::default(),
         }],
-        return_type: "void".to_string(),
-        return_type_ts: "void".to_string(),
-        is_async: true,
-        channels: vec![],
-    }];
+        "void",
+        "void",
+        true,
+        vec![],
+    )];
     let discovered_structs = create_empty_structs();
 
     let mut generator = BindingsGenerator::new(None);
@@ -387,36 +389,36 @@ fn test_primitive_arrays_and_optional_custom_types() {
     let output_path = temp_dir.path().to_str().unwrap();
 
     let commands = vec![
-        CommandInfo {
-            name: "get_dates".to_string(),
-            file_path: "test_file.rs".to_string(),
-            line_number: 10,
-            parameters: vec![],
-            return_type: "Vec<String>".to_string(),
-            return_type_ts: "string[]".to_string(), // Already converted from Vec<String>
-            is_async: true,
-            channels: vec![],
-        },
-        CommandInfo {
-            name: "get_user".to_string(),
-            file_path: "test_file.rs".to_string(),
-            line_number: 20,
-            parameters: vec![],
-            return_type: "Option<User>".to_string(),
-            return_type_ts: "User | null".to_string(), // Already converted from Option<User>
-            is_async: true,
-            channels: vec![],
-        },
-        CommandInfo {
-            name: "get_items".to_string(),
-            file_path: "test_file.rs".to_string(),
-            line_number: 30,
-            parameters: vec![],
-            return_type: "Vec<Item>".to_string(),
-            return_type_ts: "Item[]".to_string(), // Already converted from Vec<Item>
-            is_async: true,
-            channels: vec![],
-        },
+        CommandInfo::new_for_test(
+            "get_dates",
+            "test_file.rs",
+            10,
+            vec![],
+            "Vec<String>",
+            "string[]", // Already converted from Vec<String>
+            true,
+            vec![],
+        ),
+        CommandInfo::new_for_test(
+            "get_user",
+            "test_file.rs",
+            20,
+            vec![],
+            "Option<User>",
+            "User | null", // Already converted from Option<User>
+            true,
+            vec![],
+        ),
+        CommandInfo::new_for_test(
+            "get_items",
+            "test_file.rs",
+            30,
+            vec![],
+            "Vec<Item>",
+            "Item[]", // Already converted from Vec<Item>
+            true,
+            vec![],
+        ),
     ];
 
     let mut discovered_structs = HashMap::new();

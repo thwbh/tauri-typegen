@@ -1,5 +1,6 @@
 pub mod file_writer;
 pub mod template_helpers;
+pub mod templates;
 pub mod type_conversion;
 
 use crate::analysis::CommandAnalyzer;

@@ -6,35 +6,36 @@ use tauri_typegen::models::{CommandInfo, ParameterInfo};
 use tempfile::TempDir;
 
 fn create_test_command() -> CommandInfo {
-    CommandInfo {
-        name: "test_command".to_string(),
-        file_path: "test.rs".to_string(),
-        line_number: 1,
-        parameters: vec![ParameterInfo {
+    CommandInfo::new_for_test(
+        "test_command",
+        "test.rs",
+        1,
+        vec![ParameterInfo {
             name: "input".to_string(),
+            serialized_name: "input".to_string(),
             rust_type: "String".to_string(),
             typescript_type: "string".to_string(),
             is_optional: false,
             type_structure: Default::default(),
         }],
-        return_type: "String".to_string(),
-        return_type_ts: "string".to_string(),
-        is_async: true,
-        channels: vec![],
-    }
+        "String",
+        "string",
+        true,
+        vec![],
+    )
 }
 
 fn create_command_without_params() -> CommandInfo {
-    CommandInfo {
-        name: "simple_command".to_string(),
-        file_path: "test.rs".to_string(),
-        line_number: 1,
-        parameters: vec![],
-        return_type: "()".to_string(),
-        return_type_ts: "void".to_string(),
-        is_async: true,
-        channels: vec![],
-    }
+    CommandInfo::new_for_test(
+        "simple_command",
+        "test.rs",
+        1,
+        vec![],
+        "()",
+        "void",
+        true,
+        vec![],
+    )
 }
 
 #[test]

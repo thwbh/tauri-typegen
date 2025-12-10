@@ -259,12 +259,17 @@ impl EventParser {
             let typescript_payload_type = type_resolver.map_rust_type_to_typescript(&payload_type);
             let line_number = method_call.method.span().start().line;
 
+            // Compute TypeScript function name using conventions (TODO: Parse custom event naming if present)
+            use crate::models::event_name_to_function;
+            let ts_function_name = event_name_to_function(&event_name);
+
             events.push(EventInfo {
                 event_name,
                 payload_type,
                 typescript_payload_type,
                 file_path: file_path.to_string_lossy().to_string(),
                 line_number,
+                ts_function_name,
             });
         }
     }

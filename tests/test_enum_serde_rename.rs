@@ -45,17 +45,14 @@ fn test_enum_serde_rename_all_screaming_snake_case() {
         .iter()
         .find(|f| f.name == "HelloWorld")
         .unwrap();
-    assert_eq!(
-        hello_variant.serialized_name,
-        Some("HELLO_WORLD".to_string())
-    );
+    assert_eq!(hello_variant.serialized_name, "HELLO_WORLD");
 
     let bye_variant = struct_info
         .fields
         .iter()
         .find(|f| f.name == "ByeWorld")
         .unwrap();
-    assert_eq!(bye_variant.serialized_name, Some("BYE_WORLD".to_string()));
+    assert_eq!(bye_variant.serialized_name, "BYE_WORLD");
 }
 
 #[test]
@@ -102,21 +99,21 @@ fn test_enum_serde_rename_all_camel_case() {
         .iter()
         .find(|f| f.name == "InProgress")
         .unwrap();
-    assert_eq!(in_progress.serialized_name, Some("inProgress".to_string()));
+    assert_eq!(in_progress.serialized_name, "inProgress");
 
     let not_started = struct_info
         .fields
         .iter()
         .find(|f| f.name == "NotStarted")
         .unwrap();
-    assert_eq!(not_started.serialized_name, Some("notStarted".to_string()));
+    assert_eq!(not_started.serialized_name, "notStarted");
 
     let completed = struct_info
         .fields
         .iter()
         .find(|f| f.name == "Completed")
         .unwrap();
-    assert_eq!(completed.serialized_name, Some("completed".to_string()));
+    assert_eq!(completed.serialized_name, "completed");
 }
 
 #[test]
@@ -163,15 +160,15 @@ fn test_enum_variant_level_rename() {
         .iter()
         .find(|f| f.name == "HelloWorld")
         .unwrap();
-    assert_eq!(hello_variant.serialized_name, Some("hello".to_string()));
+    assert_eq!(hello_variant.serialized_name, "hello");
 
-    // Variant without rename should be None
+    // Variant without rename should use the variant name
     let bye_variant = struct_info
         .fields
         .iter()
         .find(|f| f.name == "ByeWorld")
         .unwrap();
-    assert_eq!(bye_variant.serialized_name, None);
+    assert_eq!(bye_variant.serialized_name, "ByeWorld");
 }
 
 #[test]
@@ -219,10 +216,7 @@ fn test_enum_variant_rename_overrides_rename_all() {
         .iter()
         .find(|f| f.name == "HelloWorld")
         .unwrap();
-    assert_eq!(
-        hello_variant.serialized_name,
-        Some("HELLO_WORLD".to_string())
-    );
+    assert_eq!(hello_variant.serialized_name, "HELLO_WORLD");
 
     // Variant with explicit rename overrides rename_all
     let bye_variant = struct_info
@@ -230,7 +224,7 @@ fn test_enum_variant_rename_overrides_rename_all() {
         .iter()
         .find(|f| f.name == "ByeWorld")
         .unwrap();
-    assert_eq!(bye_variant.serialized_name, Some("custom_bye".to_string()));
+    assert_eq!(bye_variant.serialized_name, "custom_bye");
 }
 
 #[test]
@@ -270,12 +264,12 @@ fn test_enum_without_serde_attributes() {
 
     assert_eq!(struct_info.fields.len(), 2);
 
-    // Without serde attributes, serialized_name should be None
+    // Without serde attributes, serialized_name should be the variant name
     let foo_variant = struct_info.fields.iter().find(|f| f.name == "Foo").unwrap();
-    assert_eq!(foo_variant.serialized_name, None);
+    assert_eq!(foo_variant.serialized_name, "Foo");
 
     let bar_variant = struct_info.fields.iter().find(|f| f.name == "Bar").unwrap();
-    assert_eq!(bar_variant.serialized_name, None);
+    assert_eq!(bar_variant.serialized_name, "Bar");
 }
 
 #[test]
@@ -321,15 +315,12 @@ fn test_enum_snake_case_to_pascal_case() {
         .iter()
         .find(|f| f.name == "hello_world")
         .unwrap();
-    assert_eq!(
-        hello_variant.serialized_name,
-        Some("HelloWorld".to_string())
-    );
+    assert_eq!(hello_variant.serialized_name, "HelloWorld");
 
     let bye_variant = struct_info
         .fields
         .iter()
         .find(|f| f.name == "bye_world")
         .unwrap();
-    assert_eq!(bye_variant.serialized_name, Some("ByeWorld".to_string()));
+    assert_eq!(bye_variant.serialized_name, "ByeWorld");
 }

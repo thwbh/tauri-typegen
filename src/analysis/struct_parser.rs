@@ -122,12 +122,13 @@ impl StructParser {
                 // Calculate serialized name for the variant
                 let serialized_name = if let Some(rename) = variant_serde_attrs.rename {
                     // Explicit variant-level rename takes precedence
-                    Some(rename)
+                    rename
                 } else {
                     enum_serde_attrs
                         .rename_all
                         .as_deref()
                         .map(|convention| apply_naming_convention(&variant_name, convention))
+                        .unwrap_or_else(|| variant_name.clone())
                 };
 
                 match &variant.fields {
@@ -238,9 +239,11 @@ impl StructParser {
         // Calculate the serialized name based on serde attributes
         let serialized_name = if let Some(rename) = field_serde_attrs.rename {
             // Explicit field-level rename takes precedence
-            Some(rename)
+            rename
         } else {
-            struct_rename_all.map(|convention| apply_naming_convention(&name, convention))
+            struct_rename_all
+                .map(|convention| apply_naming_convention(&name, convention))
+                .unwrap_or_else(|| name.clone())
         };
 
         let is_public = matches!(field.vis, Visibility::Public(_));

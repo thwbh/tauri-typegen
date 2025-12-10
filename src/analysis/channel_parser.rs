@@ -43,6 +43,10 @@ impl ChannelParser {
                     let typescript_message_type =
                         type_resolver.map_rust_type_to_typescript(&message_type);
 
+                    // Compute serialized parameter name using conventions (TODO: Parse serde attributes to override)
+                    use crate::models::to_camel_case;
+                    let serialized_parameter_name = to_camel_case(&param_name);
+
                     // Get line number from parameter span
                     let line_number = pat_type.ty.span().start().line;
 
@@ -53,6 +57,7 @@ impl ChannelParser {
                         command_name: command_name.to_string(),
                         file_path: file_path.to_string_lossy().to_string(),
                         line_number,
+                        serialized_parameter_name,
                     });
                 }
             }

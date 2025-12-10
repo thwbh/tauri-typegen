@@ -53,6 +53,12 @@ impl CommandParser {
         type_resolver: &mut TypeResolver,
     ) -> Option<CommandInfo> {
         let name = func.sig.ident.to_string();
+
+        // Compute TypeScript names using conventions (TODO: Parse serde attributes to override)
+        use crate::models::{to_camel_case, to_pascal_case};
+        let ts_function_name = to_camel_case(&name);
+        let ts_type_name = to_pascal_case(&name);
+
         let parameters = self.extract_parameters(&func.sig.inputs, type_resolver);
         let (return_type, return_type_ts) =
             self.extract_return_types(&func.sig.output, type_resolver);
@@ -70,6 +76,8 @@ impl CommandParser {
             line_number,
             is_async,
             channels: Vec::new(), // Will be populated by channel_parser
+            ts_function_name,
+            ts_type_name,
         })
     }
 
@@ -96,12 +104,17 @@ impl CommandParser {
                         let type_structure = type_resolver.parse_type_structure(&rust_type);
                         let is_optional = self.is_optional_type(ty);
 
+                        // Compute serialized name (TODO: Parse serde attributes on parameters if present)
+                        use crate::models::to_camel_case;
+                        let serialized_name = to_camel_case(&name);
+
                         return Some(ParameterInfo {
                             name,
                             rust_type,
                             typescript_type,
                             is_optional,
                             type_structure,
+                            serialized_name,
                         });
                     }
                 }
