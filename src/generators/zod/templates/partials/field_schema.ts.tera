@@ -1,0 +1,76 @@
+{%- macro render_type(ts, validator, skip_validation, is_record_key) -%}
+  {%- if ts.optional -%}
+    {{ self::render_type(ts=ts.optional, validator=validator, skip_validation=false, is_record_key=is_record_key) }}.optional()
+  {%- elif ts.primitive -%}
+    {%- if ts.primitive == "string" -%}
+      z.string()
+      {%- if not skip_validation and validator -%}
+        {%- if validator.email -%}.email(){%- endif -%}
+        {%- if validator.url -%}.url(){%- endif -%}
+        {%- if validator.length -%}
+          {%- if validator.length.min and validator.length.max -%}
+            .min({{ validator.length.min }}{% if validator.length.message %}, { message: "{{ validator.length.message | escape_js }}" }{% endif %}).max({{ validator.length.max }}{% if validator.length.message %}, { message: "{{ validator.length.message | escape_js }}" }{% endif %})
+          {%- elif validator.length.min -%}
+            .min({{ validator.length.min }}{% if validator.length.message %}, { message: "{{ validator.length.message | escape_js }}" }{% endif %})
+          {%- elif validator.length.max -%}
+            .max({{ validator.length.max }}{% if validator.length.message %}, { message: "{{ validator.length.message | escape_js }}" }{% endif %})
+          {%- endif -%}
+        {%- endif -%}
+      {%- endif -%}
+    {%- elif ts.primitive == "number" -%}
+      {%- if is_record_key -%}
+        z.number()
+      {%- else -%}
+        z.coerce.number()
+      {%- endif -%}
+      {%- if not skip_validation and validator and validator.range -%}
+        {%- if validator.range.min and validator.range.max -%}
+          .min({{ validator.range.min }}{% if validator.range.message %}, { message: "{{ validator.range.message | escape_js }}" }{% endif %}).max({{ validator.range.max }}{% if validator.range.message %}, { message: "{{ validator.range.message | escape_js }}" }{% endif %})
+        {%- elif validator.range.min -%}
+          .min({{ validator.range.min }}{% if validator.range.message %}, { message: "{{ validator.range.message | escape_js }}" }{% endif %})
+        {%- elif validator.range.max -%}
+          .max({{ validator.range.max }}{% if validator.range.message %}, { message: "{{ validator.range.message | escape_js }}" }{% endif %})
+        {%- endif -%}
+      {%- endif -%}
+    {%- elif ts.primitive == "boolean" -%}
+      z.coerce.boolean()
+    {%- elif ts.primitive == "null" -%}
+      z.null()
+    {%- elif ts.primitive == "any" -%}
+      z.any()
+    {%- elif ts.primitive == "unknown" -%}
+      z.unknown()
+    {%- else -%}
+      z.unknown() /* Unknown primitive: {{ ts.primitive }} */
+    {%- endif -%}
+  {%- elif ts.array -%}
+    z.array({{ self::render_type(ts=ts.array, validator=validator, skip_validation=true, is_record_key=false) }})
+    {%- if not skip_validation and validator and validator.length -%}
+      {%- if validator.length.min and validator.length.max -%}
+        .min({{ validator.length.min }}{% if validator.length.message %}, { message: "{{ validator.length.message | escape_js }}" }{% endif %}).max({{ validator.length.max }}{% if validator.length.message %}, { message: "{{ validator.length.message | escape_js }}" }{% endif %})
+      {%- elif validator.length.min -%}
+        .min({{ validator.length.min }}{% if validator.length.message %}, { message: "{{ validator.length.message | escape_js }}" }{% endif %})
+      {%- elif validator.length.max -%}
+        .max({{ validator.length.max }}{% if validator.length.message %}, { message: "{{ validator.length.message | escape_js }}" }{% endif %})
+      {%- endif -%}
+    {%- endif -%}
+  {%- elif ts.map -%}
+    z.record({{ self::render_type(ts=ts.map.key, validator=validator, skip_validation=true, is_record_key=true) }}, {{ self::render_type(ts=ts.map.value, validator=validator, skip_validation=true, is_record_key=false) }})
+  {%- elif ts.set -%}
+    z.set({{ self::render_type(ts=ts.set, validator=validator, skip_validation=true, is_record_key=false) }})
+  {%- elif ts.tuple -%}
+    z.tuple([
+      {%- for element in ts.tuple -%}
+        {{ self::render_type(ts=element, validator=validator, skip_validation=true, is_record_key=false) }}
+        {%- if not loop.last %}, {% endif -%}
+      {%- endfor -%}
+    ])
+  {%- elif ts.result -%}
+    z.union([{{ self::render_type(ts=ts.result, validator=validator, skip_validation=true, is_record_key=false) }}, z.object({ error: z.string() })])
+  {%- elif ts.custom -%}
+    {{ ts.custom }}Schema
+  {%- else -%}
+    z.unknown() /* Unhandled type structure */
+  {%- endif -%}
+{%- endmacro -%}
+{{ self::render_type(ts=field.typeStructure, validator=field.validatorAttributes, skip_validation=false, is_record_key=false) }}

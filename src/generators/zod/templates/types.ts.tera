@@ -1,0 +1,9 @@
+{{ header }}
+import { z } from 'zod';
+{% if has_channels %}
+import type { Channel } from '@tauri-apps/api/core';
+{% endif %}
+
+{{ struct_schemas }}
+{{ param_schemas }}
+{{ type_aliases }}

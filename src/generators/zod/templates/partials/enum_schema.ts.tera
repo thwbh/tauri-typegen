@@ -1,0 +1,5 @@
+export const {{ name }}Schema = {% for field in fields -%}
+{{ field.typeStructure | to_zod_schema }}{% if not loop.last %}.or({% endif %}
+{%- endfor %}{% for field in fields %}{% if not loop.first %}){% endif %}{% endfor %};
+
+export type {{ name }} = z.infer<typeof {{ name }}Schema>;

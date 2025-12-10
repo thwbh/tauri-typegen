@@ -1,0 +1,13 @@
+{{ header }}
+/**
+ * Event Listeners
+ * Type-safe event listener helpers for Tauri events
+ */
+import { listen, type UnlistenFn, type Event } from '@tauri-apps/api/event';
+{% if payload_types | length > 0 -%}
+import type { {{ payload_types | join(sep=", ") }} } from './types';
+{%- endif %}
+
+{% for event in events -%}
+{% include "zod/partials/event_listener.ts.tera" %}
+{% endfor -%}

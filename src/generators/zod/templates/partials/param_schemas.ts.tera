@@ -1,0 +1,10 @@
+{% for command in commands -%}
+{%- if command.parameters | length > 0 -%}
+export const {{ command.tsTypeName }}ParamsSchema = z.object({
+  {% for param in command.parameters -%}
+  {{ param.serializedName }}: {% include "zod/partials/param_schema.ts.tera" %}{% if param.isOptional %}.optional(){% endif %},
+  {% endfor -%}
+});
+
+{% endif -%}
+{%- endfor -%}

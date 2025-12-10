@@ -1,0 +1,56 @@
+{%- set has_params = command.parameters | length > 0 -%}
+{%- set has_channels = command.channels | length > 0 -%}
+{%- set return_type = command.returnTypeTs | format_return_type -%}
+
+{# Determine parameter signature #}
+{%- if has_params or has_channels -%}
+export async function {{ command.tsFunctionName }}(params: types.{{ command.tsTypeName }}Params, hooks?: CommandHooks<{{ return_type }}>): Promise<{{ return_type }}> {
+  try {
+{%- if has_params %}
+    const result = types.{{ command.tsTypeName }}ParamsSchema.safeParse(params);
+
+    if (!result.success) {
+      hooks?.onValidationError?.(result.error);
+      throw result.error;
+    }
+{%- if has_channels %}
+    {# Build channel references #}
+    const data = await invoke<{{ return_type }}>('{{ command.name }}', { ...result.data, {% for channel in command.channels %}{{ channel.serializedParameterName }}: params.{{ channel.serializedParameterName }}{% if not loop.last %}, {% endif %}{% endfor %} });
+{%- else %}
+    const data = await invoke<{{ return_type }}>('{{ command.name }}', result.data);
+{%- endif %}
+{%- else %}
+    {# Only channels, no validation #}
+    const data = await invoke<{{ return_type }}>('{{ command.name }}', params);
+{%- endif %}
+    hooks?.onSuccess?.(data);
+    return data;
+  } catch (error) {
+{%- if has_params %}
+    if (!(error instanceof ZodError)) {
+      hooks?.onInvokeError?.(error);
+    }
+{%- else %}
+    hooks?.onInvokeError?.(error);
+{%- endif %}
+    throw error;
+  } finally {
+    hooks?.onSettled?.();
+  }
+}
+{%- else -%}
+{# No parameters at all #}
+export async function {{ command.tsFunctionName }}(hooks?: CommandHooks<{{ return_type }}>): Promise<{{ return_type }}> {
+  try {
+    const data = await invoke<{{ return_type }}>('{{ command.name }}');
+    hooks?.onSuccess?.(data);
+    return data;
+  } catch (error) {
+    hooks?.onInvokeError?.(error);
+    throw error;
+  } finally {
+    hooks?.onSettled?.();
+  }
+}
+{%- endif %}
+
