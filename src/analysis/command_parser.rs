@@ -55,7 +55,7 @@ impl CommandParser {
         let name = func.sig.ident.to_string();
 
         let parameters = self.extract_parameters(&func.sig.inputs, type_resolver);
-        let return_type = self.extract_return_type(&func.sig.output, type_resolver);
+        let return_type = self.extract_return_type(&func.sig.output);
         let is_async = func.sig.asyncness.is_some();
 
         // Get line number from the function's span
@@ -170,11 +170,7 @@ impl CommandParser {
     }
 
     /// Extract return type from function signature - returns rust_type only
-    fn extract_return_type(
-        &self,
-        output: &ReturnType,
-        _type_resolver: &mut TypeResolver,
-    ) -> String {
+    fn extract_return_type(&self, output: &ReturnType) -> String {
         match output {
             ReturnType::Default => "()".to_string(),
             ReturnType::Type(_, ty) => Self::type_to_string(ty),

@@ -101,12 +101,7 @@ impl StructParser {
     }
 
     /// Parse a Rust enum into StructInfo
-    pub fn parse_enum(
-        &self,
-        item_enum: &ItemEnum,
-        file_path: &Path,
-        _type_resolver: &mut TypeResolver,
-    ) -> Option<StructInfo> {
+    pub fn parse_enum(&self, item_enum: &ItemEnum, file_path: &Path) -> Option<StructInfo> {
         // Parse enum-level serde attributes
         let enum_serde_attrs = self.serde_parser.parse_struct_serde_attrs(&item_enum.attrs);
 

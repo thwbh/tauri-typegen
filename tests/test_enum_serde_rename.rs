@@ -1,5 +1,4 @@
 use tauri_typegen::analysis::struct_parser::StructParser;
-use tauri_typegen::analysis::type_resolver::TypeResolver;
 
 #[test]
 fn test_enum_serde_rename_all_screaming_snake_case() {
@@ -16,7 +15,6 @@ fn test_enum_serde_rename_all_screaming_snake_case() {
 
     let parsed_file = syn::parse_file(code).unwrap();
     let parser = StructParser::new();
-    let mut type_resolver = TypeResolver::new();
 
     let item_enum = parsed_file.items.iter().find_map(|item| {
         if let syn::Item::Enum(e) = item {
@@ -30,11 +28,7 @@ fn test_enum_serde_rename_all_screaming_snake_case() {
     let item_enum = item_enum.unwrap();
 
     let struct_info = parser
-        .parse_enum(
-            item_enum,
-            std::path::Path::new("test.rs"),
-            &mut type_resolver,
-        )
+        .parse_enum(item_enum, std::path::Path::new("test.rs"))
         .unwrap();
 
     assert_eq!(struct_info.fields.len(), 2);
@@ -71,7 +65,6 @@ fn test_enum_serde_rename_all_camel_case() {
 
     let parsed_file = syn::parse_file(code).unwrap();
     let parser = StructParser::new();
-    let mut type_resolver = TypeResolver::new();
 
     let item_enum = parsed_file.items.iter().find_map(|item| {
         if let syn::Item::Enum(e) = item {
@@ -85,11 +78,7 @@ fn test_enum_serde_rename_all_camel_case() {
     let item_enum = item_enum.unwrap();
 
     let struct_info = parser
-        .parse_enum(
-            item_enum,
-            std::path::Path::new("test.rs"),
-            &mut type_resolver,
-        )
+        .parse_enum(item_enum, std::path::Path::new("test.rs"))
         .unwrap();
 
     assert_eq!(struct_info.fields.len(), 3);
@@ -131,7 +120,6 @@ fn test_enum_variant_level_rename() {
 
     let parsed_file = syn::parse_file(code).unwrap();
     let parser = StructParser::new();
-    let mut type_resolver = TypeResolver::new();
 
     let item_enum = parsed_file.items.iter().find_map(|item| {
         if let syn::Item::Enum(e) = item {
@@ -145,11 +133,7 @@ fn test_enum_variant_level_rename() {
     let item_enum = item_enum.unwrap();
 
     let struct_info = parser
-        .parse_enum(
-            item_enum,
-            std::path::Path::new("test.rs"),
-            &mut type_resolver,
-        )
+        .parse_enum(item_enum, std::path::Path::new("test.rs"))
         .unwrap();
 
     assert_eq!(struct_info.fields.len(), 2);
@@ -187,7 +171,6 @@ fn test_enum_variant_rename_overrides_rename_all() {
 
     let parsed_file = syn::parse_file(code).unwrap();
     let parser = StructParser::new();
-    let mut type_resolver = TypeResolver::new();
 
     let item_enum = parsed_file.items.iter().find_map(|item| {
         if let syn::Item::Enum(e) = item {
@@ -201,11 +184,7 @@ fn test_enum_variant_rename_overrides_rename_all() {
     let item_enum = item_enum.unwrap();
 
     let struct_info = parser
-        .parse_enum(
-            item_enum,
-            std::path::Path::new("test.rs"),
-            &mut type_resolver,
-        )
+        .parse_enum(item_enum, std::path::Path::new("test.rs"))
         .unwrap();
 
     assert_eq!(struct_info.fields.len(), 2);
@@ -241,7 +220,6 @@ fn test_enum_without_serde_attributes() {
 
     let parsed_file = syn::parse_file(code).unwrap();
     let parser = StructParser::new();
-    let mut type_resolver = TypeResolver::new();
 
     let item_enum = parsed_file.items.iter().find_map(|item| {
         if let syn::Item::Enum(e) = item {
@@ -255,11 +233,7 @@ fn test_enum_without_serde_attributes() {
     let item_enum = item_enum.unwrap();
 
     let struct_info = parser
-        .parse_enum(
-            item_enum,
-            std::path::Path::new("test.rs"),
-            &mut type_resolver,
-        )
+        .parse_enum(item_enum, std::path::Path::new("test.rs"))
         .unwrap();
 
     assert_eq!(struct_info.fields.len(), 2);
@@ -287,7 +261,6 @@ fn test_enum_snake_case_to_pascal_case() {
 
     let parsed_file = syn::parse_file(code).unwrap();
     let parser = StructParser::new();
-    let mut type_resolver = TypeResolver::new();
 
     let item_enum = parsed_file.items.iter().find_map(|item| {
         if let syn::Item::Enum(e) = item {
@@ -301,11 +274,7 @@ fn test_enum_snake_case_to_pascal_case() {
     let item_enum = item_enum.unwrap();
 
     let struct_info = parser
-        .parse_enum(
-            item_enum,
-            std::path::Path::new("test.rs"),
-            &mut type_resolver,
-        )
+        .parse_enum(item_enum, std::path::Path::new("test.rs"))
         .unwrap();
 
     assert_eq!(struct_info.fields.len(), 2);

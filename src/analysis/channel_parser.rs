@@ -1,4 +1,3 @@
-use crate::analysis::type_resolver::TypeResolver;
 use crate::models::ChannelInfo;
 use std::path::Path;
 use syn::spanned::Spanned;
@@ -23,7 +22,6 @@ impl ChannelParser {
         func: &ItemFn,
         command_name: &str,
         file_path: &Path,
-        _type_resolver: &mut TypeResolver,
     ) -> Result<Vec<ChannelInfo>, Box<dyn std::error::Error>> {
         let mut channels = Vec::new();
 
