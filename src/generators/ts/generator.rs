@@ -49,28 +49,23 @@ impl TypeScriptBindingsGenerator {
         let mut content = String::new();
 
         for (name, struct_info) in used_structs {
-            if struct_info.is_enum {
-                content.push_str(&self.generate_enum_definition(name, struct_info));
+            let mut context = Context::new();
+            context.insert("name", name);
+            context.insert("fields", &struct_info.fields);
+
+            let template_name = if struct_info.is_enum {
+                "typescript/partials/enum.tera"
             } else {
-                content.push_str(&TemplateHelpers::generate_interface(
-                    name,
-                    &struct_info.fields,
-                ));
+                "typescript/partials/interface.tera"
+            };
+
+            if let Ok(rendered) = super::templates::render(&self.tera, template_name, &context) {
+                content.push_str(&rendered);
+                content.push('\n');
             }
         }
 
         content
-    }
-
-    /// Generate enum definition (as union type for vanilla TypeScript)
-    fn generate_enum_definition(&self, name: &str, struct_info: &StructInfo) -> String {
-        let variants: Vec<String> = struct_info
-            .fields
-            .iter()
-            .map(|field| field.serialized_name.to_string())
-            .collect();
-
-        TemplateHelpers::generate_union_type(name, &variants)
     }
 
     /// Generate parameter interfaces for commands
@@ -80,10 +75,15 @@ impl TypeScriptBindingsGenerator {
         for command in commands {
             // Generate interface if command has parameters or channels
             if !command.parameters.is_empty() || !command.channels.is_empty() {
-                if let Some(interface) =
-                    TemplateHelpers::generate_params_interface_with_channels(command)
-                {
-                    content.push_str(&interface);
+                let mut context = Context::new();
+                context.insert("command", command);
+
+                if let Ok(rendered) = super::templates::render(
+                    &self.tera,
+                    "typescript/partials/param_interface.ts.tera",
+                    &context,
+                ) {
+                    content.push_str(&rendered);
                 }
             }
         }
@@ -243,6 +243,7 @@ impl BaseBindingsGenerator for TypeScriptBindingsGenerator {
 
         // Also collect types used in events
         let events = analyzer.get_discovered_events();
+
         for event in events {
             let mut event_types = std::collections::HashSet::new();
             self.base

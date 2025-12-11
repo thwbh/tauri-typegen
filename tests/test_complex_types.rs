@@ -146,19 +146,6 @@ fn test_tuple_return_type() {
 }
 
 #[test]
-fn test_yup_schema_generation_for_maps() {
-    let generator = BindingsGenerator::new(Some("yup".to_string()));
-
-    // Test Record<string, string> - yup support removed
-    let schema = generator.typescript_to_yup_type("Record<string, string>");
-    assert!(schema.contains("yup support removed"));
-
-    // Test Record arrays - yup support removed
-    let schema = generator.typescript_to_yup_type("Record<string, number>[]");
-    assert!(schema.contains("yup support removed"));
-}
-
-#[test]
 fn test_enum_variant_parsing() {
     let mut analyzer = CommandAnalyzer::new();
     let fixture_path = Path::new("tests/fixtures/complex_types.rs");

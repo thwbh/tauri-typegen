@@ -277,31 +277,6 @@ fn test_pascal_case_conversion() {
 }
 
 #[test]
-fn test_typescript_to_yup_type_conversion() {
-    let generator = BindingsGenerator::new(None);
-
-    // Yup support has been removed - all types return the removed message
-    assert!(generator
-        .typescript_to_yup_type("string")
-        .contains("yup support removed"));
-    assert!(generator
-        .typescript_to_yup_type("number")
-        .contains("yup support removed"));
-    assert!(generator
-        .typescript_to_yup_type("boolean")
-        .contains("yup support removed"));
-    assert!(generator
-        .typescript_to_yup_type("string[]")
-        .contains("yup support removed"));
-    assert!(generator
-        .typescript_to_yup_type("string | null")
-        .contains("yup support removed"));
-    assert!(generator
-        .typescript_to_yup_type("CustomType")
-        .contains("yup support removed"));
-}
-
-#[test]
 fn test_custom_type_detection() {
     let generator = BindingsGenerator::new(None);
 

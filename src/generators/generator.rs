@@ -84,11 +84,6 @@ impl BindingsGenerator {
         }
     }
 
-    pub fn typescript_to_yup_type(&self, ts_type: &str) -> String {
-        // Yup support removed
-        format!("yup.mixed() /* {} - yup support removed */", ts_type)
-    }
-
     pub fn is_custom_type(&self, ts_type: &str) -> bool {
         match self.validation_library.as_str() {
             "zod" => {

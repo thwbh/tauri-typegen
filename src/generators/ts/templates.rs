@@ -45,6 +45,10 @@ fn register_templates(tera: &mut Tera) -> Result<(), String> {
         "templates/partials/enum.tera"
     );
     template!(
+        "typescript/partials/param_interface.ts.tera",
+        "templates/partials/param_interface.ts.tera"
+    );
+    template!(
         "typescript/partials/command_function.ts.tera",
         "templates/partials/command_function.ts.tera"
     );
