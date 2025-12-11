@@ -190,18 +190,6 @@ impl TypeConverter {
         )
     }
 
-    /// Map primitive Rust types to TypeScript types
-    pub fn map_primitive_type(&self, rust_type: &str) -> Option<String> {
-        match rust_type {
-            "String" | "str" | "&str" | "&String" => Some("string".to_string()),
-            "i8" | "i16" | "i32" | "i64" | "i128" | "isize" | "u8" | "u16" | "u32" | "u64"
-            | "u128" | "usize" | "f32" | "f64" => Some("number".to_string()),
-            "bool" => Some("boolean".to_string()),
-            "()" => Some("void".to_string()),
-            _ => None,
-        }
-    }
-
     /// Recursively collect all referenced type names from a complex type
     pub fn collect_referenced_types(
         &self,
@@ -260,38 +248,6 @@ impl TypeConverter {
         if !self.is_primitive_type(&cleaned_type) {
             used_types.insert(cleaned_type);
         }
-    }
-
-    /// Generate a parameter name for a command from its Rust type
-    pub fn generate_param_name(&self, rust_type: &str) -> String {
-        let cleaned = self.strip_reference(rust_type);
-
-        // Extract base type name for parameter naming
-        if let Some(inner) = self.extract_option_inner_type(&cleaned) {
-            return self.generate_param_name(&inner);
-        }
-
-        if let Some(inner) = self.extract_vec_inner_type(&cleaned) {
-            return format!("{}List", self.generate_param_name(&inner));
-        }
-
-        if let Some(ok_type) = self.extract_result_ok_type(&cleaned) {
-            return self.generate_param_name(&ok_type);
-        }
-
-        // Convert PascalCase to camelCase
-        let mut result = String::new();
-        let mut chars = cleaned.chars().peekable();
-
-        if let Some(first) = chars.next() {
-            result.push(first.to_lowercase().next().unwrap_or(first));
-
-            for ch in chars {
-                result.push(ch);
-            }
-        }
-
-        result
     }
 }
 
