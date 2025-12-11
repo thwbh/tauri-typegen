@@ -1,0 +1,11 @@
+{{ header }}
+{% if has_channels -%}
+import { invoke, Channel } from '@tauri-apps/api/core';
+{% else -%}
+import { invoke } from '@tauri-apps/api/core';
+{% endif -%}
+import * as types from './types';
+
+{% for command in commands -%}
+{% include "typescript/partials/command_function.ts.tera" %}
+{% endfor -%}

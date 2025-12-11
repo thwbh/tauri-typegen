@@ -1,0 +1,13 @@
+/**
+ * Listen for '{{ event.eventName }}' events
+ * @param handler - Callback function to handle the event
+ * @returns Promise that resolves to an unlisten function
+ */
+export async function {{ event.tsFunctionName }}(
+  handler: (payload: {{ event.typescriptPayloadType }}) => void
+): Promise<UnlistenFn> {
+  return listen<{{ event.typescriptPayloadType }}>('{{ event.eventName }}', (event) => {
+    handler(event.payload);
+  });
+}
+

@@ -428,7 +428,7 @@ fn test_empty_commands_generates_no_unnecessary_types() {
     let types_content = fs::read_to_string(temp_dir.path().join("types.ts")).unwrap();
 
     // Should contain only the header comment, no interfaces
-    assert!(types_content.contains("Auto-generated TypeScript types"));
+    assert!(types_content.contains("Auto-generated TypeScript bindings"));
     assert!(!types_content.contains("export interface"));
 
     // Verify no struct types were generated

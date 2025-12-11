@@ -1,0 +1,15 @@
+{%- set has_params = command.parameters | length > 0 -%}
+{%- set has_channels = command.channels | length > 0 -%}
+
+{# Determine parameter signature #}
+{%- if has_params or has_channels -%}
+export async function {{ command.tsFunctionName }}(params: types.{{ command.tsTypeName }}Params): Promise<{{ command.returnTypeTs }}> {
+  return invoke('{{ command.name }}', params);
+}
+{%- else -%}
+{# No parameters at all #}
+export async function {{ command.tsFunctionName }}(): Promise<{{ command.returnTypeTs }}> {
+  return invoke('{{ command.name }}');
+}
+{%- endif %}
+
