@@ -40,33 +40,6 @@ impl BindingsGenerator {
         }
     }
 
-    // Helper methods for testing - delegate to appropriate generator
-    pub fn to_pascal_case(&self, s: &str) -> String {
-        match self.validation_library.as_str() {
-            "zod" => {
-                let generator = ZodBindingsGenerator::new();
-                generator.to_pascal_case(s)
-            }
-            _ => {
-                let generator = TypeScriptBindingsGenerator::new();
-                generator.to_pascal_case(s)
-            }
-        }
-    }
-
-    pub fn to_camel_case(&self, s: &str) -> String {
-        match self.validation_library.as_str() {
-            "zod" => {
-                let generator = ZodBindingsGenerator::new();
-                generator.to_camel_case(s)
-            }
-            _ => {
-                let generator = TypeScriptBindingsGenerator::new();
-                generator.to_camel_case(s)
-            }
-        }
-    }
-
     pub fn collect_referenced_types(
         &self,
         rust_type: &str,

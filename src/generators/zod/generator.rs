@@ -1,6 +1,5 @@
 use crate::analysis::CommandAnalyzer;
 use crate::generators::base::file_writer::FileWriter;
-use crate::generators::base::template_helpers::TemplateHelpers;
 use crate::generators::base::templates::GlobalContext;
 use crate::generators::base::type_conversion::TypeConverter;
 use crate::generators::base::{BaseBindingsGenerator, BaseGenerator};
@@ -143,7 +142,7 @@ impl ZodBindingsGenerator {
     /// Generate command bindings with validation
     fn generate_command_bindings(&self, commands: &[CommandInfo]) -> String {
         let mut context = Context::new();
-        context.insert("header", &self.generate_command_file_header());
+        context.insert("header", &self.generate_file_header());
         context.insert("commands", commands);
         context.insert(
             "has_channels",
@@ -166,11 +165,6 @@ impl ZodBindingsGenerator {
             eprintln!("Template rendering failed for index.ts: {}", e);
             String::new()
         })
-    }
-
-    /// Backward compatibility methods
-    pub fn to_camel_case(&self, s: &str) -> String {
-        TemplateHelpers::to_camel_case(s)
     }
 
     pub fn collect_referenced_types(&self, rust_type: &str, used_types: &mut HashSet<String>) {

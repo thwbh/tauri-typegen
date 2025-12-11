@@ -267,16 +267,6 @@ fn test_index_file_generation() {
 }
 
 #[test]
-fn test_pascal_case_conversion() {
-    let generator = BindingsGenerator::new(None);
-
-    assert_eq!(generator.to_pascal_case("hello_world"), "HelloWorld");
-    assert_eq!(generator.to_pascal_case("get_user_count"), "GetUserCount");
-    assert_eq!(generator.to_pascal_case("simple"), "Simple");
-    assert_eq!(generator.to_pascal_case(""), "");
-}
-
-#[test]
 fn test_custom_type_detection() {
     let generator = BindingsGenerator::new(None);
 

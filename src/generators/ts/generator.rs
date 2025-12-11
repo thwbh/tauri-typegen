@@ -1,6 +1,5 @@
 use crate::analysis::CommandAnalyzer;
 use crate::generators::base::file_writer::FileWriter;
-use crate::generators::base::template_helpers::TemplateHelpers;
 use crate::generators::base::templates::GlobalContext;
 use crate::generators::base::type_conversion::TypeConverter;
 use crate::generators::base::{BaseBindingsGenerator, BaseGenerator};
@@ -148,11 +147,6 @@ impl TypeScriptBindingsGenerator {
                 String::new()
             },
         )
-    }
-
-    /// Convert string to camelCase for backward compatibility
-    pub fn to_camel_case(&self, s: &str) -> String {
-        TemplateHelpers::to_camel_case(s)
     }
 
     /// Collect referenced types for backward compatibility
