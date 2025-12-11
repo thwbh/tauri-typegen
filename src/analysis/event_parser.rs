@@ -21,7 +21,7 @@ impl EventParser {
         &self,
         ast: &SynFile,
         file_path: &Path,
-        type_resolver: &mut TypeResolver,
+        _type_resolver: &mut TypeResolver,
     ) -> Result<Vec<EventInfo>, Box<dyn std::error::Error>> {
         let mut events = Vec::new();
 
@@ -32,7 +32,7 @@ impl EventParser {
                 self.extract_events_from_block(
                     &func.block.stmts,
                     file_path,
-                    type_resolver,
+                    _type_resolver,
                     &mut events,
                 );
             }
@@ -46,11 +46,11 @@ impl EventParser {
         &self,
         stmts: &[syn::Stmt],
         file_path: &Path,
-        type_resolver: &mut TypeResolver,
+        _type_resolver: &mut TypeResolver,
         events: &mut Vec<EventInfo>,
     ) {
         for stmt in stmts {
-            self.extract_events_from_stmt(stmt, file_path, type_resolver, events);
+            self.extract_events_from_stmt(stmt, file_path, _type_resolver, events);
         }
     }
 
@@ -59,16 +59,16 @@ impl EventParser {
         &self,
         stmt: &syn::Stmt,
         file_path: &Path,
-        type_resolver: &mut TypeResolver,
+        _type_resolver: &mut TypeResolver,
         events: &mut Vec<EventInfo>,
     ) {
         match stmt {
             syn::Stmt::Expr(expr, _) => {
-                self.extract_events_from_expr(expr, file_path, type_resolver, events);
+                self.extract_events_from_expr(expr, file_path, _type_resolver, events);
             }
             syn::Stmt::Local(local) => {
                 if let Some(init) = &local.init {
-                    self.extract_events_from_expr(&init.expr, file_path, type_resolver, events);
+                    self.extract_events_from_expr(&init.expr, file_path, _type_resolver, events);
                 }
             }
             _ => {}
@@ -80,18 +80,18 @@ impl EventParser {
         &self,
         expr: &Expr,
         file_path: &Path,
-        type_resolver: &mut TypeResolver,
+        _type_resolver: &mut TypeResolver,
         events: &mut Vec<EventInfo>,
     ) {
         match expr {
             Expr::MethodCall(method_call) => {
-                self.handle_method_call(method_call, file_path, type_resolver, events);
+                self.handle_method_call(method_call, file_path, _type_resolver, events);
             }
             Expr::Block(block) => {
                 self.extract_events_from_block(
                     &block.block.stmts,
                     file_path,
-                    type_resolver,
+                    _type_resolver,
                     events,
                 );
             }
@@ -99,23 +99,23 @@ impl EventParser {
                 self.extract_events_from_block(
                     &expr_if.then_branch.stmts,
                     file_path,
-                    type_resolver,
+                    _type_resolver,
                     events,
                 );
                 if let Some((_, else_branch)) = &expr_if.else_branch {
-                    self.extract_events_from_expr(else_branch, file_path, type_resolver, events);
+                    self.extract_events_from_expr(else_branch, file_path, _type_resolver, events);
                 }
             }
             Expr::Match(expr_match) => {
                 for arm in &expr_match.arms {
-                    self.extract_events_from_expr(&arm.body, file_path, type_resolver, events);
+                    self.extract_events_from_expr(&arm.body, file_path, _type_resolver, events);
                 }
             }
             Expr::Loop(expr_loop) => {
                 self.extract_events_from_block(
                     &expr_loop.body.stmts,
                     file_path,
-                    type_resolver,
+                    _type_resolver,
                     events,
                 );
             }
@@ -123,7 +123,7 @@ impl EventParser {
                 self.extract_events_from_block(
                     &expr_while.body.stmts,
                     file_path,
-                    type_resolver,
+                    _type_resolver,
                     events,
                 );
             }
@@ -131,15 +131,15 @@ impl EventParser {
                 self.extract_events_from_block(
                     &expr_for.body.stmts,
                     file_path,
-                    type_resolver,
+                    _type_resolver,
                     events,
                 );
             }
             Expr::Await(expr_await) => {
-                self.extract_events_from_expr(&expr_await.base, file_path, type_resolver, events);
+                self.extract_events_from_expr(&expr_await.base, file_path, _type_resolver, events);
             }
             Expr::Try(expr_try) => {
-                self.extract_events_from_expr(&expr_try.expr, file_path, type_resolver, events);
+                self.extract_events_from_expr(&expr_try.expr, file_path, _type_resolver, events);
             }
             _ => {}
         }
@@ -150,7 +150,7 @@ impl EventParser {
         &self,
         method_call: &ExprMethodCall,
         file_path: &Path,
-        type_resolver: &mut TypeResolver,
+        _type_resolver: &mut TypeResolver,
         events: &mut Vec<EventInfo>,
     ) {
         let method_name = method_call.method.to_string();
@@ -158,14 +158,14 @@ impl EventParser {
         if method_name == "emit" || method_name == "emit_to" {
             // Check if the receiver looks like app/window (basic heuristic)
             if self.is_likely_tauri_emitter(&method_call.receiver) {
-                self.extract_emit_event(method_call, file_path, type_resolver, events);
+                self.extract_emit_event(method_call, file_path, _type_resolver, events);
             }
         }
 
         // Recursively check receiver and arguments for nested emits
-        self.extract_events_from_expr(&method_call.receiver, file_path, type_resolver, events);
+        self.extract_events_from_expr(&method_call.receiver, file_path, _type_resolver, events);
         for arg in &method_call.args {
-            self.extract_events_from_expr(arg, file_path, type_resolver, events);
+            self.extract_events_from_expr(arg, file_path, _type_resolver, events);
         }
     }
 
@@ -227,7 +227,7 @@ impl EventParser {
         &self,
         method_call: &ExprMethodCall,
         file_path: &Path,
-        type_resolver: &mut TypeResolver,
+        _type_resolver: &mut TypeResolver,
         events: &mut Vec<EventInfo>,
     ) {
         let method_name = method_call.method.to_string();
@@ -256,20 +256,13 @@ impl EventParser {
                 "()".to_string()
             };
 
-            let typescript_payload_type = type_resolver.map_rust_type_to_typescript(&payload_type);
             let line_number = method_call.method.span().start().line;
-
-            // Compute TypeScript function name using conventions (TODO: Parse custom event naming if present)
-            use crate::models::event_name_to_function;
-            let ts_function_name = event_name_to_function(&event_name);
 
             events.push(EventInfo {
                 event_name,
                 payload_type,
-                typescript_payload_type,
                 file_path: file_path.to_string_lossy().to_string(),
                 line_number,
-                ts_function_name,
             });
         }
     }

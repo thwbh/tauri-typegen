@@ -482,6 +482,11 @@ impl CommandAnalyzer {
         &self.discovered_events
     }
 
+    /// Get reference to the type resolver
+    pub fn get_type_resolver(&self) -> std::cell::RefCell<&TypeResolver> {
+        std::cell::RefCell::new(&self.type_resolver)
+    }
+
     /// Get all discovered channels from all commands
     pub fn get_all_discovered_channels(&self, commands: &[CommandInfo]) -> Vec<ChannelInfo> {
         commands

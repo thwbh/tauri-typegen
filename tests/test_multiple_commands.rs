@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fs;
 use tauri_typegen::analysis::CommandAnalyzer;
 use tauri_typegen::generators::generator::BindingsGenerator;
-use tauri_typegen::models::{CommandInfo, FieldInfo, ParameterInfo, StructInfo};
+use tauri_typegen::models::{CommandInfo, FieldInfo, ParameterInfo, StructInfo, TypeStructure};
 use tempfile::TempDir;
 
 // Helper function to create a test Rust file with mixed content
@@ -75,13 +75,10 @@ fn create_sample_commands_with_unused_structs() -> Vec<CommandInfo> {
             10,
             vec![ParameterInfo {
                 name: "request".to_string(),
-                serialized_name: "request".to_string(),
                 rust_type: "CreateUserRequest".to_string(),
-                typescript_type: "CreateUserRequest".to_string(),
                 is_optional: false,
                 type_structure: Default::default(),
             }],
-            "User",
             "User",
             true,
             vec![],
@@ -91,7 +88,6 @@ fn create_sample_commands_with_unused_structs() -> Vec<CommandInfo> {
             "test_file.rs",
             15,
             vec![],
-            "number",
             "number",
             true,
             vec![],
@@ -111,31 +107,30 @@ fn create_sample_structs_with_unused() -> HashMap<String, StructInfo> {
                 FieldInfo {
                     name: "id".to_string(),
                     rust_type: "i32".to_string(),
-                    typescript_type: "number".to_string(),
                     is_optional: false,
                     is_public: true,
                     validator_attributes: None,
-                    type_structure: Default::default(),
+                    type_structure: TypeStructure::Primitive("number".to_string()),
                     serialized_name: "id".to_string(),
                 },
                 FieldInfo {
                     name: "name".to_string(),
                     rust_type: "String".to_string(),
-                    typescript_type: "string".to_string(),
                     is_optional: false,
                     is_public: true,
                     validator_attributes: None,
-                    type_structure: Default::default(),
+                    type_structure: TypeStructure::Primitive("string".to_string()),
                     serialized_name: "name".to_string(),
                 },
                 FieldInfo {
                     name: "email".to_string(),
                     rust_type: "Option<String>".to_string(),
-                    typescript_type: "string | null".to_string(),
                     is_optional: true,
                     is_public: true,
                     validator_attributes: None,
-                    type_structure: Default::default(),
+                    type_structure: TypeStructure::Optional(Box::new(TypeStructure::Primitive(
+                        "string".to_string(),
+                    ))),
                     serialized_name: "email".to_string(),
                 },
             ],
@@ -152,21 +147,21 @@ fn create_sample_structs_with_unused() -> HashMap<String, StructInfo> {
                 FieldInfo {
                     name: "name".to_string(),
                     rust_type: "String".to_string(),
-                    typescript_type: "string".to_string(),
                     is_optional: false,
                     is_public: true,
                     validator_attributes: None,
-                    type_structure: Default::default(),
+                    type_structure: TypeStructure::Primitive("string".to_string()),
                     serialized_name: "name".to_string(),
                 },
                 FieldInfo {
                     name: "email".to_string(),
                     rust_type: "Option<String>".to_string(),
-                    typescript_type: "string | null".to_string(),
                     is_optional: true,
                     is_public: true,
                     validator_attributes: None,
-                    type_structure: Default::default(),
+                    type_structure: TypeStructure::Optional(Box::new(TypeStructure::Primitive(
+                        "string".to_string(),
+                    ))),
                     serialized_name: "email".to_string(),
                 },
             ],
@@ -183,11 +178,10 @@ fn create_sample_structs_with_unused() -> HashMap<String, StructInfo> {
             fields: vec![FieldInfo {
                 name: "iVersion".to_string(),
                 rust_type: "i32".to_string(),
-                typescript_type: "number".to_string(),
                 is_optional: false,
                 is_public: true,
                 validator_attributes: None,
-                type_structure: Default::default(),
+                type_structure: TypeStructure::Primitive("number".to_string()),
                 serialized_name: "iVersion".to_string(),
             }],
             file_path: "test_file.rs".to_string(),
@@ -202,11 +196,10 @@ fn create_sample_structs_with_unused() -> HashMap<String, StructInfo> {
             fields: vec![FieldInfo {
                 name: "unused_field".to_string(),
                 rust_type: "String".to_string(),
-                typescript_type: "string".to_string(),
                 is_optional: false,
                 is_public: true,
                 validator_attributes: None,
-                type_structure: Default::default(),
+                type_structure: TypeStructure::Primitive("string".to_string()),
                 serialized_name: "unusedField".to_string(),
             }],
             file_path: "test_file.rs".to_string(),
@@ -221,11 +214,12 @@ fn create_sample_structs_with_unused() -> HashMap<String, StructInfo> {
             fields: vec![FieldInfo {
                 name: "data".to_string(),
                 rust_type: "Vec<i32>".to_string(),
-                typescript_type: "number[]".to_string(),
                 is_optional: false,
                 is_public: true,
                 validator_attributes: None,
-                type_structure: Default::default(),
+                type_structure: TypeStructure::Array(Box::new(TypeStructure::Primitive(
+                    "number".to_string(),
+                ))),
                 serialized_name: "data".to_string(),
             }],
             file_path: "test_file.rs".to_string(),

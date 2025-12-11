@@ -105,7 +105,7 @@ impl StructParser {
         &self,
         item_enum: &ItemEnum,
         file_path: &Path,
-        type_resolver: &mut TypeResolver,
+        _type_resolver: &mut TypeResolver,
     ) -> Option<StructInfo> {
         // Parse enum-level serde attributes
         let enum_serde_attrs = self.serde_parser.parse_struct_serde_attrs(&item_enum.attrs);
@@ -137,7 +137,6 @@ impl StructParser {
                         FieldInfo {
                             name: variant_name,
                             rust_type: "enum_variant".to_string(),
-                            typescript_type: format!("\"{}\"", variant.ident),
                             is_optional: false,
                             is_public: true,
                             validator_attributes: None,
@@ -147,24 +146,12 @@ impl StructParser {
                             ),
                         }
                     }
-                    syn::Fields::Unnamed(fields_unnamed) => {
+                    syn::Fields::Unnamed(_fields_unnamed) => {
                         // Tuple variant: Variant(T, U)
-                        let types: Vec<String> = fields_unnamed
-                            .unnamed
-                            .iter()
-                            .map(|field| {
-                                type_resolver
-                                    .map_rust_type_to_typescript(&Self::type_to_string(&field.ty))
-                            })
-                            .collect();
+                        // Note: Complex enum variants are not fully supported yet
                         FieldInfo {
                             name: variant_name,
                             rust_type: "enum_variant_tuple".to_string(),
-                            typescript_type: format!(
-                                "{{ type: \"{}\", data: [{}] }}",
-                                variant.ident,
-                                types.join(", ")
-                            ),
                             is_optional: false,
                             is_public: true,
                             validator_attributes: None,
@@ -175,28 +162,12 @@ impl StructParser {
                             ),
                         }
                     }
-                    syn::Fields::Named(fields_named) => {
+                    syn::Fields::Named(_fields_named) => {
                         // Struct variant: Variant { field: T }
-                        let struct_fields: Vec<String> = fields_named
-                            .named
-                            .iter()
-                            .filter_map(|field| {
-                                field.ident.as_ref().map(|field_name| {
-                                    let field_type = type_resolver.map_rust_type_to_typescript(
-                                        &Self::type_to_string(&field.ty),
-                                    );
-                                    format!("{}: {}", field_name, field_type)
-                                })
-                            })
-                            .collect();
+                        // Note: Complex enum variants are not fully supported yet
                         FieldInfo {
                             name: variant_name,
                             rust_type: "enum_variant_struct".to_string(),
-                            typescript_type: format!(
-                                "{{ type: \"{}\", data: {{ {} }} }}",
-                                variant.ident,
-                                struct_fields.join(", ")
-                            ),
                             is_optional: false,
                             is_public: true,
                             validator_attributes: None,
@@ -249,7 +220,6 @@ impl StructParser {
         let is_public = matches!(field.vis, Visibility::Public(_));
         let is_optional = self.is_optional_type(&field.ty);
         let rust_type = Self::type_to_string(&field.ty);
-        let typescript_type = type_resolver.map_rust_type_to_typescript(&rust_type);
         let type_structure = type_resolver.parse_type_structure(&rust_type);
         let validator_attributes = self
             .validator_parser
@@ -258,7 +228,6 @@ impl StructParser {
         Some(FieldInfo {
             name,
             rust_type,
-            typescript_type,
             is_optional,
             is_public,
             validator_attributes,

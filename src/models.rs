@@ -48,20 +48,13 @@ pub struct CommandInfo {
     pub file_path: String,
     pub line_number: usize,
     pub parameters: Vec<ParameterInfo>,
-    pub return_type: String,    // Rust return type (e.g., "Vec<Banana>")
-    pub return_type_ts: String, // TypeScript return type (e.g., "Banana[]")
+    pub return_type: String, // Rust return type (e.g., "Vec<Banana>")
     pub is_async: bool,
     pub channels: Vec<ChannelInfo>,
-    /// TypeScript function name (camelCase by convention)
-    /// Example: "getUserById" for Rust function "get_user_by_id"
-    pub ts_function_name: String,
-    /// TypeScript type name prefix (PascalCase by convention)
-    /// Example: "GetUserById" used for GetUserByIdParams, GetUserByIdParamsSchema, etc.
-    pub ts_type_name: String,
 }
 
 impl CommandInfo {
-    /// Helper for tests: Create a CommandInfo with computed TypeScript names
+    /// Helper for tests: Create a CommandInfo
     #[doc(hidden)]
     pub fn new_for_test(
         name: impl Into<String>,
@@ -69,23 +62,42 @@ impl CommandInfo {
         line_number: usize,
         parameters: Vec<ParameterInfo>,
         return_type: impl Into<String>,
-        return_type_ts: impl Into<String>,
         is_async: bool,
         channels: Vec<ChannelInfo>,
     ) -> Self {
-        let name = name.into();
         Self {
-            name: name.clone(),
+            name: name.into(),
             file_path: file_path.into(),
             line_number,
             parameters,
             return_type: return_type.into(),
-            return_type_ts: return_type_ts.into(),
             is_async,
             channels,
-            ts_function_name: to_camel_case(&name),
-            ts_type_name: to_pascal_case(&name),
         }
+    }
+
+    /// Get TypeScript function name (camelCase by convention)
+    /// Example: "getUserById" for Rust function "get_user_by_id"
+    pub fn ts_function_name(&self) -> String {
+        to_camel_case(&self.name)
+    }
+
+    /// Get TypeScript type name prefix (PascalCase by convention)
+    /// Example: "GetUserById" used for GetUserByIdParams, GetUserByIdParamsSchema, etc.
+    pub fn ts_type_name(&self) -> String {
+        to_pascal_case(&self.name)
+    }
+
+    /// Get TypeScript return type representation
+    /// Convenience method that uses TypeScriptVisitor
+    pub fn return_type_ts(&self) -> String {
+        use crate::analysis::type_resolver::TypeResolver;
+        use crate::generators::base::type_visitor::{TypeScriptVisitor, TypeVisitor};
+
+        let type_resolver = TypeResolver::new();
+        let type_structure = type_resolver.parse_type_structure(&self.return_type);
+        let visitor = TypeScriptVisitor;
+        visitor.visit_type(&type_structure)
     }
 }
 
@@ -94,13 +106,25 @@ impl CommandInfo {
 pub struct ParameterInfo {
     pub name: String,
     pub rust_type: String,
-    pub typescript_type: String,
     pub is_optional: bool,
     /// Structured representation of the type for generators
     #[serde(default)]
     pub type_structure: TypeStructure,
-    /// Serialized name for the parameter (typically camelCase for Tauri)
-    pub serialized_name: String,
+}
+
+impl ParameterInfo {
+    /// Get serialized name for the parameter (typically camelCase for Tauri)
+    pub fn serialized_name(&self) -> String {
+        to_camel_case(&self.name)
+    }
+
+    /// Get TypeScript type representation
+    /// Convenience method that uses TypeScriptVisitor
+    pub fn typescript_type(&self) -> String {
+        use crate::generators::base::type_visitor::{TypeScriptVisitor, TypeVisitor};
+        let visitor = TypeScriptVisitor;
+        visitor.visit_type(&self.type_structure)
+    }
 }
 
 /// Convert snake_case to camelCase using heck
@@ -134,7 +158,6 @@ pub struct StructInfo {
 pub struct FieldInfo {
     pub name: String,
     pub rust_type: String,
-    pub typescript_type: String,
     pub is_optional: bool,
     pub is_public: bool,
     pub validator_attributes: Option<ValidatorAttributes>,
@@ -177,12 +200,16 @@ pub struct RangeConstraint {
 pub struct EventInfo {
     pub event_name: String,
     pub payload_type: String,
-    pub typescript_payload_type: String,
     pub file_path: String,
     pub line_number: usize,
-    /// TypeScript listener function name (onEventName pattern)
+}
+
+impl EventInfo {
+    /// Get TypeScript listener function name (onEventName pattern)
     /// Example: "download-started" -> "onDownloadStarted"
-    pub ts_function_name: String,
+    pub fn ts_function_name(&self) -> String {
+        event_name_to_function(&self.event_name)
+    }
 }
 
 // Channel information for streaming data from Rust to frontend
@@ -191,34 +218,32 @@ pub struct EventInfo {
 pub struct ChannelInfo {
     pub parameter_name: String,
     pub message_type: String,
-    pub typescript_message_type: String,
     pub command_name: String,
     pub file_path: String,
     pub line_number: usize,
-    /// Serialized parameter name for TypeScript (camelCase by convention)
-    pub serialized_parameter_name: String,
 }
 
 impl ChannelInfo {
-    /// Helper for tests: Create a ChannelInfo with computed serialized name
+    /// Helper for tests: Create a ChannelInfo
     #[doc(hidden)]
     pub fn new_for_test(
         parameter_name: impl Into<String>,
         message_type: impl Into<String>,
-        typescript_message_type: impl Into<String>,
         command_name: impl Into<String>,
         file_path: impl Into<String>,
         line_number: usize,
     ) -> Self {
-        let param_name = parameter_name.into();
         Self {
-            parameter_name: param_name.clone(),
+            parameter_name: parameter_name.into(),
             message_type: message_type.into(),
-            typescript_message_type: typescript_message_type.into(),
             command_name: command_name.into(),
             file_path: file_path.into(),
             line_number,
-            serialized_parameter_name: to_camel_case(&param_name),
         }
+    }
+
+    /// Get serialized parameter name for TypeScript (camelCase by convention)
+    pub fn serialized_parameter_name(&self) -> String {
+        to_camel_case(&self.parameter_name)
     }
 }

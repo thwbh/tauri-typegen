@@ -127,17 +127,11 @@ impl TypeDependencyGraph {
 
             // Show parameters
             for param in &cmd.parameters {
-                output.push_str(&format!(
-                    "  ├─ {}: {} → {}\n",
-                    param.name, param.rust_type, param.typescript_type
-                ));
+                output.push_str(&format!("  ├─ {}: {}\n", param.name, param.rust_type));
             }
 
             // Show return type
-            output.push_str(&format!(
-                "  └─ returns: {} → {}\n",
-                cmd.return_type, cmd.return_type_ts
-            ));
+            output.push_str(&format!("  └─ returns: {}\n", cmd.return_type));
         }
 
         output.push_str("\n🏗️  Discovered Types:\n");

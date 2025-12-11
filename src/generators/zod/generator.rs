@@ -1,7 +1,9 @@
 use crate::analysis::CommandAnalyzer;
 use crate::generators::base::file_writer::FileWriter;
+use crate::generators::base::template_context::{CommandContext, EventContext, FieldContext};
 use crate::generators::base::templates::GlobalContext;
 use crate::generators::base::type_conversion::TypeConverter;
+use crate::generators::base::type_visitor::{TypeScriptVisitor, ZodVisitor};
 use crate::generators::base::{BaseBindingsGenerator, BaseGenerator};
 use crate::models::{CommandInfo, EventInfo, StructInfo};
 use std::collections::{HashMap, HashSet};
@@ -69,9 +71,18 @@ impl ZodBindingsGenerator {
 
     /// Generate Zod schema for an object/struct using templates
     fn generate_object_schema(&self, name: &str, struct_info: &StructInfo) -> String {
+        let visitor = ZodVisitor;
+
+        // Convert FieldInfo to FieldContext with computed Zod schemas
+        let field_contexts: Vec<FieldContext> = struct_info
+            .fields
+            .iter()
+            .map(|field| FieldContext::from_field_info(field, &visitor))
+            .collect();
+
         let mut context = Context::new();
         context.insert("name", name);
-        context.insert("fields", &struct_info.fields);
+        context.insert("fields", &field_contexts);
 
         super::templates::render(&self.tera, "zod/partials/schema.ts.tera", &context)
             .unwrap_or_else(|e| {
@@ -99,10 +110,22 @@ impl ZodBindingsGenerator {
             }
         }
 
+        // Convert commands to context wrappers
+        let visitor = ZodVisitor;
+        let type_resolver = analyzer.get_type_resolver();
+        let command_contexts: Vec<CommandContext> = commands
+            .iter()
+            .map(|cmd| {
+                CommandContext::from_command_info(cmd, &visitor, &|rust_type: &str| {
+                    type_resolver.borrow_mut().parse_type_structure(rust_type)
+                })
+            })
+            .collect();
+
         // Generate parameter schemas using template
         let param_schemas = {
             let mut context = Context::new();
-            context.insert("commands", commands);
+            context.insert("commands", &command_contexts);
             super::templates::render(&self.tera, "zod/partials/param_schemas.ts.tera", &context)
                 .unwrap_or_else(|e| {
                     eprintln!("Template rendering failed for param schemas: {}", e);
@@ -113,7 +136,7 @@ impl ZodBindingsGenerator {
         // Generate type aliases using template
         let type_aliases = {
             let mut context = Context::new();
-            context.insert("commands", commands);
+            context.insert("commands", &command_contexts);
             context.insert("struct_names", &sorted_types);
             super::templates::render(&self.tera, "zod/partials/type_aliases.ts.tera", &context)
                 .unwrap_or_else(|e| {
@@ -140,10 +163,29 @@ impl ZodBindingsGenerator {
     }
 
     /// Generate command bindings with validation
-    fn generate_command_bindings(&self, commands: &[CommandInfo]) -> String {
+    fn generate_command_bindings(
+        &self,
+        commands: &[CommandInfo],
+        analyzer: &CommandAnalyzer,
+    ) -> String {
+        // Use TypeScriptVisitor for command bindings to get proper TS types
+        // (not Zod schemas) in function signatures
+        let visitor = TypeScriptVisitor;
+        let type_resolver = analyzer.get_type_resolver();
+
+        // Convert commands to context wrappers
+        let command_contexts: Vec<CommandContext> = commands
+            .iter()
+            .map(|cmd| {
+                CommandContext::from_command_info(cmd, &visitor, &|rust_type: &str| {
+                    type_resolver.borrow_mut().parse_type_structure(rust_type)
+                })
+            })
+            .collect();
+
         let mut context = Context::new();
         context.insert("header", &self.generate_file_header());
-        context.insert("commands", commands);
+        context.insert("commands", &command_contexts);
         context.insert(
             "has_channels",
             &commands.iter().any(|cmd| !cmd.channels.is_empty()),
@@ -177,16 +219,29 @@ impl ZodBindingsGenerator {
     }
 
     /// Generate events file content
-    fn generate_events_file(&self, events: &[EventInfo]) -> String {
+    fn generate_events_file(&self, events: &[EventInfo], analyzer: &CommandAnalyzer) -> String {
+        let visitor = ZodVisitor;
+        let type_resolver = analyzer.get_type_resolver();
+
+        // Convert events to context wrappers
+        let event_contexts: Vec<EventContext> = events
+            .iter()
+            .map(|event| {
+                EventContext::from_event_info(event, &visitor, &|rust_type: &str| {
+                    type_resolver.borrow_mut().parse_type_structure(rust_type)
+                })
+            })
+            .collect();
+
         // Collect unique payload types for imports
         let mut payload_types: HashSet<String> = HashSet::new();
-        for event in events {
+        for event_ctx in &event_contexts {
             // Extract the TypeScript type name (without generics, arrays, etc.)
-            let type_name = event
+            let type_name = event_ctx
                 .typescript_payload_type
                 .split('<')
                 .next()
-                .unwrap_or(&event.typescript_payload_type);
+                .unwrap_or(&event_ctx.typescript_payload_type);
             let type_name = type_name.split('[').next().unwrap_or(type_name);
             let type_name = type_name.trim();
 
@@ -201,7 +256,7 @@ impl ZodBindingsGenerator {
 
         let mut context = Context::new();
         context.insert("header", &self.generate_file_header());
-        context.insert("events", events);
+        context.insert("events", &event_contexts);
         context.insert(
             "payload_types",
             &payload_types.into_iter().collect::<Vec<_>>(),
@@ -255,13 +310,13 @@ impl BaseBindingsGenerator for ZodBindingsGenerator {
         file_writer.write_types_file(&types_content)?;
 
         // Generate and write commands file
-        let commands_content = self.generate_command_bindings(commands);
+        let commands_content = self.generate_command_bindings(commands, analyzer);
         file_writer.write_commands_file(&commands_content)?;
 
         // Generate and write events file if there are any events
         let events = analyzer.get_discovered_events();
         if !events.is_empty() {
-            let events_content = self.generate_events_file(events);
+            let events_content = self.generate_events_file(events, analyzer);
             file_writer.write_events_file(&events_content)?;
         }
 

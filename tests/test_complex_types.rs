@@ -100,16 +100,16 @@ fn test_complex_parameter_types() {
 
     assert_eq!(create_user.parameters.len(), 3);
     assert_eq!(create_user.parameters[0].name, "name");
-    assert_eq!(create_user.parameters[0].typescript_type, "string");
+    assert_eq!(create_user.parameters[0].typescript_type(), "string");
 
     assert_eq!(create_user.parameters[1].name, "metadata");
     assert_eq!(
-        create_user.parameters[1].typescript_type,
-        "Map<string, string>"
+        create_user.parameters[1].typescript_type(),
+        "Record<string, string>"
     );
 
     assert_eq!(create_user.parameters[2].name, "tags");
-    assert_eq!(create_user.parameters[2].typescript_type, "string[]");
+    assert_eq!(create_user.parameters[2].typescript_type(), "string[]");
 
     // Test get_user_products command with optional BTreeMap
     let get_products = commands
@@ -120,8 +120,8 @@ fn test_complex_parameter_types() {
     assert_eq!(get_products.parameters.len(), 2);
     assert_eq!(get_products.parameters[1].name, "filters");
     assert_eq!(
-        get_products.parameters[1].typescript_type,
-        "Map<string, string[]> | null"
+        get_products.parameters[1].typescript_type(),
+        "Record<string, string[]> | null"
     );
     assert!(get_products.parameters[1].is_optional);
 }
@@ -140,7 +140,7 @@ fn test_tuple_return_type() {
 
     assert_eq!(get_tuple_data.return_type, "(String, i32, Option<f64>)");
     assert_eq!(
-        get_tuple_data.return_type_ts,
+        get_tuple_data.return_type_ts(),
         "[string, number, number | null]"
     );
 }

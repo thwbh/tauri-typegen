@@ -12,30 +12,18 @@ fn create_test_command() -> CommandInfo {
         1,
         vec![ParameterInfo {
             name: "input".to_string(),
-            serialized_name: "input".to_string(),
             rust_type: "String".to_string(),
-            typescript_type: "string".to_string(),
             is_optional: false,
             type_structure: Default::default(),
         }],
         "String",
-        "string",
         true,
         vec![],
     )
 }
 
 fn create_command_without_params() -> CommandInfo {
-    CommandInfo::new_for_test(
-        "simple_command",
-        "test.rs",
-        1,
-        vec![],
-        "()",
-        "void",
-        true,
-        vec![],
-    )
+    CommandInfo::new_for_test("simple_command", "test.rs", 1, vec![], "()", true, vec![])
 }
 
 #[test]

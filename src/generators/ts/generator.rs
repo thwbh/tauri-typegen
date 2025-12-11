@@ -1,7 +1,9 @@
 use crate::analysis::CommandAnalyzer;
 use crate::generators::base::file_writer::FileWriter;
+use crate::generators::base::template_context::{CommandContext, EventContext, FieldContext};
 use crate::generators::base::templates::GlobalContext;
 use crate::generators::base::type_conversion::TypeConverter;
+use crate::generators::base::type_visitor::TypeScriptVisitor;
 use crate::generators::base::{BaseBindingsGenerator, BaseGenerator};
 use crate::models::{CommandInfo, EventInfo, StructInfo};
 use std::collections::{HashMap, HashSet};
@@ -46,11 +48,19 @@ impl TypeScriptBindingsGenerator {
     /// Generate TypeScript interface definitions from structs
     fn generate_struct_interfaces(&self, used_structs: &HashMap<String, StructInfo>) -> String {
         let mut content = String::new();
+        let visitor = TypeScriptVisitor;
 
         for (name, struct_info) in used_structs {
+            // Convert FieldInfo to FieldContext with computed TypeScript types
+            let field_contexts: Vec<FieldContext> = struct_info
+                .fields
+                .iter()
+                .map(|field| FieldContext::from_field_info(field, &visitor))
+                .collect();
+
             let mut context = Context::new();
             context.insert("name", name);
-            context.insert("fields", &struct_info.fields);
+            context.insert("fields", &field_contexts);
 
             let template_name = if struct_info.is_enum {
                 "typescript/partials/enum.tera"
@@ -68,14 +78,25 @@ impl TypeScriptBindingsGenerator {
     }
 
     /// Generate parameter interfaces for commands
-    fn generate_param_interfaces(&self, commands: &[CommandInfo]) -> String {
+    fn generate_param_interfaces(
+        &self,
+        commands: &[CommandInfo],
+        analyzer: &CommandAnalyzer,
+    ) -> String {
         let mut content = String::new();
+        let visitor = TypeScriptVisitor;
+        let type_resolver = analyzer.get_type_resolver();
 
         for command in commands {
             // Generate interface if command has parameters or channels
             if !command.parameters.is_empty() || !command.channels.is_empty() {
+                let command_context =
+                    CommandContext::from_command_info(command, &visitor, &|rust_type: &str| {
+                        type_resolver.borrow_mut().parse_type_structure(rust_type)
+                    });
+
                 let mut context = Context::new();
-                context.insert("command", command);
+                context.insert("command", &command_context);
 
                 if let Ok(rendered) = super::templates::render(
                     &self.tera,
@@ -95,11 +116,12 @@ impl TypeScriptBindingsGenerator {
         &self,
         commands: &[CommandInfo],
         used_structs: &HashMap<String, StructInfo>,
+        analyzer: &CommandAnalyzer,
     ) -> String {
         let has_channels = commands.iter().any(|cmd| !cmd.channels.is_empty());
 
         // Generate parameter interfaces
-        let param_interfaces = self.generate_param_interfaces(commands);
+        let param_interfaces = self.generate_param_interfaces(commands, analyzer);
 
         // Generate struct interfaces
         let struct_interfaces = self.generate_struct_interfaces(used_structs);
@@ -120,12 +142,28 @@ impl TypeScriptBindingsGenerator {
     }
 
     /// Generate command bindings
-    fn generate_command_bindings(&self, commands: &[CommandInfo]) -> String {
+    fn generate_command_bindings(
+        &self,
+        commands: &[CommandInfo],
+        analyzer: &CommandAnalyzer,
+    ) -> String {
         let has_channels = commands.iter().any(|cmd| !cmd.channels.is_empty());
+        let visitor = TypeScriptVisitor;
+        let type_resolver = analyzer.get_type_resolver();
+
+        // Convert commands to context wrappers
+        let command_contexts: Vec<CommandContext> = commands
+            .iter()
+            .map(|cmd| {
+                CommandContext::from_command_info(cmd, &visitor, &|rust_type: &str| {
+                    type_resolver.borrow_mut().parse_type_structure(rust_type)
+                })
+            })
+            .collect();
 
         let mut context = Context::new();
         context.insert("header", &self.generate_file_header());
-        context.insert("commands", commands);
+        context.insert("commands", &command_contexts);
         context.insert("has_channels", &has_channels);
 
         super::templates::render(&self.tera, "typescript/commands.ts.tera", &context)
@@ -178,16 +216,29 @@ impl TypeScriptBindingsGenerator {
     }
 
     /// Generate events file content
-    fn generate_events_file(&self, events: &[EventInfo]) -> String {
+    fn generate_events_file(&self, events: &[EventInfo], analyzer: &CommandAnalyzer) -> String {
+        let visitor = TypeScriptVisitor;
+        let type_resolver = analyzer.get_type_resolver();
+
+        // Convert events to context wrappers
+        let event_contexts: Vec<EventContext> = events
+            .iter()
+            .map(|event| {
+                EventContext::from_event_info(event, &visitor, &|rust_type: &str| {
+                    type_resolver.borrow_mut().parse_type_structure(rust_type)
+                })
+            })
+            .collect();
+
         // Collect unique payload types for imports
         let mut payload_types: HashSet<String> = HashSet::new();
-        for event in events {
+        for event_ctx in &event_contexts {
             // Extract the TypeScript type name (without generics, arrays, etc.)
-            let type_name = event
+            let type_name = event_ctx
                 .typescript_payload_type
                 .split('<')
                 .next()
-                .unwrap_or(&event.typescript_payload_type);
+                .unwrap_or(&event_ctx.typescript_payload_type);
             let type_name = type_name.split('[').next().unwrap_or(type_name);
             let type_name = type_name.trim();
 
@@ -202,7 +253,7 @@ impl TypeScriptBindingsGenerator {
 
         let mut context = Context::new();
         context.insert("header", &self.generate_file_header());
-        context.insert("events", events);
+        context.insert("events", &event_contexts);
         context.insert(
             "payload_types",
             &payload_types.into_iter().collect::<Vec<_>>(),
@@ -255,17 +306,17 @@ impl BaseBindingsGenerator for TypeScriptBindingsGenerator {
         let mut file_writer = FileWriter::new(output_path)?;
 
         // Generate and write types file
-        let types_content = self.generate_types_file_content(commands, &used_structs);
+        let types_content = self.generate_types_file_content(commands, &used_structs, analyzer);
         file_writer.write_types_file(&types_content)?;
 
         // Generate and write commands file
-        let commands_content = self.generate_command_bindings(commands);
+        let commands_content = self.generate_command_bindings(commands, analyzer);
         file_writer.write_commands_file(&commands_content)?;
 
         // Generate and write events file if there are any events
         let events = analyzer.get_discovered_events();
         if !events.is_empty() {
-            let events_content = self.generate_events_file(events);
+            let events_content = self.generate_events_file(events, analyzer);
             file_writer.write_events_file(&events_content)?;
         }
 

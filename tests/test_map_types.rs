@@ -62,12 +62,12 @@ pub async fn get_config() -> Result<BTreeMap<String, i32>, String> {
 
     println!("Vanilla TypeScript types content:\n{}", types_content);
 
-    // Should use Map<K, V> instead of Record<K, V>
-    assert!(types_content.contains("Map<string, string>"));
-    assert!(types_content.contains("Map<string, number>"));
+    // Should use Record<K, V> for JSON-serializable objects with dynamic keys
+    assert!(types_content.contains("Record<string, string>"));
+    assert!(types_content.contains("Record<string, number>"));
 
-    // Should NOT use Record anymore
-    assert!(!types_content.contains("Record<string, string>"));
+    // Should NOT use Map (Map is not JSON-serializable)
+    assert!(!types_content.contains("Map<string, string>"));
 
     // Test Zod generation
     let output_dir_zod = temp_dir.path().join("generated_zod");

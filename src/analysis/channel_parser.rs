@@ -23,7 +23,7 @@ impl ChannelParser {
         func: &ItemFn,
         command_name: &str,
         file_path: &Path,
-        type_resolver: &mut TypeResolver,
+        _type_resolver: &mut TypeResolver,
     ) -> Result<Vec<ChannelInfo>, Box<dyn std::error::Error>> {
         let mut channels = Vec::new();
 
@@ -39,25 +39,15 @@ impl ChannelParser {
 
                 // Check if this parameter is a Channel type
                 if let Some(message_type) = self.extract_channel_message_type(&pat_type.ty) {
-                    // Map Rust type to TypeScript
-                    let typescript_message_type =
-                        type_resolver.map_rust_type_to_typescript(&message_type);
-
-                    // Compute serialized parameter name using conventions (TODO: Parse serde attributes to override)
-                    use crate::models::to_camel_case;
-                    let serialized_parameter_name = to_camel_case(&param_name);
-
                     // Get line number from parameter span
                     let line_number = pat_type.ty.span().start().line;
 
                     channels.push(ChannelInfo {
                         parameter_name: param_name,
                         message_type: message_type.clone(),
-                        typescript_message_type,
                         command_name: command_name.to_string(),
                         file_path: file_path.to_string_lossy().to_string(),
                         line_number,
-                        serialized_parameter_name,
                     });
                 }
             }

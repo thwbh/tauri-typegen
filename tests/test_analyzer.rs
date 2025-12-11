@@ -57,7 +57,7 @@ fn test_analyzer_extracts_command_details() {
     assert_eq!(create_user.parameters[0].name, "request");
     assert_eq!(create_user.parameters[0].rust_type, "CreateUserRequest");
     assert_eq!(create_user.return_type, "Result<User, String>");
-    assert_eq!(create_user.return_type_ts, "User");
+    assert_eq!(create_user.return_type_ts(), "User");
 
     // Find the calculate_sum command
     let calculate_sum = commands
@@ -68,11 +68,11 @@ fn test_analyzer_extracts_command_details() {
     assert!(!calculate_sum.is_async);
     assert_eq!(calculate_sum.parameters.len(), 2);
     assert_eq!(calculate_sum.parameters[0].name, "a");
-    assert_eq!(calculate_sum.parameters[0].typescript_type, "number");
+    assert_eq!(calculate_sum.parameters[0].typescript_type(), "number");
     assert_eq!(calculate_sum.parameters[1].name, "b");
-    assert_eq!(calculate_sum.parameters[1].typescript_type, "number");
+    assert_eq!(calculate_sum.parameters[1].typescript_type(), "number");
     assert_eq!(calculate_sum.return_type, "i32");
-    assert_eq!(calculate_sum.return_type_ts, "number");
+    assert_eq!(calculate_sum.return_type_ts(), "number");
 }
 
 #[test]
@@ -92,17 +92,17 @@ fn test_analyzer_handles_complex_parameters() {
 
     // Check limit parameter
     assert_eq!(get_users.parameters[0].name, "limit");
-    assert_eq!(get_users.parameters[0].typescript_type, "number");
+    assert_eq!(get_users.parameters[0].typescript_type(), "number");
     assert!(!get_users.parameters[0].is_optional);
 
     // Check offset parameter (Optional)
     assert_eq!(get_users.parameters[1].name, "offset");
-    assert_eq!(get_users.parameters[1].typescript_type, "number | null");
+    assert_eq!(get_users.parameters[1].typescript_type(), "number | null");
     assert!(get_users.parameters[1].is_optional);
 
     // Check search parameter
     assert_eq!(get_users.parameters[2].name, "search");
-    assert_eq!(get_users.parameters[2].typescript_type, "string");
+    assert_eq!(get_users.parameters[2].typescript_type(), "string");
     assert!(!get_users.parameters[2].is_optional);
 }
 
@@ -124,7 +124,7 @@ fn test_analyzer_handles_no_parameters() {
         get_server_info.return_type,
         "Result<SimpleResponse, String>"
     );
-    assert_eq!(get_server_info.return_type_ts, "SimpleResponse");
+    assert_eq!(get_server_info.return_type_ts(), "SimpleResponse");
 }
 
 #[test]
@@ -272,7 +272,7 @@ fn test_analyzer_skips_tauri_parameters() {
     // Should only have user_param, not app or window
     assert_eq!(command.parameters.len(), 1);
     assert_eq!(command.parameters[0].name, "user_param");
-    assert_eq!(command.parameters[0].typescript_type, "string");
+    assert_eq!(command.parameters[0].typescript_type(), "string");
 }
 
 #[test]

@@ -54,14 +54,8 @@ impl CommandParser {
     ) -> Option<CommandInfo> {
         let name = func.sig.ident.to_string();
 
-        // Compute TypeScript names using conventions (TODO: Parse serde attributes to override)
-        use crate::models::{to_camel_case, to_pascal_case};
-        let ts_function_name = to_camel_case(&name);
-        let ts_type_name = to_pascal_case(&name);
-
         let parameters = self.extract_parameters(&func.sig.inputs, type_resolver);
-        let (return_type, return_type_ts) =
-            self.extract_return_types(&func.sig.output, type_resolver);
+        let return_type = self.extract_return_type(&func.sig.output, type_resolver);
         let is_async = func.sig.asyncness.is_some();
 
         // Get line number from the function's span
@@ -71,13 +65,10 @@ impl CommandParser {
             name,
             parameters,
             return_type,
-            return_type_ts,
             file_path: file_path.to_string_lossy().to_string(),
             line_number,
             is_async,
             channels: Vec::new(), // Will be populated by channel_parser
-            ts_function_name,
-            ts_type_name,
         })
     }
 
@@ -100,21 +91,14 @@ impl CommandParser {
                         }
 
                         let rust_type = Self::type_to_string(ty);
-                        let typescript_type = type_resolver.map_rust_type_to_typescript(&rust_type);
                         let type_structure = type_resolver.parse_type_structure(&rust_type);
                         let is_optional = self.is_optional_type(ty);
-
-                        // Compute serialized name (TODO: Parse serde attributes on parameters if present)
-                        use crate::models::to_camel_case;
-                        let serialized_name = to_camel_case(&name);
 
                         return Some(ParameterInfo {
                             name,
                             rust_type,
-                            typescript_type,
                             is_optional,
                             type_structure,
-                            serialized_name,
                         });
                     }
                 }
@@ -185,19 +169,15 @@ impl CommandParser {
         false
     }
 
-    /// Extract return type from function signature - returns (rust_type, typescript_type)
-    fn extract_return_types(
+    /// Extract return type from function signature - returns rust_type only
+    fn extract_return_type(
         &self,
         output: &ReturnType,
-        type_resolver: &mut TypeResolver,
-    ) -> (String, String) {
+        _type_resolver: &mut TypeResolver,
+    ) -> String {
         match output {
-            ReturnType::Default => ("()".to_string(), "void".to_string()),
-            ReturnType::Type(_, ty) => {
-                let rust_type = Self::type_to_string(ty);
-                let typescript_type = type_resolver.map_rust_type_to_typescript(&rust_type);
-                (rust_type, typescript_type)
-            }
+            ReturnType::Default => "()".to_string(),
+            ReturnType::Type(_, ty) => Self::type_to_string(ty),
         }
     }
 

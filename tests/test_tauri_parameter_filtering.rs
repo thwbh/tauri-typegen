@@ -41,7 +41,7 @@ fn test_filters_app_handle() {
     // Should only have user_input, not app
     assert_eq!(command.parameters.len(), 1);
     assert_eq!(command.parameters[0].name, "user_input");
-    assert_eq!(command.parameters[0].typescript_type, "string");
+    assert_eq!(command.parameters[0].typescript_type(), "string");
 }
 
 #[test]
@@ -69,7 +69,7 @@ fn test_filters_window() {
     // Should only have count, not window
     assert_eq!(command.parameters.len(), 1);
     assert_eq!(command.parameters[0].name, "count");
-    assert_eq!(command.parameters[0].typescript_type, "number");
+    assert_eq!(command.parameters[0].typescript_type(), "number");
 }
 
 #[test]
@@ -97,7 +97,7 @@ fn test_filters_webview_window() {
     // Should only have enabled, not webview
     assert_eq!(command.parameters.len(), 1);
     assert_eq!(command.parameters[0].name, "enabled");
-    assert_eq!(command.parameters[0].typescript_type, "boolean");
+    assert_eq!(command.parameters[0].typescript_type(), "boolean");
 }
 
 #[test]
@@ -129,7 +129,7 @@ fn test_filters_state() {
     // Should only have name, not state
     assert_eq!(command.parameters.len(), 1);
     assert_eq!(command.parameters[0].name, "name");
-    assert_eq!(command.parameters[0].typescript_type, "string");
+    assert_eq!(command.parameters[0].typescript_type(), "string");
 }
 
 #[test]
@@ -155,7 +155,7 @@ fn test_filters_ipc_request() {
     // Should only have data, not request
     assert_eq!(command.parameters.len(), 1);
     assert_eq!(command.parameters[0].name, "data");
-    assert_eq!(command.parameters[0].typescript_type, "string");
+    assert_eq!(command.parameters[0].typescript_type(), "string");
 }
 
 #[test]
@@ -181,7 +181,7 @@ fn test_filters_ipc_channel() {
     // Should only have initial_value, not channel
     assert_eq!(command.parameters.len(), 1);
     assert_eq!(command.parameters[0].name, "initial_value");
-    assert_eq!(command.parameters[0].typescript_type, "number");
+    assert_eq!(command.parameters[0].typescript_type(), "number");
 }
 
 #[test]
@@ -209,7 +209,7 @@ fn test_filters_manager_trait() {
     // Should only have value, not app
     assert_eq!(command.parameters.len(), 1);
     assert_eq!(command.parameters[0].name, "value");
-    assert_eq!(command.parameters[0].typescript_type, "number");
+    assert_eq!(command.parameters[0].typescript_type(), "number");
 }
 
 #[test]
@@ -247,9 +247,9 @@ fn test_filters_multiple_tauri_params() {
     // Should only have user_name and user_age
     assert_eq!(command.parameters.len(), 2);
     assert_eq!(command.parameters[0].name, "user_name");
-    assert_eq!(command.parameters[0].typescript_type, "string");
+    assert_eq!(command.parameters[0].typescript_type(), "string");
     assert_eq!(command.parameters[1].name, "user_age");
-    assert_eq!(command.parameters[1].typescript_type, "number");
+    assert_eq!(command.parameters[1].typescript_type(), "number");
 }
 
 #[test]
@@ -285,11 +285,11 @@ fn test_tauri_params_in_different_order() {
     // Should have all three user params in order
     assert_eq!(command.parameters.len(), 3);
     assert_eq!(command.parameters[0].name, "first_user_param");
-    assert_eq!(command.parameters[0].typescript_type, "string");
+    assert_eq!(command.parameters[0].typescript_type(), "string");
     assert_eq!(command.parameters[1].name, "second_user_param");
-    assert_eq!(command.parameters[1].typescript_type, "number");
+    assert_eq!(command.parameters[1].typescript_type(), "number");
     assert_eq!(command.parameters[2].name, "third_user_param");
-    assert_eq!(command.parameters[2].typescript_type, "boolean");
+    assert_eq!(command.parameters[2].typescript_type(), "boolean");
 }
 
 #[test]
@@ -329,9 +329,9 @@ fn test_does_not_filter_user_types_with_similar_names() {
     // Should keep both parameters since they're user-defined types
     assert_eq!(command.parameters.len(), 2);
     assert_eq!(command.parameters[0].name, "window");
-    assert_eq!(command.parameters[0].typescript_type, "MyWindow");
+    assert_eq!(command.parameters[0].typescript_type(), "MyWindow");
     assert_eq!(command.parameters[1].name, "state");
-    assert_eq!(command.parameters[1].typescript_type, "MyState");
+    assert_eq!(command.parameters[1].typescript_type(), "MyState");
 }
 
 #[test]
@@ -362,5 +362,5 @@ fn test_fully_qualified_tauri_types() {
     // Should only have user_data
     assert_eq!(command.parameters.len(), 1);
     assert_eq!(command.parameters[0].name, "user_data");
-    assert_eq!(command.parameters[0].typescript_type, "string");
+    assert_eq!(command.parameters[0].typescript_type(), "string");
 }

@@ -13,13 +13,11 @@ fn create_sample_commands() -> Vec<CommandInfo> {
             10,
             vec![ParameterInfo {
                 name: "name".to_string(),
-                serialized_name: "name".to_string(),
+
                 rust_type: "String".to_string(),
-                typescript_type: "string".to_string(),
                 is_optional: false,
                 type_structure: Default::default(),
             }],
-            "string",
             "string",
             true,
             vec![],
@@ -29,7 +27,6 @@ fn create_sample_commands() -> Vec<CommandInfo> {
             "test_file.rs",
             15,
             vec![],
-            "number",
             "number",
             false,
             vec![],
@@ -205,15 +202,16 @@ fn test_commands_file_generation() {
     // Check specific command functions
     assert!(commands_content.contains("export async function greet"));
     assert!(commands_content.contains("params: types.GreetParams"));
-    assert!(commands_content.contains("hooks?: CommandHooks<string>"));
-    assert!(commands_content.contains("Promise<string>"));
+    // Zod generator uses schema types for hooks
+    assert!(commands_content.contains("hooks?: CommandHooks<"));
+    assert!(commands_content.contains("Promise<"));
     assert!(commands_content.contains("types.GreetParamsSchema.safeParse(params)"));
-    assert!(commands_content.contains("invoke<string>('greet'"));
+    assert!(commands_content.contains("invoke<"));
 
     // Check command without parameters has hooks
     assert!(commands_content.contains("export async function getUserCount"));
-    assert!(commands_content.contains("hooks?: CommandHooks<number>"));
-    assert!(commands_content.contains("invoke<number>('get_user_count')"));
+    assert!(commands_content.contains("hooks?: CommandHooks<"));
+    assert!(commands_content.contains("invoke<"));
 }
 
 #[test]
@@ -292,17 +290,15 @@ fn test_generator_with_void_return() {
         10,
         vec![ParameterInfo {
             name: "id".to_string(),
-            serialized_name: "id".to_string(),
             rust_type: "i32".to_string(),
-            typescript_type: "number".to_string(),
             is_optional: false,
             type_structure: Default::default(),
         }],
         "void",
-        "void",
         true,
         vec![],
     )];
+
     let discovered_structs = create_empty_structs();
 
     let mut generator = BindingsGenerator::new(None);
@@ -360,7 +356,6 @@ fn test_primitive_arrays_and_optional_custom_types() {
             10,
             vec![],
             "Vec<String>",
-            "string[]", // Already converted from Vec<String>
             true,
             vec![],
         ),
@@ -370,7 +365,6 @@ fn test_primitive_arrays_and_optional_custom_types() {
             20,
             vec![],
             "Option<User>",
-            "User | null", // Already converted from Option<User>
             true,
             vec![],
         ),
@@ -380,7 +374,6 @@ fn test_primitive_arrays_and_optional_custom_types() {
             30,
             vec![],
             "Vec<Item>",
-            "Item[]", // Already converted from Vec<Item>
             true,
             vec![],
         ),

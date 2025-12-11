@@ -360,7 +360,6 @@ fn test_typescript_type_conversion() {
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].event_name, "typed-event");
     assert_eq!(events[0].payload_type, "MyEvent");
-    assert_eq!(events[0].typescript_payload_type, "MyEvent");
 }
 
 #[test]

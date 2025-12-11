@@ -360,7 +360,6 @@ fn test_typescript_type_conversion() {
     assert_eq!(commands[0].channels.len(), 1);
     assert_eq!(commands[0].channels[0].parameter_name, "on_data");
     assert_eq!(commands[0].channels[0].message_type, "MyData");
-    assert_eq!(commands[0].channels[0].typescript_message_type, "MyData");
 }
 
 #[test]

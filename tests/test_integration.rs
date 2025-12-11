@@ -364,7 +364,7 @@ fn test_type_mapping_accuracy() {
     let request_param = &create_user.parameters[0];
     assert_eq!(request_param.name, "request");
     assert_eq!(request_param.rust_type, "CreateUserRequest");
-    assert_eq!(request_param.typescript_type, "CreateUserRequest");
+    assert_eq!(request_param.typescript_type(), "CreateUserRequest");
 
     // Find get_users command and verify optional parameter
     let get_users = commands
@@ -376,7 +376,7 @@ fn test_type_mapping_accuracy() {
     let filter_param = &get_users.parameters[0];
     assert_eq!(filter_param.name, "filter");
     assert!(filter_param.is_optional);
-    assert!(filter_param.typescript_type.contains("| null"));
+    assert!(filter_param.typescript_type().contains("| null"));
 
     // Find export_data command and verify multiple parameters
     let export_data = commands
@@ -386,9 +386,9 @@ fn test_type_mapping_accuracy() {
 
     assert_eq!(export_data.parameters.len(), 2);
     assert_eq!(export_data.parameters[0].name, "format");
-    assert_eq!(export_data.parameters[0].typescript_type, "string");
+    assert_eq!(export_data.parameters[0].typescript_type(), "string");
     assert_eq!(export_data.parameters[1].name, "include_inactive");
-    assert_eq!(export_data.parameters[1].typescript_type, "boolean");
+    assert_eq!(export_data.parameters[1].typescript_type(), "boolean");
 }
 
 #[test]

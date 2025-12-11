@@ -1,6 +1,8 @@
 pub mod file_writer;
+pub mod template_context;
 pub mod templates;
 pub mod type_conversion;
+pub mod type_visitor;
 
 use crate::analysis::CommandAnalyzer;
 use crate::models::{CommandInfo, StructInfo};
