@@ -56,6 +56,7 @@ impl CommandParser {
 
         let parameters = self.extract_parameters(&func.sig.inputs, type_resolver);
         let return_type = self.extract_return_type(&func.sig.output);
+        let return_type_structure = type_resolver.parse_type_structure(&return_type);
         let is_async = func.sig.asyncness.is_some();
 
         // Get line number from the function's span
@@ -65,6 +66,7 @@ impl CommandParser {
             name,
             parameters,
             return_type,
+            return_type_structure,
             file_path: file_path.to_string_lossy().to_string(),
             line_number,
             is_async,
@@ -116,7 +118,6 @@ impl CommandParser {
             // Check various patterns:
             // 1. Fully qualified: tauri::AppHandle, tauri::State<T>, tauri::ipc::Request
             // 2. Imported: AppHandle, State<T>, Window<T>
-
             if segments.len() >= 2 {
                 // Check for tauri::* or tauri::ipc::*
                 if segments[0].ident == "tauri" {

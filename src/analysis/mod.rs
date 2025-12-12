@@ -20,7 +20,7 @@ use event_parser::EventParser;
 use struct_parser::StructParser;
 use type_resolver::TypeResolver;
 
-/// Comprehensive analyzer that orchestrates all analysis sub-modules
+/// Analyzer that orchestrates all analysis sub-modules
 pub struct CommandAnalyzer {
     /// AST cache for parsed files
     ast_cache: AstCache,
@@ -453,7 +453,7 @@ impl CommandAnalyzer {
 
         // Check if this is a custom type name
         if !rust_type.is_empty()
-            && !self.type_resolver.get_type_mappings().contains_key(rust_type)
+            && !self.type_resolver.get_type_set().contains(rust_type)
             && !rust_type.starts_with(char::is_lowercase) // Skip built-in types
             && rust_type.chars().next().is_some_and(char::is_alphabetic)
             && !rust_type.contains('<')
@@ -520,11 +520,6 @@ impl CommandAnalyzer {
     /// Generate a DOT graph visualization of the dependency graph
     pub fn generate_dot_graph(&self, commands: &[CommandInfo]) -> String {
         self.dependency_graph.generate_dot_graph(commands)
-    }
-
-    /// Map a Rust type to its TypeScript equivalent
-    pub fn map_rust_type_to_typescript(&mut self, rust_type: &str) -> String {
-        self.type_resolver.map_rust_type_to_typescript(rust_type)
     }
 }
 

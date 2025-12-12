@@ -12,12 +12,6 @@
       {%- endif -%}
     {%- elif ts.primitive == "boolean" -%}
       z.coerce.boolean()
-    {%- elif ts.primitive == "null" -%}
-      z.null()
-    {%- elif ts.primitive == "any" -%}
-      z.any()
-    {%- elif ts.primitive == "unknown" -%}
-      z.unknown()
     {%- elif ts.primitive == "void" -%}
       z.void()
     {%- else -%}

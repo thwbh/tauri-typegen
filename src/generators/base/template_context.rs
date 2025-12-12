@@ -2,6 +2,55 @@ use crate::generators::base::type_visitor::TypeVisitor;
 use crate::models::{ChannelInfo, CommandInfo, EventInfo, FieldInfo, ParameterInfo};
 use serde::{Deserialize, Serialize};
 
+/// Add "types." prefix to custom types for use in function signatures (return types, parameters)
+/// This is only needed for references in commands.ts, not in type definitions themselves
+fn prefix_custom_types(ts_type: &str) -> String {
+    // Handle primitives - no prefix needed
+    if matches!(
+        ts_type,
+        "void" | "string" | "number" | "boolean" | "any" | "unknown" | "null" | "undefined"
+    ) {
+        return ts_type.to_string();
+    }
+
+    // Handle arrays: CustomType[] -> types.CustomType[]
+    if let Some(base_type) = ts_type.strip_suffix("[]") {
+        if matches!(base_type, "string" | "number" | "boolean" | "void") {
+            return ts_type.to_string();
+        }
+        return format!("types.{}[]", base_type);
+    }
+
+    // Handle Record/Map - they contain types but the structure itself doesn't need prefix
+    if ts_type.starts_with("Record<") || ts_type.starts_with("Map<") {
+        return ts_type.to_string();
+    }
+
+    // Handle union with null: CustomType | null -> types.CustomType | null
+    if ts_type.ends_with(" | null") {
+        let base = ts_type.strip_suffix(" | null").unwrap();
+        return format!("{} | null", prefix_custom_types(base));
+    }
+
+    // Handle union with undefined: CustomType | undefined -> types.CustomType | undefined
+    if ts_type.ends_with(" | undefined") {
+        let base = ts_type.strip_suffix(" | undefined").unwrap();
+        return format!("{} | undefined", prefix_custom_types(base));
+    }
+
+    // Handle tuples [T, U, ...] - keep as is since they're inline
+    if ts_type.starts_with('[') && ts_type.ends_with(']') {
+        return ts_type.to_string();
+    }
+
+    // Custom type - add prefix if not already present
+    if ts_type.starts_with("types.") {
+        ts_type.to_string()
+    } else {
+        format!("types.{}", ts_type)
+    }
+}
+
 /// Template context wrapper for CommandInfo with computed TypeScript-specific fields
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -24,8 +73,10 @@ impl CommandContext {
         visitor: &V,
         type_resolver: &dyn Fn(&str) -> crate::models::TypeStructure,
     ) -> Self {
-        let return_type_structure = type_resolver(&cmd.return_type);
-        let return_type_ts = visitor.visit_type(&return_type_structure);
+        // Use pre-parsed type structure from CommandInfo
+        let return_type_ts = visitor.visit_type(&cmd.return_type_structure);
+        // Add types. prefix for function signatures
+        let return_type_ts = prefix_custom_types(&return_type_ts);
 
         Self {
             name: cmd.name.clone(),
@@ -64,6 +115,8 @@ pub struct ParameterContext {
 
 impl ParameterContext {
     pub fn from_parameter_info<V: TypeVisitor>(param: &ParameterInfo, visitor: &V) -> Self {
+        // NO prefix - this is used in type definitions (Params interfaces in types.ts)
+        // Prefix is added in command templates for function signatures
         let typescript_type = visitor.visit_type(&param.type_structure);
 
         Self {
@@ -126,6 +179,8 @@ impl ChannelContext {
         type_resolver: &dyn Fn(&str) -> crate::models::TypeStructure,
     ) -> Self {
         let message_type_structure = type_resolver(&channel.message_type);
+        // NO prefix - used in type definitions (Params interfaces)
+        // Prefix is added in command templates for function signatures
         let typescript_message_type = visitor.visit_type(&message_type_structure);
 
         Self {
@@ -160,6 +215,8 @@ impl EventContext {
     ) -> Self {
         let payload_type_structure = type_resolver(&event.payload_type);
         let typescript_payload_type = visitor.visit_type(&payload_type_structure);
+        // Add types. prefix for function signatures (same as commands.ts)
+        let typescript_payload_type = prefix_custom_types(&typescript_payload_type);
 
         Self {
             event_name: event.event_name.clone(),

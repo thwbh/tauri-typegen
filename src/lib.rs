@@ -7,13 +7,6 @@ pub mod generators;
 pub mod interface;
 pub mod models;
 
-// Legacy compatibility (deprecated)
-#[deprecated(since = "0.2.0", note = "Use interface::config instead")]
-pub mod cli {
-    pub use crate::interface::config::*;
-    pub use crate::interface::generate_from_config;
-}
-
 pub use error::{Error, Result};
 pub use models::*;
 

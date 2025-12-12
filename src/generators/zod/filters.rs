@@ -174,8 +174,9 @@ fn type_structure_to_zod_schema(type_structure: &TypeStructure, is_record_key: b
     }
 }
 
-fn primitive_to_zod_schema(ts_type: &str, is_record_key: bool) -> String {
-    match ts_type {
+fn primitive_to_zod_schema(target_primitive: &str, is_record_key: bool) -> String {
+    // TypeStructure::Primitive should only contain: "string", "number", "boolean", "void"
+    match target_primitive {
         "number" => {
             if is_record_key {
                 "z.number()".to_string()
@@ -185,10 +186,17 @@ fn primitive_to_zod_schema(ts_type: &str, is_record_key: bool) -> String {
         }
         "string" => "z.string()".to_string(),
         "boolean" => "z.coerce.boolean()".to_string(),
+        "void" => "z.void()".to_string(),
         "null" => "z.null()".to_string(),
         "any" => "z.any()".to_string(),
         "unknown" => "z.unknown()".to_string(),
-        _ => format!("z.unknown() /* Unknown primitive: {} */", ts_type),
+        _ => {
+            eprintln!(
+                "Warning: Zod filter received unexpected primitive: {}",
+                target_primitive
+            );
+            format!("z.unknown() /* Unexpected: {} */", target_primitive)
+        }
     }
 }
 
@@ -289,11 +297,11 @@ mod tests {
 
     #[test]
     fn test_type_structure_to_zod_schema() {
-        // Test primitive
+        // Test primitive with target type names
         let ts = TypeStructure::Primitive("string".to_string());
         assert_eq!(type_structure_to_zod_schema(&ts, false), "z.string()");
 
-        // Test array
+        // Test array with target numeric type
         let ts = TypeStructure::Array(Box::new(TypeStructure::Primitive("number".to_string())));
         assert_eq!(
             type_structure_to_zod_schema(&ts, false),
@@ -310,7 +318,7 @@ mod tests {
             "z.record(z.number(), z.string())"
         );
 
-        // Test tuple
+        // Test tuple with target types
         let ts = TypeStructure::Tuple(vec![
             TypeStructure::Primitive("string".to_string()),
             TypeStructure::Primitive("number".to_string()),
@@ -320,7 +328,7 @@ mod tests {
             "z.tuple([z.string(), z.coerce.number()])"
         );
 
-        // Test optional
+        // Test optional with target type
         let ts = TypeStructure::Optional(Box::new(TypeStructure::Primitive("string".to_string())));
         assert_eq!(
             type_structure_to_zod_schema(&ts, false),

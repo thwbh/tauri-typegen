@@ -1,115 +1,44 @@
 use crate::models::TypeStructure;
-use std::collections::HashMap;
+use std::collections::HashSet;
 
 /// Type resolver for mapping Rust types to TypeScript types
 #[derive(Debug)]
 pub struct TypeResolver {
-    type_mappings: HashMap<String, String>,
+    type_set: HashSet<String>,
 }
 
 impl TypeResolver {
     pub fn new() -> Self {
-        let mut type_mappings = HashMap::new();
+        let mut type_set = HashSet::new();
 
-        // Basic Rust to TypeScript mappings
-        type_mappings.insert("String".to_string(), "string".to_string());
-        type_mappings.insert("&str".to_string(), "string".to_string());
-        type_mappings.insert("str".to_string(), "string".to_string());
-        type_mappings.insert("i8".to_string(), "number".to_string());
-        type_mappings.insert("i16".to_string(), "number".to_string());
-        type_mappings.insert("i32".to_string(), "number".to_string());
-        type_mappings.insert("i64".to_string(), "number".to_string());
-        type_mappings.insert("i128".to_string(), "number".to_string());
-        type_mappings.insert("isize".to_string(), "number".to_string());
-        type_mappings.insert("u8".to_string(), "number".to_string());
-        type_mappings.insert("u16".to_string(), "number".to_string());
-        type_mappings.insert("u32".to_string(), "number".to_string());
-        type_mappings.insert("u64".to_string(), "number".to_string());
-        type_mappings.insert("u128".to_string(), "number".to_string());
-        type_mappings.insert("usize".to_string(), "number".to_string());
-        type_mappings.insert("f32".to_string(), "number".to_string());
-        type_mappings.insert("f64".to_string(), "number".to_string());
-        type_mappings.insert("bool".to_string(), "boolean".to_string());
-        type_mappings.insert("()".to_string(), "void".to_string());
+        // Basic Rust types
+        type_set.insert("String".to_string());
+        type_set.insert("&str".to_string());
+        type_set.insert("str".to_string());
+        type_set.insert("i8".to_string());
+        type_set.insert("i16".to_string());
+        type_set.insert("i32".to_string());
+        type_set.insert("i64".to_string());
+        type_set.insert("i128".to_string());
+        type_set.insert("isize".to_string());
+        type_set.insert("u8".to_string());
+        type_set.insert("u16".to_string());
+        type_set.insert("u32".to_string());
+        type_set.insert("u64".to_string());
+        type_set.insert("u128".to_string());
+        type_set.insert("usize".to_string());
+        type_set.insert("f32".to_string());
+        type_set.insert("f64".to_string());
+        type_set.insert("bool".to_string());
+        type_set.insert("()".to_string());
 
         // Collection type mappings
-        type_mappings.insert("HashMap".to_string(), "Map".to_string());
-        type_mappings.insert("BTreeMap".to_string(), "Map".to_string());
-        type_mappings.insert("HashSet".to_string(), "Set".to_string());
-        type_mappings.insert("BTreeSet".to_string(), "Set".to_string());
+        type_set.insert("HashMap".to_string());
+        type_set.insert("BTreeMap".to_string());
+        type_set.insert("HashSet".to_string());
+        type_set.insert("BTreeSet".to_string());
 
-        Self { type_mappings }
-    }
-
-    /// Map a Rust type string to TypeScript type string
-    pub fn map_rust_type_to_typescript(&mut self, rust_type: &str) -> String {
-        // Handle Option<T> -> T | null
-        if let Some(inner_type) = self.extract_option_inner_type(rust_type) {
-            let mapped_inner = self.map_rust_type_to_typescript(&inner_type);
-            return format!("{} | null", mapped_inner);
-        }
-
-        // Handle Result<T, E> -> T (ignore error type for TypeScript)
-        if let Some(ok_type) = self.extract_result_ok_type(rust_type) {
-            return self.map_rust_type_to_typescript(&ok_type);
-        }
-
-        // Handle Vec<T> -> T[]
-        if let Some(inner_type) = self.extract_vec_inner_type(rust_type) {
-            let mapped_inner = self.map_rust_type_to_typescript(&inner_type);
-            return format!("{}[]", mapped_inner);
-        }
-
-        // Handle HashMap<K, V> -> Map<K, V>
-        if let Some((key_type, value_type)) = self.extract_hashmap_types(rust_type) {
-            let mapped_key = self.map_rust_type_to_typescript(&key_type);
-            let mapped_value = self.map_rust_type_to_typescript(&value_type);
-            return format!("Map<{}, {}>", mapped_key, mapped_value);
-        }
-
-        // Handle BTreeMap<K, V> -> Map<K, V>
-        if let Some((key_type, value_type)) = self.extract_btreemap_types(rust_type) {
-            let mapped_key = self.map_rust_type_to_typescript(&key_type);
-            let mapped_value = self.map_rust_type_to_typescript(&value_type);
-            return format!("Map<{}, {}>", mapped_key, mapped_value);
-        }
-
-        // Handle HashSet<T> -> T[] (arrays for JSON compatibility)
-        if let Some(inner_type) = self.extract_hashset_inner_type(rust_type) {
-            let mapped_inner = self.map_rust_type_to_typescript(&inner_type);
-            return format!("{}[]", mapped_inner);
-        }
-
-        // Handle BTreeSet<T> -> T[]
-        if let Some(inner_type) = self.extract_btreeset_inner_type(rust_type) {
-            let mapped_inner = self.map_rust_type_to_typescript(&inner_type);
-            return format!("{}[]", mapped_inner);
-        }
-
-        // Handle tuple types (String, i32) -> [string, number]
-        if let Some(tuple_types) = self.extract_tuple_types(rust_type) {
-            if tuple_types.is_empty() {
-                return "void".to_string();
-            }
-            let mapped_types: Vec<String> = tuple_types
-                .iter()
-                .map(|t| self.map_rust_type_to_typescript(t.trim()))
-                .collect();
-            return format!("[{}]", mapped_types.join(", "));
-        }
-
-        // Handle reference types &T -> T
-        if let Some(inner_type) = self.extract_reference_type(rust_type) {
-            return self.map_rust_type_to_typescript(&inner_type);
-        }
-
-        // Direct mapping lookup
-        if let Some(mapped) = self.type_mappings.get(rust_type) {
-            return mapped.clone();
-        }
-
-        // If no mapping found, assume it's a custom type and return as-is
-        rust_type.to_string()
+        Self { type_set }
     }
 
     /// Extract inner type from Option<T>
@@ -235,13 +164,8 @@ impl TypeResolver {
     }
 
     /// Get the type mappings
-    pub fn get_type_mappings(&self) -> &HashMap<String, String> {
-        &self.type_mappings
-    }
-
-    /// Add a custom type mapping
-    pub fn add_type_mapping(&mut self, rust_type: String, typescript_type: String) {
-        self.type_mappings.insert(rust_type, typescript_type);
+    pub fn get_type_set(&self) -> &HashSet<String> {
+        &self.type_set
     }
 
     /// Parse a Rust type string into a structured TypeStructure
@@ -300,13 +224,31 @@ impl TypeResolver {
             return TypeStructure::Tuple(parsed_types);
         }
 
-        // Check if it's a primitive type
-        if let Some(ts_type) = self.type_mappings.get(cleaned) {
-            return TypeStructure::Primitive(ts_type.clone());
+        // Check if it's a primitive type and map to target primitive
+        if let Some(target_primitive) = self.map_to_target_primitive(cleaned) {
+            return TypeStructure::Primitive(target_primitive);
         }
 
         // Otherwise, it's a custom type
         TypeStructure::Custom(cleaned.to_string())
+    }
+
+    /// Map Rust primitive types to target language primitives
+    /// Returns Some("number" | "string" | "boolean" | "void") or None for non-primitives
+    fn map_to_target_primitive(&self, rust_type: &str) -> Option<String> {
+        match rust_type {
+            // String types → "string"
+            "String" | "str" | "&str" => Some("string".to_string()),
+            // Numeric types → "number"
+            "i8" | "i16" | "i32" | "i64" | "i128" | "isize" | "u8" | "u16" | "u32" | "u64"
+            | "u128" | "usize" | "f32" | "f64" => Some("number".to_string()),
+            // Boolean → "boolean"
+            "bool" => Some("boolean".to_string()),
+            // Unit type → "void"
+            "()" => Some("void".to_string()),
+            // Not a primitive
+            _ => None,
+        }
     }
 }
 

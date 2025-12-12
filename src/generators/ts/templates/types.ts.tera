@@ -1,7 +1,8 @@
 {{ header }}
 {% if has_channels -%}
 import type { Channel } from '@tauri-apps/api/core';
-{% endif -%}
+{% endif %}
 
-{{ param_interfaces }}
 {{ struct_interfaces }}
+{{ param_interfaces }}
+

@@ -6,6 +6,7 @@ export interface {{ command.tsTypeName }}Params {
   {%- for channel in command.channels %}
   {{ channel.serializedParameterName }}: Channel<{{ channel.typescriptMessageType }}>;
   {%- endfor %}
+  [key: string]: unknown;
 }
 
-{%- endif -%}
+{% endif -%}

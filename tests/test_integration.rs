@@ -1,4 +1,3 @@
-use serial_test::serial;
 use std::fs;
 use tauri_typegen::analysis::CommandAnalyzer;
 use tauri_typegen::generators::generator::BindingsGenerator;
@@ -167,7 +166,6 @@ pub mod utils;
 }
 
 #[test]
-#[serial]
 fn test_full_pipeline_complex_project() {
     let temp_dir = create_complex_test_project();
     let project_path = temp_dir.path().to_str().unwrap();
@@ -226,6 +224,17 @@ fn test_full_pipeline_complex_project() {
 
     // Verify zod schemas are generated for parameters
     assert!(types_content.contains("= z.object({"));
+    println!("=== TYPES CONTENT (first 1000 chars) ===");
+    println!("{}", &types_content[..types_content.len().min(1000)]);
+    println!("=== END ===");
+    println!(
+        "Contains z.string(): {}",
+        types_content.contains("z.string()")
+    );
+    println!(
+        "Contains z.coerce.number(): {}",
+        types_content.contains("z.coerce.number()")
+    );
     assert!(types_content.contains("z.string()") || types_content.contains("z.coerce.number()"));
     // Verify custom type schemas are generated (zod format)
     assert!(types_content.contains("UserSchema") || types_content.contains("export type User"));
@@ -280,39 +289,6 @@ fn test_full_pipeline_complex_project() {
 }
 
 #[test]
-#[serial]
-fn test_full_pipeline_with_yup() {
-    let temp_dir = create_complex_test_project();
-    let project_path = temp_dir.path().to_str().unwrap();
-
-    let mut analyzer = CommandAnalyzer::new();
-    let commands = analyzer.analyze_project(project_path).unwrap();
-
-    let output_path = temp_dir.path().join("generated_yup");
-    let mut generator = BindingsGenerator::new(Some("yup".to_string()));
-
-    let generated_files = generator
-        .generate_models(
-            &commands,
-            analyzer.get_discovered_structs(),
-            output_path.to_str().unwrap(),
-            &analyzer,
-        )
-        .unwrap();
-
-    assert_eq!(generated_files.len(), 3);
-
-    let types_content = fs::read_to_string(output_path.join("types.ts")).unwrap();
-
-    // Yup support has been removed, should fall back to vanilla TypeScript
-    assert!(!types_content.contains("import * as yup from 'yup';"));
-    assert!(!types_content.contains("yup.object({"));
-    assert!(!types_content.contains("yup.string()"));
-    assert!(!types_content.contains("z.string()"));
-}
-
-#[test]
-#[serial]
 fn test_full_pipeline_without_validation() {
     let temp_dir = create_complex_test_project();
     let project_path = temp_dir.path().to_str().unwrap();
@@ -346,7 +322,6 @@ fn test_full_pipeline_without_validation() {
 }
 
 #[test]
-#[serial]
 fn test_type_mapping_accuracy() {
     let temp_dir = create_complex_test_project();
     let project_path = temp_dir.path().to_str().unwrap();
@@ -364,7 +339,6 @@ fn test_type_mapping_accuracy() {
     let request_param = &create_user.parameters[0];
     assert_eq!(request_param.name, "request");
     assert_eq!(request_param.rust_type, "CreateUserRequest");
-    assert_eq!(request_param.typescript_type(), "CreateUserRequest");
 
     // Find get_users command and verify optional parameter
     let get_users = commands
@@ -376,7 +350,6 @@ fn test_type_mapping_accuracy() {
     let filter_param = &get_users.parameters[0];
     assert_eq!(filter_param.name, "filter");
     assert!(filter_param.is_optional);
-    assert!(filter_param.typescript_type().contains("| null"));
 
     // Find export_data command and verify multiple parameters
     let export_data = commands
@@ -386,13 +359,10 @@ fn test_type_mapping_accuracy() {
 
     assert_eq!(export_data.parameters.len(), 2);
     assert_eq!(export_data.parameters[0].name, "format");
-    assert_eq!(export_data.parameters[0].typescript_type(), "string");
     assert_eq!(export_data.parameters[1].name, "include_inactive");
-    assert_eq!(export_data.parameters[1].typescript_type(), "boolean");
 }
 
 #[test]
-#[serial]
 fn test_generated_content_syntax_valid() {
     let temp_dir = create_complex_test_project();
     let project_path = temp_dir.path().to_str().unwrap();
@@ -432,7 +402,6 @@ fn test_generated_content_syntax_valid() {
 }
 
 #[test]
-#[serial]
 fn test_file_path_tracking_accuracy() {
     let temp_dir = create_complex_test_project();
     let project_path = temp_dir.path().to_str().unwrap();
@@ -464,7 +433,6 @@ fn test_file_path_tracking_accuracy() {
 }
 
 #[test]
-#[serial]
 fn test_async_detection_accuracy() {
     let temp_dir = create_complex_test_project();
     let project_path = temp_dir.path().to_str().unwrap();

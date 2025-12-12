@@ -1,6 +1,6 @@
 {%- set has_params = command.parameters | length > 0 -%}
 {%- set has_channels = command.channels | length > 0 -%}
-{%- set return_type = command.returnTypeTs | format_return_type -%}
+{%- set return_type = command.returnTypeTs -%}
 
 {# Determine parameter signature #}
 {%- if has_params or has_channels -%}

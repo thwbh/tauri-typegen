@@ -49,6 +49,9 @@ pub struct CommandInfo {
     pub line_number: usize,
     pub parameters: Vec<ParameterInfo>,
     pub return_type: String, // Rust return type (e.g., "Vec<Banana>")
+    /// Structured representation of the return type for generators
+    #[serde(default)]
+    pub return_type_structure: TypeStructure,
     pub is_async: bool,
     pub channels: Vec<ChannelInfo>,
 }
@@ -65,12 +68,18 @@ impl CommandInfo {
         is_async: bool,
         channels: Vec<ChannelInfo>,
     ) -> Self {
+        use crate::analysis::type_resolver::TypeResolver;
+        let return_type_str = return_type.into();
+        let type_resolver = TypeResolver::new();
+        let return_type_structure = type_resolver.parse_type_structure(&return_type_str);
+
         Self {
             name: name.into(),
             file_path: file_path.into(),
             line_number,
             parameters,
-            return_type: return_type.into(),
+            return_type: return_type_str,
+            return_type_structure,
             is_async,
             channels,
         }
@@ -86,18 +95,6 @@ impl CommandInfo {
     /// Example: "GetUserById" used for GetUserByIdParams, GetUserByIdParamsSchema, etc.
     pub fn ts_type_name(&self) -> String {
         to_pascal_case(&self.name)
-    }
-
-    /// Get TypeScript return type representation
-    /// Convenience method that uses TypeScriptVisitor
-    pub fn return_type_ts(&self) -> String {
-        use crate::analysis::type_resolver::TypeResolver;
-        use crate::generators::base::type_visitor::{TypeScriptVisitor, TypeVisitor};
-
-        let type_resolver = TypeResolver::new();
-        let type_structure = type_resolver.parse_type_structure(&self.return_type);
-        let visitor = TypeScriptVisitor;
-        visitor.visit_type(&type_structure)
     }
 }
 
@@ -116,14 +113,6 @@ impl ParameterInfo {
     /// Get serialized name for the parameter (typically camelCase for Tauri)
     pub fn serialized_name(&self) -> String {
         to_camel_case(&self.name)
-    }
-
-    /// Get TypeScript type representation
-    /// Convenience method that uses TypeScriptVisitor
-    pub fn typescript_type(&self) -> String {
-        use crate::generators::base::type_visitor::{TypeScriptVisitor, TypeVisitor};
-        let visitor = TypeScriptVisitor;
-        visitor.visit_type(&self.type_structure)
     }
 }
 

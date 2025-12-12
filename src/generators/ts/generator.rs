@@ -230,34 +230,9 @@ impl TypeScriptBindingsGenerator {
             })
             .collect();
 
-        // Collect unique payload types for imports
-        let mut payload_types: HashSet<String> = HashSet::new();
-        for event_ctx in &event_contexts {
-            // Extract the TypeScript type name (without generics, arrays, etc.)
-            let type_name = event_ctx
-                .typescript_payload_type
-                .split('<')
-                .next()
-                .unwrap_or(&event_ctx.typescript_payload_type);
-            let type_name = type_name.split('[').next().unwrap_or(type_name);
-            let type_name = type_name.trim();
-
-            // Only import if it's not a primitive type
-            if !matches!(
-                type_name,
-                "string" | "number" | "boolean" | "void" | "null" | "undefined"
-            ) {
-                payload_types.insert(type_name.to_string());
-            }
-        }
-
         let mut context = Context::new();
         context.insert("header", &self.generate_file_header());
         context.insert("events", &event_contexts);
-        context.insert(
-            "payload_types",
-            &payload_types.into_iter().collect::<Vec<_>>(),
-        );
 
         super::templates::render(&self.tera, "typescript/events.ts.tera", &context).unwrap_or_else(
             |e| {

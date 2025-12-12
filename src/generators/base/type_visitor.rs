@@ -65,20 +65,17 @@ pub trait TypeVisitor {
 }
 
 /// TypeScript type visitor - converts TypeStructure to TypeScript types
+/// Note: Does NOT add "types." prefix - that's handled at the template context level
+/// for function signatures only (return types, parameters)
 pub struct TypeScriptVisitor;
 
 impl TypeVisitor for TypeScriptVisitor {
     fn visit_primitive(&self, type_name: &str) -> String {
-        match type_name {
-            "String" | "str" | "&str" | "string" => "string".to_string(),
-            "i8" | "i16" | "i32" | "i64" | "i128" | "isize" | "u8" | "u16" | "u32" | "u64"
-            | "u128" | "usize" | "f32" | "f64" | "number" => "number".to_string(),
-            "bool" | "boolean" => "boolean".to_string(),
-            "()" | "void" => "void".to_string(),
-            "unknown" => "unknown".to_string(),
-            _ => type_name.to_string(), // Fallback for edge cases
-        }
+        // TypeStructure::Primitive should only contain: "string", "number", "boolean", "void"
+        type_name.to_string()
     }
+
+    // Uses default visit_custom implementation which returns the name as-is
 }
 
 /// Zod schema visitor - converts TypeStructure to Zod schema strings
@@ -86,14 +83,19 @@ pub struct ZodVisitor;
 
 impl TypeVisitor for ZodVisitor {
     fn visit_primitive(&self, type_name: &str) -> String {
+        // TypeStructure::Primitive should only contain: "string", "number", "boolean", "void"
         match type_name {
-            "String" | "str" | "&str" | "string" => "z.string()".to_string(),
-            "i8" | "i16" | "i32" | "i64" | "i128" | "isize" | "u8" | "u16" | "u32" | "u64"
-            | "u128" | "usize" | "f32" | "f64" | "number" => "z.number()".to_string(),
-            "bool" | "boolean" => "z.boolean()".to_string(),
-            "()" | "void" => "z.void()".to_string(),
-            "unknown" => "z.unknown()".to_string(),
-            _ => format!("z.custom<{}>(() => true)", type_name), // Fallback
+            "string" => "z.string()".to_string(),
+            "number" => "z.number()".to_string(),
+            "boolean" => "z.boolean()".to_string(),
+            "void" => "z.void()".to_string(),
+            _ => {
+                eprintln!(
+                    "Warning: ZodVisitor received unexpected primitive: {}",
+                    type_name
+                );
+                format!("z.unknown() /* Unexpected: {} */", type_name)
+            }
         }
     }
 

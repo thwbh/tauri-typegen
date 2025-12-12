@@ -1,5 +1,5 @@
 export interface {{ name }} {
   {% for field in fields -%}
   {{ field.serializedName }}{% if field.isOptional %}?{% endif %}: {{ field.typescriptType }};
-  {% endfor -%}
+  {% endfor %}
 }

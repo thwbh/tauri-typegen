@@ -294,7 +294,7 @@ fn test_generator_with_void_return() {
             is_optional: false,
             type_structure: Default::default(),
         }],
-        "void",
+        "()", // Unit type in Rust, not "void"
         true,
         vec![],
     )];
