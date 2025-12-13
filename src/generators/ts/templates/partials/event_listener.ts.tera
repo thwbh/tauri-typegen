@@ -4,9 +4,9 @@
  * @returns Promise that resolves to an unlisten function
  */
 export async function {{ event.tsFunctionName }}(
-  handler: (payload: {{ event.typescriptPayloadType }}) => void
+  handler: (payload: {{ event.typescriptPayloadType | add_types_prefix }}) => void
 ): Promise<UnlistenFn> {
-  return listen<{{ event.typescriptPayloadType }}>('{{ event.eventName }}', (event) => {
+  return listen<{{ event.typescriptPayloadType | add_types_prefix }}>('{{ event.eventName }}', (event) => {
     handler(event.payload);
   });
 }

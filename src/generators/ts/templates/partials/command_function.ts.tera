@@ -3,12 +3,12 @@
 
 {# Determine parameter signature #}
 {%- if has_params or has_channels -%}
-export async function {{ command.tsFunctionName }}(params: types.{{ command.tsTypeName }}Params): Promise<{{ command.returnTypeTs }}> {
+export async function {{ command.tsFunctionName }}(params: types.{{ command.tsTypeName }}Params): Promise<{{ command.returnTypeTs | add_types_prefix }}> {
   return invoke('{{ command.name }}', params);
 }
 {%- else -%}
 {# No parameters at all #}
-export async function {{ command.tsFunctionName }}(): Promise<{{ command.returnTypeTs }}> {
+export async function {{ command.tsFunctionName }}(): Promise<{{ command.returnTypeTs | add_types_prefix }}> {
   return invoke('{{ command.name }}');
 }
 {%- endif %}
