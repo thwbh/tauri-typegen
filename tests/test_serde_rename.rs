@@ -39,7 +39,8 @@ fn test_serde_rename_all_camel_case() {
         )
         .unwrap();
 
-    // Check that rename_all="camelCase" was applied
+    // Check that rename_all="camelCase" was parsed
+    assert_eq!(struct_info.serde_rename_all, Some("camelCase".to_string()));
     assert_eq!(struct_info.fields.len(), 3);
 
     let user_id_field = struct_info
@@ -47,21 +48,21 @@ fn test_serde_rename_all_camel_case() {
         .iter()
         .find(|f| f.name == "user_id")
         .unwrap();
-    assert_eq!(user_id_field.serialized_name, "userId");
+    assert_eq!(user_id_field.serde_rename, None);
 
     let user_name_field = struct_info
         .fields
         .iter()
         .find(|f| f.name == "user_name")
         .unwrap();
-    assert_eq!(user_name_field.serialized_name, "userName");
+    assert_eq!(user_name_field.serde_rename, None);
 
     let is_active_field = struct_info
         .fields
         .iter()
         .find(|f| f.name == "is_active")
         .unwrap();
-    assert_eq!(is_active_field.serialized_name, "isActive");
+    assert_eq!(is_active_field.serde_rename, None);
 }
 
 #[test]
@@ -101,6 +102,7 @@ fn test_serde_field_rename() {
         .unwrap();
 
     assert_eq!(struct_info.fields.len(), 2);
+    assert_eq!(struct_info.serde_rename_all, None);
 
     // Field with explicit rename
     let user_id_field = struct_info
@@ -108,7 +110,7 @@ fn test_serde_field_rename() {
         .iter()
         .find(|f| f.name == "user_id")
         .unwrap();
-    assert_eq!(user_id_field.serialized_name, "userId");
+    assert_eq!(user_id_field.serde_rename, Some("userId".to_string()));
 
     // Field without rename and no rename_all should use the field name
     let name_field = struct_info
@@ -116,7 +118,7 @@ fn test_serde_field_rename() {
         .iter()
         .find(|f| f.name == "name")
         .unwrap();
-    assert_eq!(name_field.serialized_name, "name");
+    assert_eq!(name_field.serde_rename, None);
 }
 
 #[test]
@@ -157,22 +159,23 @@ fn test_serde_rename_override() {
         .unwrap();
 
     assert_eq!(struct_info.fields.len(), 2);
+    assert_eq!(struct_info.serde_rename_all, Some("camelCase".to_string()));
 
-    // Field without explicit rename uses rename_all
+    // Field without explicit rename should have None (uses rename_all during generation)
     let user_id_field = struct_info
         .fields
         .iter()
         .find(|f| f.name == "user_id")
         .unwrap();
-    assert_eq!(user_id_field.serialized_name, "userId");
+    assert_eq!(user_id_field.serde_rename, None);
 
-    // Field with explicit rename overrides rename_all
+    // Field with explicit rename should store the renamed value
     let user_name_field = struct_info
         .fields
         .iter()
         .find(|f| f.name == "user_name")
         .unwrap();
-    assert_eq!(user_name_field.serialized_name, "customName");
+    assert_eq!(user_name_field.serde_rename, Some("customName".to_string()));
 }
 
 #[test]
@@ -261,20 +264,21 @@ fn test_serde_rename_all_snake_case() {
         .unwrap();
 
     assert_eq!(struct_info.fields.len(), 2);
+    assert_eq!(struct_info.serde_rename_all, Some("snake_case".to_string()));
 
     let user_id_field = struct_info
         .fields
         .iter()
         .find(|f| f.name == "userId")
         .unwrap();
-    assert_eq!(user_id_field.serialized_name, "user_id");
+    assert_eq!(user_id_field.serde_rename, None);
 
     let user_name_field = struct_info
         .fields
         .iter()
         .find(|f| f.name == "userName")
         .unwrap();
-    assert_eq!(user_name_field.serialized_name, "user_name");
+    assert_eq!(user_name_field.serde_rename, None);
 }
 
 #[test]
@@ -314,18 +318,19 @@ fn test_serde_rename_all_pascal_case() {
         .unwrap();
 
     assert_eq!(struct_info.fields.len(), 2);
+    assert_eq!(struct_info.serde_rename_all, Some("PascalCase".to_string()));
 
     let user_id_field = struct_info
         .fields
         .iter()
         .find(|f| f.name == "user_id")
         .unwrap();
-    assert_eq!(user_id_field.serialized_name, "UserId");
+    assert_eq!(user_id_field.serde_rename, None);
 
     let user_name_field = struct_info
         .fields
         .iter()
         .find(|f| f.name == "user_name")
         .unwrap();
-    assert_eq!(user_name_field.serialized_name, "UserName");
+    assert_eq!(user_name_field.serde_rename, None);
 }

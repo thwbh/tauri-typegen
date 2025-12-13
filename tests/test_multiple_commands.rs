@@ -78,6 +78,7 @@ fn create_sample_commands_with_unused_structs() -> Vec<CommandInfo> {
                 rust_type: "CreateUserRequest".to_string(),
                 is_optional: false,
                 type_structure: Default::default(),
+                serde_rename: None,
             }],
             "User",
             true,
@@ -111,7 +112,7 @@ fn create_sample_structs_with_unused() -> HashMap<String, StructInfo> {
                     is_public: true,
                     validator_attributes: None,
                     type_structure: TypeStructure::Primitive("number".to_string()),
-                    serialized_name: "id".to_string(),
+                    serde_rename: None,
                 },
                 FieldInfo {
                     name: "name".to_string(),
@@ -120,7 +121,7 @@ fn create_sample_structs_with_unused() -> HashMap<String, StructInfo> {
                     is_public: true,
                     validator_attributes: None,
                     type_structure: TypeStructure::Primitive("string".to_string()),
-                    serialized_name: "name".to_string(),
+                    serde_rename: None,
                 },
                 FieldInfo {
                     name: "email".to_string(),
@@ -131,11 +132,12 @@ fn create_sample_structs_with_unused() -> HashMap<String, StructInfo> {
                     type_structure: TypeStructure::Optional(Box::new(TypeStructure::Primitive(
                         "string".to_string(),
                     ))),
-                    serialized_name: "email".to_string(),
+                    serde_rename: None,
                 },
             ],
             file_path: "test_file.rs".to_string(),
             is_enum: false,
+            serde_rename_all: None,
         },
     );
 
@@ -151,7 +153,7 @@ fn create_sample_structs_with_unused() -> HashMap<String, StructInfo> {
                     is_public: true,
                     validator_attributes: None,
                     type_structure: TypeStructure::Primitive("string".to_string()),
-                    serialized_name: "name".to_string(),
+                    serde_rename: None,
                 },
                 FieldInfo {
                     name: "email".to_string(),
@@ -162,11 +164,12 @@ fn create_sample_structs_with_unused() -> HashMap<String, StructInfo> {
                     type_structure: TypeStructure::Optional(Box::new(TypeStructure::Primitive(
                         "string".to_string(),
                     ))),
-                    serialized_name: "email".to_string(),
+                    serde_rename: None,
                 },
             ],
             file_path: "test_file.rs".to_string(),
             is_enum: false,
+            serde_rename_all: None,
         },
     );
 
@@ -182,10 +185,11 @@ fn create_sample_structs_with_unused() -> HashMap<String, StructInfo> {
                 is_public: true,
                 validator_attributes: None,
                 type_structure: TypeStructure::Primitive("number".to_string()),
-                serialized_name: "iVersion".to_string(),
+                serde_rename: Some("iVersion".to_string()),
             }],
             file_path: "test_file.rs".to_string(),
             is_enum: false,
+            serde_rename_all: None,
         },
     );
 
@@ -200,10 +204,11 @@ fn create_sample_structs_with_unused() -> HashMap<String, StructInfo> {
                 is_public: true,
                 validator_attributes: None,
                 type_structure: TypeStructure::Primitive("string".to_string()),
-                serialized_name: "unusedField".to_string(),
+                serde_rename: None,
             }],
             file_path: "test_file.rs".to_string(),
             is_enum: false,
+            serde_rename_all: Some("camelCase".to_string()),
         },
     );
 
@@ -220,10 +225,11 @@ fn create_sample_structs_with_unused() -> HashMap<String, StructInfo> {
                 type_structure: TypeStructure::Array(Box::new(TypeStructure::Primitive(
                     "number".to_string(),
                 ))),
-                serialized_name: "data".to_string(),
+                serde_rename: None,
             }],
             file_path: "test_file.rs".to_string(),
             is_enum: false,
+            serde_rename_all: None,
         },
     );
 

@@ -15,6 +15,7 @@ fn create_test_command() -> CommandInfo {
             rust_type: "String".to_string(),
             is_optional: false,
             type_structure: Default::default(),
+            serde_rename: None,
         }],
         "String",
         true,

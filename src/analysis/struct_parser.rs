@@ -1,4 +1,4 @@
-use crate::analysis::serde_parser::{apply_naming_convention, SerdeParser};
+use crate::analysis::serde_parser::SerdeParser;
 use crate::analysis::type_resolver::TypeResolver;
 use crate::analysis::validator_parser::ValidatorParser;
 use crate::models::{FieldInfo, StructInfo};
@@ -74,13 +74,7 @@ impl StructParser {
             syn::Fields::Named(fields_named) => fields_named
                 .named
                 .iter()
-                .filter_map(|field| {
-                    self.parse_field(
-                        field,
-                        type_resolver,
-                        struct_serde_attrs.rename_all.as_deref(),
-                    )
-                })
+                .filter_map(|field| self.parse_field(field, type_resolver))
                 .collect(),
             syn::Fields::Unnamed(_) => {
                 // Handle tuple structs if needed
@@ -97,6 +91,7 @@ impl StructParser {
             fields,
             file_path: file_path.to_string_lossy().to_string(),
             is_enum: false,
+            serde_rename_all: struct_serde_attrs.rename_all,
         })
     }
 
@@ -114,18 +109,6 @@ impl StructParser {
                 // Parse variant-level serde attributes
                 let variant_serde_attrs = self.serde_parser.parse_field_serde_attrs(&variant.attrs);
 
-                // Calculate serialized name for the variant
-                let serialized_name = if let Some(rename) = variant_serde_attrs.rename {
-                    // Explicit variant-level rename takes precedence
-                    rename
-                } else {
-                    enum_serde_attrs
-                        .rename_all
-                        .as_deref()
-                        .map(|convention| apply_naming_convention(&variant_name, convention))
-                        .unwrap_or_else(|| variant_name.clone())
-                };
-
                 match &variant.fields {
                     syn::Fields::Unit => {
                         // Unit variant: Variant
@@ -135,7 +118,7 @@ impl StructParser {
                             is_optional: false,
                             is_public: true,
                             validator_attributes: None,
-                            serialized_name,
+                            serde_rename: variant_serde_attrs.rename,
                             type_structure: crate::models::TypeStructure::Primitive(
                                 "string".to_string(),
                             ),
@@ -150,7 +133,7 @@ impl StructParser {
                             is_optional: false,
                             is_public: true,
                             validator_attributes: None,
-                            serialized_name,
+                            serde_rename: variant_serde_attrs.rename,
                             // For enum variants, type structure is not used by generators
                             type_structure: crate::models::TypeStructure::Custom(
                                 "enum_variant".to_string(),
@@ -166,7 +149,7 @@ impl StructParser {
                             is_optional: false,
                             is_public: true,
                             validator_attributes: None,
-                            serialized_name,
+                            serde_rename: variant_serde_attrs.rename,
                             // For enum variants, type structure is not used by generators
                             type_structure: crate::models::TypeStructure::Custom(
                                 "enum_variant".to_string(),
@@ -182,6 +165,7 @@ impl StructParser {
             fields,
             file_path: file_path.to_string_lossy().to_string(),
             is_enum: true,
+            serde_rename_all: enum_serde_attrs.rename_all,
         })
     }
 
@@ -190,7 +174,6 @@ impl StructParser {
         &self,
         field: &syn::Field,
         type_resolver: &mut TypeResolver,
-        struct_rename_all: Option<&str>,
     ) -> Option<FieldInfo> {
         let name = field.ident.as_ref()?.to_string();
 
@@ -201,16 +184,6 @@ impl StructParser {
         if field_serde_attrs.skip {
             return None;
         }
-
-        // Calculate the serialized name based on serde attributes
-        let serialized_name = if let Some(rename) = field_serde_attrs.rename {
-            // Explicit field-level rename takes precedence
-            rename
-        } else {
-            struct_rename_all
-                .map(|convention| apply_naming_convention(&name, convention))
-                .unwrap_or_else(|| name.clone())
-        };
 
         let is_public = matches!(field.vis, Visibility::Public(_));
         let is_optional = self.is_optional_type(&field.ty);
@@ -226,7 +199,7 @@ impl StructParser {
             is_optional,
             is_public,
             validator_attributes,
-            serialized_name,
+            serde_rename: field_serde_attrs.rename,
             type_structure,
         })
     }

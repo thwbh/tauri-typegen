@@ -1,7 +1,7 @@
 use crate::analysis::type_resolver::TypeResolver;
 use crate::models::{CommandInfo, ParameterInfo};
 use std::path::Path;
-use syn::{File as SynFile, FnArg, ItemFn, PatType, ReturnType, Type};
+use syn::{Attribute, File as SynFile, FnArg, ItemFn, PatType, ReturnType, Type};
 
 /// Parser for Tauri command functions
 #[derive(Debug)]
@@ -62,6 +62,9 @@ impl CommandParser {
         // Get line number from the function's span
         let line_number = func.sig.ident.span().start().line;
 
+        // Parse serde rename_all attribute from function attributes
+        let serde_rename_all = self.extract_serde_rename_all(&func.attrs);
+
         Some(CommandInfo {
             name,
             parameters,
@@ -71,7 +74,17 @@ impl CommandParser {
             line_number,
             is_async,
             channels: Vec::new(), // Will be populated by channel_parser
+            serde_rename_all,
         })
+    }
+
+    /// Extract serde rename_all attribute from function attributes
+    /// Example: #[serde(rename_all = "camelCase")]
+    fn extract_serde_rename_all(&self, attrs: &[Attribute]) -> Option<String> {
+        use crate::analysis::serde_parser::SerdeParser;
+        let serde_parser = SerdeParser::new();
+        let serde_attrs = serde_parser.parse_struct_serde_attrs(attrs);
+        serde_attrs.rename_all
     }
 
     /// Extract parameters from function signature
@@ -101,6 +114,7 @@ impl CommandParser {
                             rust_type,
                             is_optional,
                             type_structure,
+                            serde_rename: None,
                         });
                     }
                 }

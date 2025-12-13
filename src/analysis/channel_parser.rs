@@ -46,6 +46,7 @@ impl ChannelParser {
                         command_name: command_name.to_string(),
                         file_path: file_path.to_string_lossy().to_string(),
                         line_number,
+                        serde_rename: None,
                     });
                 }
             }

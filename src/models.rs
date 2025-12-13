@@ -1,4 +1,3 @@
-use heck::{ToLowerCamelCase, ToUpperCamelCase};
 use serde::{Deserialize, Serialize};
 
 /// Represents the structure of a type for code generation
@@ -54,6 +53,10 @@ pub struct CommandInfo {
     pub return_type_structure: TypeStructure,
     pub is_async: bool,
     pub channels: Vec<ChannelInfo>,
+    /// Serde rename_all attribute: #[serde(rename_all = "...")]
+    /// Applied to command function, affects parameter/channel serialization
+    #[serde(default)]
+    pub serde_rename_all: Option<String>,
 }
 
 impl CommandInfo {
@@ -82,19 +85,8 @@ impl CommandInfo {
             return_type_structure,
             is_async,
             channels,
+            serde_rename_all: None,
         }
-    }
-
-    /// Get TypeScript function name (camelCase by convention)
-    /// Example: "getUserById" for Rust function "get_user_by_id"
-    pub fn ts_function_name(&self) -> String {
-        to_camel_case(&self.name)
-    }
-
-    /// Get TypeScript type name prefix (PascalCase by convention)
-    /// Example: "GetUserById" used for GetUserByIdParams, GetUserByIdParamsSchema, etc.
-    pub fn ts_type_name(&self) -> String {
-        to_pascal_case(&self.name)
     }
 }
 
@@ -107,29 +99,10 @@ pub struct ParameterInfo {
     /// Structured representation of the type for generators
     #[serde(default)]
     pub type_structure: TypeStructure,
-}
-
-impl ParameterInfo {
-    /// Get serialized name for the parameter (typically camelCase for Tauri)
-    pub fn serialized_name(&self) -> String {
-        to_camel_case(&self.name)
-    }
-}
-
-/// Convert snake_case to camelCase using heck
-pub(crate) fn to_camel_case(s: &str) -> String {
-    s.to_lower_camel_case()
-}
-
-/// Convert snake_case to PascalCase using heck
-pub(crate) fn to_pascal_case(s: &str) -> String {
-    s.to_upper_camel_case()
-}
-
-/// Convert event-name to onEventName pattern using heck
-/// Examples: "download-started" -> "onDownloadStarted", "user-logged-in" -> "onUserLoggedIn"
-pub(crate) fn event_name_to_function(event_name: &str) -> String {
-    format!("on{}", event_name.to_upper_camel_case())
+    /// Serde rename attribute (optional, for future extensibility)
+    /// Parameters are serialized following Tauri/JS conventions (camelCase)
+    #[serde(default)]
+    pub serde_rename: Option<String>,
 }
 
 // New: Struct field information for better type generation
@@ -140,6 +113,8 @@ pub struct StructInfo {
     pub fields: Vec<FieldInfo>,
     pub file_path: String,
     pub is_enum: bool,
+    /// Serde rename_all attribute: #[serde(rename_all = "...")]
+    pub serde_rename_all: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -150,8 +125,8 @@ pub struct FieldInfo {
     pub is_optional: bool,
     pub is_public: bool,
     pub validator_attributes: Option<ValidatorAttributes>,
-    /// The serialized name after applying serde rename/rename_all transformations
-    pub serialized_name: String,
+    /// Serde rename attribute: #[serde(rename = "...")]
+    pub serde_rename: Option<String>,
     /// Structured representation of the type for generators
     #[serde(default)]
     pub type_structure: TypeStructure,
@@ -193,14 +168,6 @@ pub struct EventInfo {
     pub line_number: usize,
 }
 
-impl EventInfo {
-    /// Get TypeScript listener function name (onEventName pattern)
-    /// Example: "download-started" -> "onDownloadStarted"
-    pub fn ts_function_name(&self) -> String {
-        event_name_to_function(&self.event_name)
-    }
-}
-
 // Channel information for streaming data from Rust to frontend
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -210,6 +177,10 @@ pub struct ChannelInfo {
     pub command_name: String,
     pub file_path: String,
     pub line_number: usize,
+    /// Serde rename attribute (optional, for future extensibility)
+    /// Channel parameters are serialized following Tauri/JS conventions (camelCase)
+    #[serde(default)]
+    pub serde_rename: Option<String>,
 }
 
 impl ChannelInfo {
@@ -228,11 +199,7 @@ impl ChannelInfo {
             command_name: command_name.into(),
             file_path: file_path.into(),
             line_number,
+            serde_rename: None,
         }
-    }
-
-    /// Get serialized parameter name for TypeScript (camelCase by convention)
-    pub fn serialized_parameter_name(&self) -> String {
-        to_camel_case(&self.parameter_name)
     }
 }

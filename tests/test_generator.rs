@@ -17,6 +17,7 @@ fn create_sample_commands() -> Vec<CommandInfo> {
                 rust_type: "String".to_string(),
                 is_optional: false,
                 type_structure: Default::default(),
+                serde_rename: None,
             }],
             "string",
             true,
@@ -293,6 +294,7 @@ fn test_generator_with_void_return() {
             rust_type: "i32".to_string(),
             is_optional: false,
             type_structure: Default::default(),
+            serde_rename: None,
         }],
         "()", // Unit type in Rust, not "void"
         true,
@@ -387,6 +389,7 @@ fn test_primitive_arrays_and_optional_custom_types() {
             fields: vec![],
             is_enum: false,
             file_path: "test_file.rs".to_string(),
+            serde_rename_all: None,
         },
     );
     discovered_structs.insert(
@@ -396,6 +399,7 @@ fn test_primitive_arrays_and_optional_custom_types() {
             fields: vec![],
             is_enum: false,
             file_path: "test_file.rs".to_string(),
+            serde_rename_all: None,
         },
     );
 

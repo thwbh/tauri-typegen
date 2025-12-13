@@ -56,8 +56,19 @@ impl ZodBindingsGenerator {
 
     /// Generate Zod schema for an enum
     fn generate_enum_schema(&self, name: &str, struct_info: &StructInfo) -> String {
-        let variants: Vec<String> = struct_info
+        use crate::generators::base::template_context::FieldContext;
+        let visitor = ZodVisitor;
+
+        // Convert fields to context to get serialized names
+        let field_contexts: Vec<FieldContext> = struct_info
             .fields
+            .iter()
+            .map(|field| {
+                FieldContext::from_field_info(field, &struct_info.serde_rename_all, &visitor)
+            })
+            .collect();
+
+        let variants: Vec<String> = field_contexts
             .iter()
             .map(|field| format!("\"{}\"", field.serialized_name))
             .collect();
@@ -77,7 +88,9 @@ impl ZodBindingsGenerator {
         let field_contexts: Vec<FieldContext> = struct_info
             .fields
             .iter()
-            .map(|field| FieldContext::from_field_info(field, &visitor))
+            .map(|field| {
+                FieldContext::from_field_info(field, &struct_info.serde_rename_all, &visitor)
+            })
             .collect();
 
         let mut context = Context::new();
