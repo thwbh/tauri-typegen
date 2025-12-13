@@ -16,7 +16,7 @@ impl TemplateHelpers {
             .replace(" | undefined", "");
         let base_type = base_type.trim();
 
-        primitives.iter().any(|p| base_type == *p)
+        primitives.contains(&base_type)
     }
 
     /// Generate TypeScript interface definition
