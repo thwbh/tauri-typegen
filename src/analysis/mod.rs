@@ -57,6 +57,14 @@ impl CommandAnalyzer {
         }
     }
 
+    /// Add custom type mappings from configuration
+    pub fn add_type_mappings(&mut self, mappings: &HashMap<String, String>) {
+        for (rust_type, ts_type) in mappings {
+            self.type_resolver
+                .add_type_mapping(rust_type.clone(), ts_type.clone());
+        }
+    }
+
     /// Analyze a complete project for Tauri commands and types
     pub fn analyze_project(
         &mut self,
