@@ -158,6 +158,18 @@ fn run_generate(
     // Analyze and generate
     reporter.start_step("Analyzing Tauri commands");
     let mut analyzer = CommandAnalyzer::new();
+
+    // Apply custom type mappings from configuration
+    if let Some(ref mappings) = config.type_mappings {
+        analyzer.add_type_mappings(mappings);
+        if config.is_verbose() {
+            reporter.update_progress(&format!("Applied {} custom type mappings", mappings.len()));
+            for (rust_type, ts_type) in mappings {
+                reporter.update_progress(&format!("  {} → {}", rust_type, ts_type));
+            }
+        }
+    }
+
     let commands =
         analyzer.analyze_project_with_verbose(&config.project_path, config.is_verbose())?;
 

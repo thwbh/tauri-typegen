@@ -4,6 +4,21 @@ use crate::models::{CommandInfo, EventInfo, FieldInfo};
 pub struct TemplateHelpers;
 
 impl TemplateHelpers {
+    /// Check if a TypeScript type is a primitive or compound primitive type
+    /// (e.g., "string", "number", "string[]", "string | null", "boolean[]")
+    fn is_primitive_type(ts_type: &str) -> bool {
+        let primitives = ["string", "number", "boolean", "void", "null", "undefined"];
+
+        // Strip array suffix and optional suffix for checking
+        let base_type = ts_type
+            .replace("[]", "")
+            .replace(" | null", "")
+            .replace(" | undefined", "");
+        let base_type = base_type.trim();
+
+        primitives.iter().any(|p| base_type == *p)
+    }
+
     /// Generate TypeScript interface definition
     pub fn generate_interface(name: &str, fields: &[FieldInfo]) -> String {
         Self::generate_interface_with_options(name, fields, false)
@@ -68,6 +83,9 @@ impl TemplateHelpers {
             "number".to_string()
         } else if command.return_type_ts == "boolean" || command.return_type_ts == "bool" {
             "boolean".to_string()
+        } else if Self::is_primitive_type(&command.return_type_ts) {
+            // Handle compound primitive types like "string[]", "string | null", "number[]", etc.
+            command.return_type_ts.clone()
         } else {
             format!("types.{}", command.return_type_ts)
         };

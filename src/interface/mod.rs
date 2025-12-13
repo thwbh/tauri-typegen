@@ -29,6 +29,21 @@ pub fn generate_from_config(
 
     // Analyze commands with struct discovery
     let mut analyzer = CommandAnalyzer::new();
+
+    // Apply custom type mappings from configuration
+    if let Some(ref mappings) = config.type_mappings {
+        analyzer.add_type_mappings(mappings);
+        if config.is_verbose() {
+            logger.info(&format!(
+                "📝 Applied {} custom type mappings",
+                mappings.len()
+            ));
+            for (rust_type, ts_type) in mappings {
+                logger.verbose(&format!("  {} → {}", rust_type, ts_type));
+            }
+        }
+    }
+
     let commands = analyzer.analyze_project(&config.project_path)?;
 
     if config.is_verbose() {
