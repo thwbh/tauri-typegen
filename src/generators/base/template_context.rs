@@ -159,6 +159,35 @@ impl FieldContext {
     }
 }
 
+/// Template context wrapper for StructInfo with computed TypeScript-specific fields
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StructContext {
+    pub name: String,
+    pub fields: Vec<FieldContext>,
+    pub is_enum: bool,
+}
+
+impl StructContext {
+    pub fn from_struct_info<V: TypeVisitor>(
+        name: &str,
+        struct_info: &crate::models::StructInfo,
+        visitor: &V,
+    ) -> Self {
+        let field_contexts: Vec<FieldContext> = struct_info
+            .fields
+            .iter()
+            .map(|field| FieldContext::from_field_info(field, visitor))
+            .collect();
+
+        Self {
+            name: name.to_string(),
+            fields: field_contexts,
+            is_enum: struct_info.is_enum,
+        }
+    }
+}
+
 /// Template context wrapper for ChannelInfo with computed TypeScript-specific fields
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

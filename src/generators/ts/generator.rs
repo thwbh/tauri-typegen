@@ -1,6 +1,6 @@
 use crate::analysis::CommandAnalyzer;
 use crate::generators::base::file_writer::FileWriter;
-use crate::generators::base::template_context::{CommandContext, EventContext, FieldContext};
+use crate::generators::base::template_context::{CommandContext, EventContext};
 use crate::generators::base::templates::GlobalContext;
 use crate::generators::base::type_conversion::TypeConverter;
 use crate::generators::base::type_visitor::TypeScriptVisitor;
@@ -45,72 +45,6 @@ impl TypeScriptBindingsGenerator {
             })
     }
 
-    /// Generate TypeScript interface definitions from structs
-    fn generate_struct_interfaces(&self, used_structs: &HashMap<String, StructInfo>) -> String {
-        let mut content = String::new();
-        let visitor = TypeScriptVisitor;
-
-        for (name, struct_info) in used_structs {
-            // Convert FieldInfo to FieldContext with computed TypeScript types
-            let field_contexts: Vec<FieldContext> = struct_info
-                .fields
-                .iter()
-                .map(|field| FieldContext::from_field_info(field, &visitor))
-                .collect();
-
-            let mut context = Context::new();
-            context.insert("name", name);
-            context.insert("fields", &field_contexts);
-
-            let template_name = if struct_info.is_enum {
-                "typescript/partials/enum.tera"
-            } else {
-                "typescript/partials/interface.tera"
-            };
-
-            if let Ok(rendered) = super::templates::render(&self.tera, template_name, &context) {
-                content.push_str(&rendered);
-                content.push('\n');
-            }
-        }
-
-        content
-    }
-
-    /// Generate parameter interfaces for commands
-    fn generate_param_interfaces(
-        &self,
-        commands: &[CommandInfo],
-        analyzer: &CommandAnalyzer,
-    ) -> String {
-        let mut content = String::new();
-        let visitor = TypeScriptVisitor;
-        let type_resolver = analyzer.get_type_resolver();
-
-        for command in commands {
-            // Generate interface if command has parameters or channels
-            if !command.parameters.is_empty() || !command.channels.is_empty() {
-                let command_context =
-                    CommandContext::from_command_info(command, &visitor, &|rust_type: &str| {
-                        type_resolver.borrow_mut().parse_type_structure(rust_type)
-                    });
-
-                let mut context = Context::new();
-                context.insert("command", &command_context);
-
-                if let Ok(rendered) = super::templates::render(
-                    &self.tera,
-                    "typescript/partials/param_interface.ts.tera",
-                    &context,
-                ) {
-                    content.push_str(&rendered);
-                }
-            }
-        }
-
-        content
-    }
-
     /// Generate the complete types.ts file content
     fn generate_types_file_content(
         &self,
@@ -118,20 +52,34 @@ impl TypeScriptBindingsGenerator {
         used_structs: &HashMap<String, StructInfo>,
         analyzer: &CommandAnalyzer,
     ) -> String {
+        use crate::generators::base::template_context::{CommandContext, StructContext};
+
         let has_channels = commands.iter().any(|cmd| !cmd.channels.is_empty());
+        let visitor = TypeScriptVisitor;
+        let type_resolver = analyzer.get_type_resolver();
 
-        // Generate parameter interfaces
-        let param_interfaces = self.generate_param_interfaces(commands, analyzer);
+        // Convert structs to context wrappers
+        let struct_context: Vec<StructContext> = used_structs
+            .iter()
+            .map(|(name, struct_info)| StructContext::from_struct_info(name, struct_info, &visitor))
+            .collect();
 
-        // Generate struct interfaces
-        let struct_interfaces = self.generate_struct_interfaces(used_structs);
+        // Convert commands to context wrappers
+        let command_context: Vec<CommandContext> = commands
+            .iter()
+            .map(|cmd| {
+                CommandContext::from_command_info(cmd, &visitor, &|rust_type: &str| {
+                    type_resolver.borrow_mut().parse_type_structure(rust_type)
+                })
+            })
+            .collect();
 
         // Render main types.ts template
         let mut context = Context::new();
         context.insert("header", &self.generate_file_header());
         context.insert("has_channels", &has_channels);
-        context.insert("param_interfaces", &param_interfaces);
-        context.insert("struct_interfaces", &struct_interfaces);
+        context.insert("structs", &struct_context);
+        context.insert("commands", &command_context);
 
         super::templates::render(&self.tera, "typescript/types.ts.tera", &context).unwrap_or_else(
             |e| {
