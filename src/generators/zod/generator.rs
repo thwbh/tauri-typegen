@@ -1,6 +1,6 @@
 use crate::analysis::CommandAnalyzer;
 use crate::generators::base::file_writer::FileWriter;
-use crate::generators::base::template_context::{CommandContext, EventContext, FieldContext};
+use crate::generators::base::template_context::FieldContext;
 use crate::generators::base::templates::GlobalContext;
 use crate::generators::base::type_conversion::TypeConverter;
 use crate::generators::base::type_visitor::{TypeScriptVisitor, ZodVisitor};
@@ -56,17 +56,11 @@ impl ZodBindingsGenerator {
 
     /// Generate Zod schema for an enum
     fn generate_enum_schema(&self, name: &str, struct_info: &StructInfo) -> String {
-        use crate::generators::base::template_context::FieldContext;
         let visitor = ZodVisitor;
 
         // Convert fields to context to get serialized names
-        let field_contexts: Vec<FieldContext> = struct_info
-            .fields
-            .iter()
-            .map(|field| {
-                FieldContext::from_field_info(field, &struct_info.serde_rename_all, &visitor)
-            })
-            .collect();
+        let field_contexts: Vec<FieldContext> =
+            self.base.create_field_contexts(struct_info, &visitor);
 
         let variants: Vec<String> = field_contexts
             .iter()
@@ -85,13 +79,8 @@ impl ZodBindingsGenerator {
         let visitor = ZodVisitor;
 
         // Convert FieldInfo to FieldContext with computed Zod schemas
-        let field_contexts: Vec<FieldContext> = struct_info
-            .fields
-            .iter()
-            .map(|field| {
-                FieldContext::from_field_info(field, &struct_info.serde_rename_all, &visitor)
-            })
-            .collect();
+        let field_contexts: Vec<FieldContext> =
+            self.base.create_field_contexts(struct_info, &visitor);
 
         let mut context = Context::new();
         context.insert("name", name);
@@ -125,15 +114,9 @@ impl ZodBindingsGenerator {
 
         // Convert commands to context wrappers
         let visitor = ZodVisitor;
-        let type_resolver = analyzer.get_type_resolver();
-        let command_contexts: Vec<CommandContext> = commands
-            .iter()
-            .map(|cmd| {
-                CommandContext::from_command_info(cmd, &visitor, &|rust_type: &str| {
-                    type_resolver.borrow_mut().parse_type_structure(rust_type)
-                })
-            })
-            .collect();
+        let command_contexts = self
+            .base
+            .create_command_contexts(commands, &visitor, analyzer);
 
         // Generate parameter schemas using template
         let param_schemas = {
@@ -184,17 +167,11 @@ impl ZodBindingsGenerator {
         // Use TypeScriptVisitor for command bindings to get proper TS types
         // (not Zod schemas) in function signatures
         let visitor = TypeScriptVisitor;
-        let type_resolver = analyzer.get_type_resolver();
 
         // Convert commands to context wrappers
-        let command_contexts: Vec<CommandContext> = commands
-            .iter()
-            .map(|cmd| {
-                CommandContext::from_command_info(cmd, &visitor, &|rust_type: &str| {
-                    type_resolver.borrow_mut().parse_type_structure(rust_type)
-                })
-            })
-            .collect();
+        let command_contexts = self
+            .base
+            .create_command_contexts(commands, &visitor, analyzer);
 
         let mut context = Context::new();
         context.insert("header", &self.generate_file_header());
@@ -234,17 +211,9 @@ impl ZodBindingsGenerator {
     /// Generate events file content
     fn generate_events_file(&self, events: &[EventInfo], analyzer: &CommandAnalyzer) -> String {
         let visitor = ZodVisitor;
-        let type_resolver = analyzer.get_type_resolver();
 
         // Convert events to context wrappers
-        let event_contexts: Vec<EventContext> = events
-            .iter()
-            .map(|event| {
-                EventContext::from_event_info(event, &visitor, &|rust_type: &str| {
-                    type_resolver.borrow_mut().parse_type_structure(rust_type)
-                })
-            })
-            .collect();
+        let event_contexts = self.base.create_event_contexts(events, &visitor, analyzer);
 
         let mut context = Context::new();
         context.insert("header", &self.generate_file_header());

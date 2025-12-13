@@ -14,16 +14,7 @@ pub fn create_template_engine() -> Result<Tera, String> {
     // Register common filters
     register_common_filters(&mut tera);
 
-    // Register typescript-specific filters
-    register_typescript_filters(&mut tera);
-
     Ok(tera)
-}
-
-/// Register TypeScript-specific Tera filters
-fn register_typescript_filters(_tera: &mut Tera) {
-    // TypeScript-specific filters would go here
-    // Currently, all filters are registered in common filters
 }
 
 /// Register typescript-specific templates from embedded strings

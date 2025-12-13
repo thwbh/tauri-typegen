@@ -1,5 +1,6 @@
 use crate::generators::base::type_visitor::TypeVisitor;
 use crate::models::{ChannelInfo, CommandInfo, EventInfo, FieldInfo, ParameterInfo};
+use crate::TypeStructure;
 use heck::{
     ToKebabCase, ToLowerCamelCase, ToShoutyKebabCase, ToShoutySnakeCase, ToSnakeCase,
     ToUpperCamelCase,
@@ -92,7 +93,7 @@ impl CommandContext {
     pub fn from_command_info<V: TypeVisitor>(
         cmd: &CommandInfo,
         visitor: &V,
-        type_resolver: &dyn Fn(&str) -> crate::models::TypeStructure,
+        type_resolver: &dyn Fn(&str) -> TypeStructure,
     ) -> Self {
         // Use pre-parsed type structure from CommandInfo
         let return_type_ts = visitor.visit_type(&cmd.return_type_structure);
@@ -140,7 +141,7 @@ pub struct ParameterContext {
     pub typescript_type: String, // Computed field
     pub is_optional: bool,
     pub serialized_name: String, // Computed field
-    pub type_structure: crate::models::TypeStructure,
+    pub type_structure: TypeStructure,
 }
 
 impl ParameterContext {
@@ -177,7 +178,7 @@ pub struct FieldContext {
     pub is_optional: bool,
     pub serialized_name: String,
     pub validator_attributes: Option<crate::models::ValidatorAttributes>,
-    pub type_structure: crate::models::TypeStructure,
+    pub type_structure: TypeStructure,
 }
 
 impl FieldContext {
@@ -190,7 +191,7 @@ impl FieldContext {
 
         // Compute serialized name from serde attributes
         let serialized_name =
-            compute_serialized_name(&field.name, &field.serde_rename, &struct_rename_all);
+            compute_serialized_name(&field.name, &field.serde_rename, struct_rename_all);
 
         Self {
             name: field.name.clone(),
@@ -253,7 +254,7 @@ impl ChannelContext {
         channel: &ChannelInfo,
         command_rename_all: &Option<String>,
         visitor: &V,
-        type_resolver: &dyn Fn(&str) -> crate::models::TypeStructure,
+        type_resolver: &dyn Fn(&str) -> TypeStructure,
     ) -> Self {
         let message_type_structure = type_resolver(&channel.message_type);
         let typescript_message_type = visitor.visit_type(&message_type_structure);
@@ -292,7 +293,7 @@ impl EventContext {
     pub fn from_event_info<V: TypeVisitor>(
         event: &EventInfo,
         visitor: &V,
-        type_resolver: &dyn Fn(&str) -> crate::models::TypeStructure,
+        type_resolver: &dyn Fn(&str) -> TypeStructure,
     ) -> Self {
         let payload_type_structure = type_resolver(&event.payload_type);
         let typescript_payload_type = visitor.visit_type(&payload_type_structure);

@@ -124,7 +124,6 @@ fn test_primitive_types_ignored() {
 
 #[test]
 fn test_collect_referenced_types_from_generator() {
-    let _analyzer = CommandAnalyzer::new();
     let generator = tauri_typegen::generators::generator::BindingsGenerator::new(None);
     let mut used_types = HashSet::new();
 

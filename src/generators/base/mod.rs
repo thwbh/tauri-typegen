@@ -5,8 +5,13 @@ pub mod type_conversion;
 pub mod type_visitor;
 
 use crate::analysis::CommandAnalyzer;
-use crate::models::{CommandInfo, StructInfo};
+use crate::generators::base::template_context::FieldContext;
+use crate::generators::base::type_conversion::TypeConverter;
+use crate::models::{CommandInfo, EventInfo, StructInfo};
 use std::collections::HashMap;
+
+use template_context::{CommandContext, EventContext, StructContext};
+use type_visitor::TypeVisitor;
 
 /// Common trait for all generators
 pub trait BaseBindingsGenerator {
@@ -23,12 +28,14 @@ pub trait BaseBindingsGenerator {
 /// Base generator with common functionality
 pub struct BaseGenerator {
     pub known_structs: HashMap<String, StructInfo>,
+    type_converter: TypeConverter,
 }
 
 impl BaseGenerator {
     pub fn new() -> Self {
         Self {
             known_structs: HashMap::new(),
+            type_converter: TypeConverter::new(),
         }
     }
 
@@ -104,113 +111,79 @@ impl BaseGenerator {
     }
 
     /// Recursively collect type names from complex types
+    /// Delegates to TypeConverter for comprehensive type extraction
     pub fn collect_referenced_types(
         &self,
         type_str: &str,
         used_types: &mut std::collections::HashSet<String>,
     ) {
-        // Handle Result<T, E>
-        if let Some(inner) = self.extract_result_inner_type(type_str) {
-            self.collect_referenced_types(&inner, used_types);
-            return;
-        }
-
-        // Handle Option<T>
-        if let Some(inner) = self.extract_option_inner_type(type_str) {
-            self.collect_referenced_types(&inner, used_types);
-            return;
-        }
-
-        // Handle Vec<T>
-        if let Some(inner) = self.extract_vec_inner_type(type_str) {
-            self.collect_referenced_types(&inner, used_types);
-            return;
-        }
-
-        // Handle Channel<T> (for streaming types)
-        if let Some(inner) = self.extract_channel_inner_type(type_str) {
-            self.collect_referenced_types(&inner, used_types);
-            return;
-        }
-
-        // Handle references &T
-        if type_str.starts_with('&') {
-            let inner = type_str.trim_start_matches('&').trim();
-            self.collect_referenced_types(inner, used_types);
-            return;
-        }
-
-        // If it's not a primitive type, add it to used types
-        if !self.is_primitive_type(type_str) {
-            used_types.insert(type_str.to_string());
-        }
+        self.type_converter
+            .collect_referenced_types(type_str, used_types);
     }
 
-    fn extract_result_inner_type(&self, type_str: &str) -> Option<String> {
-        if type_str.starts_with("Result<") && type_str.ends_with('>') {
-            let inner = &type_str[7..type_str.len() - 1];
-            inner
-                .find(',')
-                .map(|comma_pos| inner[..comma_pos].trim().to_string())
-        } else {
-            None
-        }
+    /// Create CommandContext instances from CommandInfo using the provided visitor
+    pub fn create_command_contexts<V: TypeVisitor>(
+        &self,
+        commands: &[CommandInfo],
+        visitor: &V,
+        analyzer: &CommandAnalyzer,
+    ) -> Vec<CommandContext> {
+        let type_resolver = analyzer.get_type_resolver();
+
+        commands
+            .iter()
+            .map(|cmd| {
+                CommandContext::from_command_info(cmd, visitor, &|rust_type: &str| {
+                    type_resolver.borrow_mut().parse_type_structure(rust_type)
+                })
+            })
+            .collect()
     }
 
-    fn extract_option_inner_type(&self, type_str: &str) -> Option<String> {
-        if type_str.starts_with("Option<") && type_str.ends_with('>') {
-            let inner = &type_str[7..type_str.len() - 1];
-            Some(inner.trim().to_string())
-        } else {
-            None
-        }
+    /// Create EventContext instances from EventInfo using the provided visitor
+    pub fn create_event_contexts<V: TypeVisitor>(
+        &self,
+        events: &[EventInfo],
+        visitor: &V,
+        analyzer: &CommandAnalyzer,
+    ) -> Vec<EventContext> {
+        let type_resolver = analyzer.get_type_resolver();
+
+        events
+            .iter()
+            .map(|event| {
+                EventContext::from_event_info(event, visitor, &|rust_type: &str| {
+                    type_resolver.borrow_mut().parse_type_structure(rust_type)
+                })
+            })
+            .collect()
     }
 
-    fn extract_vec_inner_type(&self, type_str: &str) -> Option<String> {
-        if type_str.starts_with("Vec<") && type_str.ends_with('>') {
-            let inner = &type_str[4..type_str.len() - 1];
-            Some(inner.trim().to_string())
-        } else {
-            None
-        }
+    /// Create StructContext instances from StructInfo using the provided visitor
+    pub fn create_struct_contexts<V: TypeVisitor>(
+        &self,
+        used_structs: &HashMap<String, StructInfo>,
+        visitor: &V,
+    ) -> Vec<StructContext> {
+        used_structs
+            .iter()
+            .map(|(name, struct_info)| StructContext::from_struct_info(name, struct_info, visitor))
+            .collect()
     }
 
-    fn extract_channel_inner_type(&self, type_str: &str) -> Option<String> {
-        if type_str.starts_with("Channel<") && type_str.ends_with('>') {
-            let inner = &type_str[8..type_str.len() - 1];
-            Some(inner.trim().to_string())
-        } else {
-            None
-        }
-    }
-
-    fn is_primitive_type(&self, type_str: &str) -> bool {
-        matches!(
-            type_str,
-            "String"
-                | "str"
-                | "&str"
-                | "i8"
-                | "i16"
-                | "i32"
-                | "i64"
-                | "i128"
-                | "isize"
-                | "u8"
-                | "u16"
-                | "u32"
-                | "u64"
-                | "u128"
-                | "usize"
-                | "f32"
-                | "f64"
-                | "bool"
-                | "()"
-                | "number"
-                | "string"
-                | "boolean"
-                | "void"
-        )
+    /// Create FieldContext instances from StructInfo using the provided visitor
+    pub fn create_field_contexts<V: TypeVisitor>(
+        &self,
+        struct_info: &StructInfo,
+        visitor: &V,
+    ) -> Vec<FieldContext> {
+        struct_info
+            .fields
+            .iter()
+            .map(|field| {
+                FieldContext::from_field_info(field, &struct_info.serde_rename_all, visitor)
+            })
+            .collect()
     }
 }
 

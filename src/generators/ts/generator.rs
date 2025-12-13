@@ -1,6 +1,5 @@
 use crate::analysis::CommandAnalyzer;
 use crate::generators::base::file_writer::FileWriter;
-use crate::generators::base::template_context::{CommandContext, EventContext};
 use crate::generators::base::templates::GlobalContext;
 use crate::generators::base::type_conversion::TypeConverter;
 use crate::generators::base::type_visitor::TypeScriptVisitor;
@@ -52,27 +51,16 @@ impl TypeScriptBindingsGenerator {
         used_structs: &HashMap<String, StructInfo>,
         analyzer: &CommandAnalyzer,
     ) -> String {
-        use crate::generators::base::template_context::{CommandContext, StructContext};
-
         let has_channels = commands.iter().any(|cmd| !cmd.channels.is_empty());
         let visitor = TypeScriptVisitor;
-        let type_resolver = analyzer.get_type_resolver();
 
         // Convert structs to context wrappers
-        let struct_context: Vec<StructContext> = used_structs
-            .iter()
-            .map(|(name, struct_info)| StructContext::from_struct_info(name, struct_info, &visitor))
-            .collect();
+        let struct_context = self.base.create_struct_contexts(used_structs, &visitor);
 
         // Convert commands to context wrappers
-        let command_context: Vec<CommandContext> = commands
-            .iter()
-            .map(|cmd| {
-                CommandContext::from_command_info(cmd, &visitor, &|rust_type: &str| {
-                    type_resolver.borrow_mut().parse_type_structure(rust_type)
-                })
-            })
-            .collect();
+        let command_context = self
+            .base
+            .create_command_contexts(commands, &visitor, analyzer);
 
         // Render main types.ts template
         let mut context = Context::new();
@@ -97,17 +85,11 @@ impl TypeScriptBindingsGenerator {
     ) -> String {
         let has_channels = commands.iter().any(|cmd| !cmd.channels.is_empty());
         let visitor = TypeScriptVisitor;
-        let type_resolver = analyzer.get_type_resolver();
 
         // Convert commands to context wrappers
-        let command_contexts: Vec<CommandContext> = commands
-            .iter()
-            .map(|cmd| {
-                CommandContext::from_command_info(cmd, &visitor, &|rust_type: &str| {
-                    type_resolver.borrow_mut().parse_type_structure(rust_type)
-                })
-            })
-            .collect();
+        let command_contexts = self
+            .base
+            .create_command_contexts(commands, &visitor, analyzer);
 
         let mut context = Context::new();
         context.insert("header", &self.generate_file_header());
@@ -166,17 +148,9 @@ impl TypeScriptBindingsGenerator {
     /// Generate events file content
     fn generate_events_file(&self, events: &[EventInfo], analyzer: &CommandAnalyzer) -> String {
         let visitor = TypeScriptVisitor;
-        let type_resolver = analyzer.get_type_resolver();
 
         // Convert events to context wrappers
-        let event_contexts: Vec<EventContext> = events
-            .iter()
-            .map(|event| {
-                EventContext::from_event_info(event, &visitor, &|rust_type: &str| {
-                    type_resolver.borrow_mut().parse_type_structure(rust_type)
-                })
-            })
-            .collect();
+        let event_contexts = self.base.create_event_contexts(events, &visitor, analyzer);
 
         let mut context = Context::new();
         context.insert("header", &self.generate_file_header());
