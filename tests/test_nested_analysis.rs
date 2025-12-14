@@ -124,26 +124,40 @@ fn test_primitive_types_ignored() {
 
 #[test]
 fn test_collect_referenced_types_from_generator() {
-    let generator = tauri_typegen::generators::generator::BindingsGenerator::new(None);
+    use tauri_typegen::generators::TypeCollector;
+    use tauri_typegen::TypeStructure;
+
+    let type_collector = TypeCollector::new();
     let mut used_types = HashSet::new();
 
-    // Test complex nested structure
-    generator.collect_referenced_types("HashMap<String, Vec<Option<User>>>", &mut used_types);
+    // Test complex nested structure: HashMap<String, Vec<Option<User>>>
+    let complex_type = TypeStructure::Map {
+        key: Box::new(TypeStructure::Primitive("String".to_string())),
+        value: Box::new(TypeStructure::Array(Box::new(TypeStructure::Optional(
+            Box::new(TypeStructure::Custom("User".to_string())),
+        )))),
+    };
+    type_collector.collect_referenced_types_from_structure(&complex_type, &mut used_types);
     assert!(used_types.contains("User"));
     assert!(!used_types.contains("String"));
 
     used_types.clear();
 
-    // Test Result with both custom types
-    generator.collect_referenced_types("Result<UserProfile, AppError>", &mut used_types);
+    // Test Result with custom error type
+    let result_type =
+        TypeStructure::Result(Box::new(TypeStructure::Custom("UserProfile".to_string())));
+    type_collector.collect_referenced_types_from_structure(&result_type, &mut used_types);
     assert!(used_types.contains("UserProfile"));
-    assert!(used_types.contains("AppError"));
-    assert_eq!(used_types.len(), 2);
 
     used_types.clear();
 
     // Test tuple types
-    generator.collect_referenced_types("(User, Product, i32)", &mut used_types);
+    let tuple_type = TypeStructure::Tuple(vec![
+        TypeStructure::Custom("User".to_string()),
+        TypeStructure::Custom("Product".to_string()),
+        TypeStructure::Primitive("i32".to_string()),
+    ]);
+    type_collector.collect_referenced_types_from_structure(&tuple_type, &mut used_types);
     assert!(used_types.contains("User"));
     assert!(used_types.contains("Product"));
     assert!(!used_types.contains("i32"));

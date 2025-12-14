@@ -2,25 +2,23 @@ use crate::analysis::CommandAnalyzer;
 use crate::generators::base::file_writer::FileWriter;
 use crate::generators::base::template_context::FieldContext;
 use crate::generators::base::templates::GlobalContext;
-use crate::generators::base::type_conversion::TypeConverter;
 use crate::generators::base::type_visitor::{TypeScriptVisitor, ZodVisitor};
-use crate::generators::base::{BaseBindingsGenerator, BaseGenerator};
+use crate::generators::base::BaseBindingsGenerator;
+use crate::generators::TypeCollector;
 use crate::models::{CommandInfo, EventInfo, StructInfo};
 use std::collections::{HashMap, HashSet};
 use tera::{Context, Tera};
 
 /// Generator for Zod schema-based TypeScript bindings with validation
 pub struct ZodBindingsGenerator {
-    base: BaseGenerator,
-    type_converter: TypeConverter,
+    collector: TypeCollector,
     tera: Tera,
 }
 
 impl ZodBindingsGenerator {
     pub fn new() -> Self {
         Self {
-            base: BaseGenerator::new(),
-            type_converter: TypeConverter::new(),
+            collector: TypeCollector::new(),
             tera: super::templates::create_template_engine()
                 .expect("Failed to initialize Zod template engine"),
         }
@@ -60,7 +58,7 @@ impl ZodBindingsGenerator {
 
         // Convert fields to context to get serialized names
         let field_contexts: Vec<FieldContext> =
-            self.base.create_field_contexts(struct_info, &visitor);
+            self.collector.create_field_contexts(struct_info, &visitor);
 
         let variants: Vec<String> = field_contexts
             .iter()
@@ -80,7 +78,7 @@ impl ZodBindingsGenerator {
 
         // Convert FieldInfo to FieldContext with computed Zod schemas
         let field_contexts: Vec<FieldContext> =
-            self.base.create_field_contexts(struct_info, &visitor);
+            self.collector.create_field_contexts(struct_info, &visitor);
 
         let mut context = Context::new();
         context.insert("name", name);
@@ -115,7 +113,7 @@ impl ZodBindingsGenerator {
         // Convert commands to context wrappers
         let visitor = ZodVisitor;
         let command_contexts = self
-            .base
+            .collector
             .create_command_contexts(commands, &visitor, analyzer);
 
         // Generate parameter schemas using template
@@ -170,7 +168,7 @@ impl ZodBindingsGenerator {
 
         // Convert commands to context wrappers
         let command_contexts = self
-            .base
+            .collector
             .create_command_contexts(commands, &visitor, analyzer);
 
         let mut context = Context::new();
@@ -199,21 +197,14 @@ impl ZodBindingsGenerator {
         })
     }
 
-    pub fn collect_referenced_types(&self, rust_type: &str, used_types: &mut HashSet<String>) {
-        self.type_converter
-            .collect_referenced_types(rust_type, used_types);
-    }
-
-    pub fn is_custom_type(&self, type_name: &str) -> bool {
-        self.type_converter.is_custom_type(type_name)
-    }
-
     /// Generate events file content
     fn generate_events_file(&self, events: &[EventInfo], analyzer: &CommandAnalyzer) -> String {
         let visitor = ZodVisitor;
 
         // Convert events to context wrappers
-        let event_contexts = self.base.create_event_contexts(events, &visitor, analyzer);
+        let event_contexts = self
+            .collector
+            .create_event_contexts(events, &visitor, analyzer);
 
         let mut context = Context::new();
         context.insert("header", &self.generate_file_header());
@@ -234,22 +225,22 @@ impl BaseBindingsGenerator for ZodBindingsGenerator {
         output_path: &str,
         analyzer: &CommandAnalyzer,
     ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
-        // Set up the type converter with known structs
-        self.type_converter
-            .set_known_types(discovered_structs.clone());
-
         // Store known structs for reference
-        self.base.known_structs = discovered_structs.clone();
+        self.collector.known_structs = discovered_structs.clone();
 
         // Filter to only the types used by commands
-        let mut used_structs = self.base.collect_used_types(commands, discovered_structs);
+        let mut used_structs = self
+            .collector
+            .collect_used_types(commands, discovered_structs);
 
         // Also collect types used in events
         let events = analyzer.get_discovered_events();
         for event in events {
             let mut event_types = std::collections::HashSet::new();
-            self.base
-                .collect_referenced_types(&event.payload_type, &mut event_types);
+            self.collector.collect_referenced_types_from_structure(
+                &event.payload_type_structure,
+                &mut event_types,
+            );
 
             // Add event payload types to used_structs
             for type_name in event_types {

@@ -1,25 +1,23 @@
 use crate::analysis::CommandAnalyzer;
 use crate::generators::base::file_writer::FileWriter;
 use crate::generators::base::templates::GlobalContext;
-use crate::generators::base::type_conversion::TypeConverter;
 use crate::generators::base::type_visitor::TypeScriptVisitor;
-use crate::generators::base::{BaseBindingsGenerator, BaseGenerator};
+use crate::generators::base::BaseBindingsGenerator;
+use crate::generators::TypeCollector;
 use crate::models::{CommandInfo, EventInfo, StructInfo};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use tera::{Context, Tera};
 
 /// Generator for vanilla TypeScript bindings without validation
 pub struct TypeScriptBindingsGenerator {
-    base: BaseGenerator,
-    type_converter: TypeConverter,
+    collector: TypeCollector,
     tera: Tera,
 }
 
 impl TypeScriptBindingsGenerator {
     pub fn new() -> Self {
         Self {
-            base: BaseGenerator::new(),
-            type_converter: TypeConverter::new(),
+            collector: TypeCollector::new(),
             tera: super::templates::create_template_engine()
                 .expect("Failed to initialize TypeScript template engine"),
         }
@@ -55,11 +53,13 @@ impl TypeScriptBindingsGenerator {
         let visitor = TypeScriptVisitor;
 
         // Convert structs to context wrappers
-        let struct_context = self.base.create_struct_contexts(used_structs, &visitor);
+        let struct_context = self
+            .collector
+            .create_struct_contexts(used_structs, &visitor);
 
         // Convert commands to context wrappers
         let command_context = self
-            .base
+            .collector
             .create_command_contexts(commands, &visitor, analyzer);
 
         // Render main types.ts template
@@ -88,7 +88,7 @@ impl TypeScriptBindingsGenerator {
 
         // Convert commands to context wrappers
         let command_contexts = self
-            .base
+            .collector
             .create_command_contexts(commands, &visitor, analyzer);
 
         let mut context = Context::new();
@@ -117,40 +117,14 @@ impl TypeScriptBindingsGenerator {
         )
     }
 
-    /// Collect referenced types for backward compatibility
-    pub fn collect_referenced_types(&self, rust_type: &str, used_types: &mut HashSet<String>) {
-        self.type_converter
-            .collect_referenced_types(rust_type, used_types);
-    }
-
-    /// Check if a type is custom for backward compatibility  
-    pub fn is_custom_type(&self, type_name: &str) -> bool {
-        // Check if it's in known types or looks like a custom type
-        self.type_converter.is_custom_type(type_name) || self.looks_like_custom_type(type_name)
-    }
-
-    /// Check if a type looks like a custom type (starts with capital letter, not a primitive)
-    fn looks_like_custom_type(&self, ts_type: &str) -> bool {
-        // Must start with a capital letter
-        if !ts_type
-            .chars()
-            .next()
-            .map(|c| c.is_ascii_uppercase())
-            .unwrap_or(false)
-        {
-            return false;
-        }
-
-        // Must not be a primitive type
-        !self.type_converter.is_primitive_type(ts_type)
-    }
-
     /// Generate events file content
     fn generate_events_file(&self, events: &[EventInfo], analyzer: &CommandAnalyzer) -> String {
         let visitor = TypeScriptVisitor;
 
         // Convert events to context wrappers
-        let event_contexts = self.base.create_event_contexts(events, &visitor, analyzer);
+        let event_contexts = self
+            .collector
+            .create_event_contexts(events, &visitor, analyzer);
 
         let mut context = Context::new();
         context.insert("header", &self.generate_file_header());
@@ -173,23 +147,23 @@ impl BaseBindingsGenerator for TypeScriptBindingsGenerator {
         output_path: &str,
         analyzer: &CommandAnalyzer,
     ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
-        // Set up the type converter with known structs
-        self.type_converter
-            .set_known_types(discovered_structs.clone());
-
         // Store known structs for reference
-        self.base.known_structs = discovered_structs.clone();
+        self.collector.known_structs = discovered_structs.clone();
 
         // Filter to only the types used by commands
-        let mut used_structs = self.base.collect_used_types(commands, discovered_structs);
+        let mut used_structs = self
+            .collector
+            .collect_used_types(commands, discovered_structs);
 
         // Also collect types used in events
         let events = analyzer.get_discovered_events();
 
         for event in events {
             let mut event_types = std::collections::HashSet::new();
-            self.base
-                .collect_referenced_types(&event.payload_type, &mut event_types);
+            self.collector.collect_referenced_types_from_structure(
+                &event.payload_type_structure,
+                &mut event_types,
+            );
 
             // Add event payload types to used_structs
             for type_name in event_types {

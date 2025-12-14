@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
 use tauri_typegen::analysis::CommandAnalyzer;
-use tauri_typegen::generators::generator::BindingsGenerator;
+use tauri_typegen::generators::create_generator;
 use tauri_typegen::models::{CommandInfo, ParameterInfo};
 use tempfile::TempDir;
 
@@ -35,7 +35,7 @@ fn test_command_hooks_interface_generated() {
     let commands = vec![create_test_command()];
     let discovered_structs = HashMap::new();
 
-    let mut generator = BindingsGenerator::new(Some("zod".to_string()));
+    let mut generator = create_generator(Some("zod".to_string()));
     generator
         .generate_models(
             &commands,
@@ -63,7 +63,7 @@ fn test_command_with_hooks_parameter() {
     let commands = vec![create_test_command()];
     let discovered_structs = HashMap::new();
 
-    let mut generator = BindingsGenerator::new(Some("zod".to_string()));
+    let mut generator = create_generator(Some("zod".to_string()));
     generator
         .generate_models(
             &commands,
@@ -92,7 +92,7 @@ fn test_command_without_params_has_hooks() {
     let commands = vec![create_command_without_params()];
     let discovered_structs = HashMap::new();
 
-    let mut generator = BindingsGenerator::new(Some("zod".to_string()));
+    let mut generator = create_generator(Some("zod".to_string()));
     generator
         .generate_models(
             &commands,
@@ -117,7 +117,7 @@ fn test_hooks_implementation_structure() {
     let commands = vec![create_test_command()];
     let discovered_structs = HashMap::new();
 
-    let mut generator = BindingsGenerator::new(Some("zod".to_string()));
+    let mut generator = create_generator(Some("zod".to_string()));
     generator
         .generate_models(
             &commands,
@@ -153,7 +153,7 @@ fn test_zod_error_import_present() {
     let commands = vec![create_test_command()];
     let discovered_structs = HashMap::new();
 
-    let mut generator = BindingsGenerator::new(Some("zod".to_string()));
+    let mut generator = create_generator(Some("zod".to_string()));
     generator
         .generate_models(
             &commands,
@@ -180,7 +180,7 @@ fn test_safe_parse_used_instead_of_parse() {
     let commands = vec![create_test_command()];
     let discovered_structs = HashMap::new();
 
-    let mut generator = BindingsGenerator::new(Some("zod".to_string()));
+    let mut generator = create_generator(Some("zod".to_string()));
     generator
         .generate_models(
             &commands,
@@ -210,7 +210,7 @@ fn test_backward_compatibility_with_vanilla_typescript() {
     let discovered_structs = HashMap::new();
 
     // Generate without validation (vanilla TypeScript)
-    let mut generator = BindingsGenerator::new(Some("none".to_string()));
+    let mut generator = create_generator(Some("none".to_string()));
     generator
         .generate_models(
             &commands,

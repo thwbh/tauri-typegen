@@ -121,9 +121,11 @@ impl CommandAnalyzer {
                 }
 
                 // Extract events from this file's AST
-                let file_events = self
-                    .event_parser
-                    .extract_events_from_ast(&parsed_file.ast, parsed_file.path.as_path())?;
+                let file_events = self.event_parser.extract_events_from_ast(
+                    &parsed_file.ast,
+                    parsed_file.path.as_path(),
+                    &mut self.type_resolver,
+                )?;
 
                 // Collect type names from command parameters and return types using functional style
                 file_commands.iter().for_each(|cmd| {
@@ -195,9 +197,11 @@ impl CommandAnalyzer {
                 // Extract commands and events from the cached AST
                 if let Some(parsed_file) = self.ast_cache.get_cloned(&path_buf) {
                     // Extract events
-                    let file_events = self
-                        .event_parser
-                        .extract_events_from_ast(&parsed_file.ast, path_buf.as_path())?;
+                    let file_events = self.event_parser.extract_events_from_ast(
+                        &parsed_file.ast,
+                        path_buf.as_path(),
+                        &mut self.type_resolver,
+                    )?;
                     self.discovered_events.extend(file_events);
 
                     // Extract commands

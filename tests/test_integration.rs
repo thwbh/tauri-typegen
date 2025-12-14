@@ -1,6 +1,6 @@
 use std::fs;
 use tauri_typegen::analysis::CommandAnalyzer;
-use tauri_typegen::generators::generator::BindingsGenerator;
+use tauri_typegen::generators::create_generator;
 use tempfile::TempDir;
 
 fn create_complex_test_project() -> TempDir {
@@ -195,7 +195,7 @@ fn test_full_pipeline_complex_project() {
 
     // Step 2: Generate TypeScript models
     let output_path = temp_dir.path().join("generated");
-    let mut generator = BindingsGenerator::new(Some("zod".to_string()));
+    let mut generator = create_generator(Some("zod".to_string()));
 
     let generated_files = generator
         .generate_models(
@@ -297,7 +297,7 @@ fn test_full_pipeline_without_validation() {
     let commands = analyzer.analyze_project(project_path).unwrap();
 
     let output_path = temp_dir.path().join("generated_no_validation");
-    let mut generator = BindingsGenerator::new(Some("none".to_string()));
+    let mut generator = create_generator(Some("none".to_string()));
 
     let generated_files = generator
         .generate_models(
@@ -371,7 +371,7 @@ fn test_generated_content_syntax_valid() {
     let commands = analyzer.analyze_project(project_path).unwrap();
 
     let output_path = temp_dir.path().join("generated");
-    let mut generator = BindingsGenerator::new(Some("zod".to_string()));
+    let mut generator = create_generator(Some("zod".to_string()));
 
     generator
         .generate_models(

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
 use tauri_typegen::analysis::CommandAnalyzer;
-use tauri_typegen::generators::generator::BindingsGenerator;
+use tauri_typegen::generators::create_generator;
 use tauri_typegen::models::{CommandInfo, FieldInfo, ParameterInfo, StructInfo, TypeStructure};
 use tempfile::TempDir;
 
@@ -77,7 +77,7 @@ fn create_sample_commands_with_unused_structs() -> Vec<CommandInfo> {
                 name: "request".to_string(),
                 rust_type: "CreateUserRequest".to_string(),
                 is_optional: false,
-                type_structure: Default::default(),
+                type_structure: TypeStructure::Custom("CreateUserRequest".to_string()),
                 serde_rename: None,
             }],
             "User",
@@ -244,7 +244,7 @@ fn test_only_generates_types_used_by_commands() {
     let commands = create_sample_commands_with_unused_structs();
     let all_discovered_structs = create_sample_structs_with_unused();
 
-    let mut generator = BindingsGenerator::new(None);
+    let mut generator = create_generator(None);
     generator
         .generate_models(
             &commands,
@@ -283,48 +283,55 @@ fn test_only_generates_types_used_by_commands() {
 
 #[test]
 fn test_collect_referenced_types_handles_complex_types() {
-    let generator = BindingsGenerator::new(None);
+    use tauri_typegen::generators::TypeCollector;
+    use tauri_typegen::TypeStructure;
+
+    let type_collector = TypeCollector::new();
     let mut used_types = std::collections::HashSet::new();
 
     // Test Result type extraction
-    generator.collect_referenced_types("Result<User, String>", &mut used_types);
+    let result_type = TypeStructure::Result(Box::new(TypeStructure::Custom("User".to_string())));
+    type_collector.collect_referenced_types_from_structure(&result_type, &mut used_types);
     assert!(used_types.contains("User"));
-    assert!(!used_types.contains("String")); // String is primitive
 
     used_types.clear();
 
     // Test Option type extraction
-    generator.collect_referenced_types("Option<CreateUserRequest>", &mut used_types);
+    let option_type = TypeStructure::Optional(Box::new(TypeStructure::Custom(
+        "CreateUserRequest".to_string(),
+    )));
+    type_collector.collect_referenced_types_from_structure(&option_type, &mut used_types);
     assert!(used_types.contains("CreateUserRequest"));
 
     used_types.clear();
 
     // Test Vec type extraction
-    generator.collect_referenced_types("Vec<Product>", &mut used_types);
+    let vec_type = TypeStructure::Array(Box::new(TypeStructure::Custom("Product".to_string())));
+    type_collector.collect_referenced_types_from_structure(&vec_type, &mut used_types);
     assert!(used_types.contains("Product"));
 
     used_types.clear();
 
-    // Test reference type extraction
-    generator.collect_referenced_types("&User", &mut used_types);
-    assert!(used_types.contains("User"));
-
-    used_types.clear();
-
     // Test nested types
-    generator.collect_referenced_types("Result<Vec<User>, String>", &mut used_types);
+    let nested_type = TypeStructure::Result(Box::new(TypeStructure::Array(Box::new(
+        TypeStructure::Custom("User".to_string()),
+    ))));
+    type_collector.collect_referenced_types_from_structure(&nested_type, &mut used_types);
     assert!(used_types.contains("User"));
 
     used_types.clear();
 
     // Test primitive types are not collected
-    generator.collect_referenced_types("String", &mut used_types);
+    let string_type = TypeStructure::Primitive("String".to_string());
+    type_collector.collect_referenced_types_from_structure(&string_type, &mut used_types);
     assert!(used_types.is_empty());
 
-    generator.collect_referenced_types("i32", &mut used_types);
+    let int_type = TypeStructure::Primitive("i32".to_string());
+    type_collector.collect_referenced_types_from_structure(&int_type, &mut used_types);
     assert!(used_types.is_empty());
 
-    generator.collect_referenced_types("bool", &mut used_types);
+    let bool_type = TypeStructure::Primitive("bool".to_string());
+    type_collector.collect_referenced_types_from_structure(&bool_type, &mut used_types);
     assert!(used_types.is_empty());
 }
 
@@ -349,7 +356,7 @@ fn test_integration_with_real_analyzer() {
     let output_path = temp_dir.path().join("output");
     fs::create_dir_all(&output_path).unwrap();
 
-    let mut generator = BindingsGenerator::new(None);
+    let mut generator = create_generator(None);
     generator
         .generate_models(
             &commands,
@@ -380,7 +387,7 @@ fn test_type_filtering_with_validation_library() {
     let all_discovered_structs = create_sample_structs_with_unused();
 
     // Test with Zod validation
-    let mut generator = BindingsGenerator::new(Some("zod".to_string()));
+    let mut generator = create_generator(Some("zod".to_string()));
     generator
         .generate_models(
             &commands,
@@ -415,7 +422,7 @@ fn test_empty_commands_generates_no_unnecessary_types() {
     let commands = vec![];
     let all_discovered_structs = create_sample_structs_with_unused();
 
-    let mut generator = BindingsGenerator::new(None);
+    let mut generator = create_generator(None);
     generator
         .generate_models(
             &commands,

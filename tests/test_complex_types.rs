@@ -1,9 +1,7 @@
-use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use tauri_typegen::analysis::CommandAnalyzer;
-use tauri_typegen::generators::generator::BindingsGenerator;
-use tauri_typegen::models::StructInfo;
+use tauri_typegen::generators::create_generator;
 use tempfile::TempDir;
 
 #[test]
@@ -127,7 +125,7 @@ fn test_full_generation_with_complex_types() {
         .unwrap();
     let discovered_structs = analyzer.get_discovered_structs();
 
-    let mut generator = BindingsGenerator::new(Some("zod".to_string()));
+    let mut generator = create_generator(Some("zod".to_string()));
     let generated_files = generator
         .generate_models(
             &commands,
@@ -160,9 +158,4 @@ fn test_full_generation_with_complex_types() {
     assert!(commands_content.contains("createUserWithMetadata"));
     assert!(commands_content.contains("getUserProducts"));
     assert!(commands_content.contains("updateOrderStatus"));
-}
-
-#[allow(dead_code)]
-fn create_sample_structs() -> HashMap<String, StructInfo> {
-    HashMap::new() // Use discovered structs from analyzer in real tests
 }

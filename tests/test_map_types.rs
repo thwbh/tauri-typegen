@@ -1,6 +1,6 @@
 use std::fs;
 use tauri_typegen::analysis::CommandAnalyzer;
-use tauri_typegen::generators::generator::BindingsGenerator;
+use tauri_typegen::generators::create_generator;
 use tempfile::TempDir;
 
 #[test]
@@ -48,7 +48,7 @@ pub async fn get_config() -> Result<BTreeMap<String, i32>, String> {
         .unwrap();
     let discovered_structs = analyzer.get_discovered_structs();
 
-    let mut generator = BindingsGenerator::new(None); // vanilla TypeScript
+    let mut generator = create_generator(None); // vanilla TypeScript
     generator
         .generate_models(
             &commands,
@@ -71,7 +71,7 @@ pub async fn get_config() -> Result<BTreeMap<String, i32>, String> {
 
     // Test Zod generation
     let output_dir_zod = temp_dir.path().join("generated_zod");
-    let mut generator_zod = BindingsGenerator::new(Some("zod".to_string()));
+    let mut generator_zod = create_generator(Some("zod".to_string()));
     generator_zod
         .generate_models(
             &commands,
@@ -128,7 +128,7 @@ pub async fn get_wizard_results() -> Result<WizardTargetDateResult, String> {
         .unwrap();
     let discovered_structs = analyzer.get_discovered_structs();
 
-    let mut generator_zod = BindingsGenerator::new(Some("zod".to_string()));
+    let mut generator_zod = create_generator(Some("zod".to_string()));
     generator_zod
         .generate_models(
             &commands,

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
 use tauri_typegen::analysis::CommandAnalyzer;
-use tauri_typegen::generators::generator::BindingsGenerator;
+use tauri_typegen::generators::create_generator;
 use tauri_typegen::models::{ChannelInfo, CommandInfo, ParameterInfo};
 use tempfile::TempDir;
 
@@ -47,7 +47,7 @@ fn test_zod_command_with_params_and_channels_generates_valid_code() {
 
     let discovered_structs = HashMap::new();
 
-    let mut generator = BindingsGenerator::new(Some("zod".to_string()));
+    let mut generator = create_generator(Some("zod".to_string()));
     generator
         .generate_models(
             &commands,
@@ -117,7 +117,7 @@ fn test_zod_command_with_multiple_channels_generates_all_references() {
 
     let discovered_structs = HashMap::new();
 
-    let mut generator = BindingsGenerator::new(Some("zod".to_string()));
+    let mut generator = create_generator(Some("zod".to_string()));
     generator
         .generate_models(
             &commands,
@@ -170,7 +170,7 @@ fn test_zod_command_with_only_params_no_channels() {
 
     let discovered_structs = HashMap::new();
 
-    let mut generator = BindingsGenerator::new(Some("zod".to_string()));
+    let mut generator = create_generator(Some("zod".to_string()));
     generator
         .generate_models(
             &commands,
@@ -219,7 +219,7 @@ fn test_zod_command_with_only_channels_no_params() {
 
     let discovered_structs = HashMap::new();
 
-    let mut generator = BindingsGenerator::new(Some("zod".to_string()));
+    let mut generator = create_generator(Some("zod".to_string()));
     generator
         .generate_models(
             &commands,
@@ -275,7 +275,7 @@ fn test_vanilla_ts_command_with_params_and_channels() {
     let discovered_structs = HashMap::new();
 
     // Use vanilla TypeScript (no validation)
-    let mut generator = BindingsGenerator::new(Some("none".to_string()));
+    let mut generator = create_generator(Some("none".to_string()));
     generator
         .generate_models(
             &commands,

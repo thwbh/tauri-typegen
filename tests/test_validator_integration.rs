@@ -1,6 +1,6 @@
 use std::fs;
 use tauri_typegen::analysis::CommandAnalyzer;
-use tauri_typegen::generators::generator::BindingsGenerator;
+use tauri_typegen::generators::create_generator;
 use tempfile::TempDir;
 
 #[test]
@@ -122,7 +122,7 @@ pub async fn create_product(data: ProductData) -> Result<String, String> {
         .unwrap();
     let discovered_structs = analyzer.get_discovered_structs();
 
-    let mut generator = BindingsGenerator::new(Some("zod".to_string()));
+    let mut generator = create_generator(Some("zod".to_string()));
     generator
         .generate_models(
             &commands,
@@ -190,7 +190,7 @@ pub async fn update_profile(profile: UserProfile) -> Result<String, String> {
         .unwrap();
     let discovered_structs = analyzer.get_discovered_structs();
 
-    let mut generator = BindingsGenerator::new(Some("zod".to_string()));
+    let mut generator = create_generator(Some("zod".to_string()));
     generator
         .generate_models(
             &commands,
@@ -290,7 +290,7 @@ pub async fn submit_form(data: FormData) -> Result<String, String> {
     );
 
     // Generate the Zod bindings
-    let mut generator = BindingsGenerator::new(Some("zod".to_string()));
+    let mut generator = create_generator(Some("zod".to_string()));
     generator
         .generate_models(
             &commands,

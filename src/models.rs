@@ -164,6 +164,9 @@ pub struct RangeConstraint {
 pub struct EventInfo {
     pub event_name: String,
     pub payload_type: String,
+    /// Structured representation of the payload type for generators
+    #[serde(default)]
+    pub payload_type_structure: TypeStructure,
     pub file_path: String,
     pub line_number: usize,
 }

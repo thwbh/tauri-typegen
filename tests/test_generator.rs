@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
 use tauri_typegen::analysis::CommandAnalyzer;
-use tauri_typegen::generators::generator::BindingsGenerator;
+use tauri_typegen::generators::create_generator;
 use tauri_typegen::models::{CommandInfo, ParameterInfo, StructInfo};
 use tempfile::TempDir;
 
@@ -47,7 +47,7 @@ fn test_generator_creates_all_files() {
     let commands = create_sample_commands();
     let discovered_structs = create_empty_structs();
 
-    let mut generator = BindingsGenerator::new(Some("zod".to_string()));
+    let mut generator = create_generator(Some("zod".to_string()));
     let generated_files = generator
         .generate_models(
             &commands,
@@ -76,7 +76,7 @@ fn test_generator_without_validation_library() {
     let commands = create_sample_commands();
     let discovered_structs = create_empty_structs();
 
-    let mut generator = BindingsGenerator::new(Some("none".to_string()));
+    let mut generator = create_generator(Some("none".to_string()));
     let generated_files = generator
         .generate_models(
             &commands,
@@ -100,7 +100,7 @@ fn test_types_file_generation() {
     let commands = create_sample_commands();
     let discovered_structs = create_empty_structs();
 
-    let mut generator = BindingsGenerator::new(None);
+    let mut generator = create_generator(None);
     generator
         .generate_models(
             &commands,
@@ -128,7 +128,7 @@ fn test_zod_schemas_in_types_file() {
     let commands = create_sample_commands();
     let discovered_structs = create_empty_structs();
 
-    let mut generator = BindingsGenerator::new(Some("zod".to_string()));
+    let mut generator = create_generator(Some("zod".to_string()));
     generator
         .generate_models(
             &commands,
@@ -159,7 +159,7 @@ fn test_yup_schemas_generation() {
     let discovered_structs = create_empty_structs();
 
     // Yup support removed - should fall back to vanilla generator
-    let mut generator = BindingsGenerator::new(Some("yup".to_string()));
+    let mut generator = create_generator(Some("yup".to_string()));
     let generated_files = generator
         .generate_models(
             &commands,
@@ -185,7 +185,7 @@ fn test_commands_file_generation() {
     let commands = create_sample_commands();
     let discovered_structs = create_empty_structs();
 
-    let mut generator = BindingsGenerator::new(Some("zod".to_string()));
+    let mut generator = create_generator(Some("zod".to_string()));
     generator
         .generate_models(
             &commands,
@@ -223,7 +223,7 @@ fn test_commands_without_validation() {
     let commands = create_sample_commands();
     let discovered_structs = create_empty_structs();
 
-    let mut generator = BindingsGenerator::new(Some("none".to_string()));
+    let mut generator = create_generator(Some("none".to_string()));
     generator
         .generate_models(
             &commands,
@@ -249,7 +249,7 @@ fn test_index_file_generation() {
     let commands = create_sample_commands();
     let discovered_structs = create_empty_structs();
 
-    let mut generator = BindingsGenerator::new(None);
+    let mut generator = create_generator(None);
     generator
         .generate_models(
             &commands,
@@ -263,21 +263,6 @@ fn test_index_file_generation() {
 
     assert!(index_content.contains("export * from './types';"));
     assert!(index_content.contains("export * from './commands';"));
-}
-
-#[test]
-fn test_custom_type_detection() {
-    let generator = BindingsGenerator::new(None);
-
-    assert!(!generator.is_custom_type("string"));
-    assert!(!generator.is_custom_type("number"));
-    assert!(!generator.is_custom_type("boolean"));
-    assert!(!generator.is_custom_type("void"));
-    assert!(!generator.is_custom_type("string[]"));
-    assert!(!generator.is_custom_type("string | null"));
-
-    assert!(generator.is_custom_type("User"));
-    assert!(generator.is_custom_type("CreateUserRequest"));
 }
 
 #[test]
@@ -303,7 +288,7 @@ fn test_generator_with_void_return() {
 
     let discovered_structs = create_empty_structs();
 
-    let mut generator = BindingsGenerator::new(None);
+    let mut generator = create_generator(None);
     generator
         .generate_models(
             &commands,
@@ -325,7 +310,7 @@ fn test_generator_empty_commands_list() {
     let commands = vec![];
     let discovered_structs = create_empty_structs();
 
-    let mut generator = BindingsGenerator::new(None);
+    let mut generator = create_generator(None);
     let generated_files = generator
         .generate_models(
             &commands,
@@ -403,7 +388,7 @@ fn test_primitive_arrays_and_optional_custom_types() {
         },
     );
 
-    let mut generator = BindingsGenerator::new(Some("zod".to_string()));
+    let mut generator = create_generator(Some("zod".to_string()));
     generator
         .generate_models(
             &commands,
