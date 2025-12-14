@@ -1,4 +1,3 @@
-use crate::generators::base::templates::escape_for_js;
 use crate::models::{TypeStructure, ValidatorAttributes};
 use std::collections::HashMap;
 use tera::Value;
@@ -364,4 +363,13 @@ mod tests {
             "types.User | null"
         );
     }
+}
+
+/// Helper function to escape strings for JavaScript
+pub fn escape_for_js(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
+        .replace('\t', "\\t")
 }

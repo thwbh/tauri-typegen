@@ -13,6 +13,16 @@ pub use base::BaseBindingsGenerator as BindingsGenerator;
 pub use ts::generator::TypeScriptBindingsGenerator;
 pub use zod::generator::ZodBindingsGenerator;
 
+/// Macro to reduce boilerplate for template registration
+#[macro_export]
+macro_rules! template {
+    ($tera:expr, $name:expr, $path:expr) => {
+        $tera
+            .add_raw_template($name, include_str!($path))
+            .map_err(|e| format!("Failed to register {}: {}", $name, e))?;
+    };
+}
+
 /// Factory function to create the appropriate bindings generator
 /// Returns a boxed trait object for polymorphism
 pub fn create_generator(validation_library: Option<String>) -> Box<dyn BindingsGenerator> {

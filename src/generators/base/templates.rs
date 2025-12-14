@@ -1,3 +1,4 @@
+use crate::template;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tera::{Tera, Value};
@@ -20,22 +21,41 @@ impl GlobalContext {
     }
 }
 
-/// Register common templates used across all generators
-pub fn register_common_templates(tera: &mut Tera) -> Result<(), String> {
-    tera.add_raw_template("common/header.tera", include_str!("templates/header.tera"))
-        .map_err(|e| format!("Failed to register common/header.tera: {}", e))?;
+pub trait BaseTemplate {
+    fn create(&self) -> Result<Tera, String> {
+        let mut tera = Tera::default();
 
-    Ok(())
+        let _ = self.register_templates(&mut tera);
+        let _ = self.register_filters(&mut tera);
+
+        Ok(tera)
+    }
+
+    /// Register common templates used across all generators
+    fn register_templates(&self, tera: &mut Tera) -> Result<(), String> {
+        template!(tera, "common/header.tera", "templates/header.tera");
+
+        let _ = self.register_generator_templates(tera);
+
+        Ok(())
+    }
+
+    /// Register common string escaping and type formatting filters
+    fn register_filters(&self, tera: &mut Tera) {
+        tera.register_filter("escape_js", escape_js_filter);
+        tera.register_filter("add_types_prefix", add_types_prefix_filter);
+
+        self.register_generator_filters(tera);
+    }
+
+    /// Register generator specific filters
+    fn register_generator_filters(&self, tera: &mut Tera);
+
+    /// Register generator specific templates
+    fn register_generator_templates(&self, tera: &mut Tera) -> Result<(), String>;
 }
 
-/// Register common string escaping and type formatting filters
-pub fn register_common_filters(tera: &mut Tera) {
-    tera.register_filter("escape_js", escape_js_filter);
-    tera.register_filter("add_types_prefix", add_types_prefix_filter);
-}
-
-// === Common Filters ===
-
+/// Filter to escape problematic JS characters
 fn escape_js_filter(value: &Value, _args: &HashMap<String, Value>) -> tera::Result<Value> {
     if let Some(s) = value.as_str() {
         let escaped = s
@@ -113,13 +133,4 @@ fn add_types_prefix(ts_type: &str) -> String {
     } else {
         format!("types.{}", ts_type)
     }
-}
-
-/// Helper function to escape strings for JavaScript
-pub fn escape_for_js(s: &str) -> String {
-    s.replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('\n', "\\n")
-        .replace('\r', "\\r")
-        .replace('\t', "\\t")
 }
