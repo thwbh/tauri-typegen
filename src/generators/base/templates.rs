@@ -21,38 +21,31 @@ impl GlobalContext {
     }
 }
 
-pub trait BaseTemplate {
-    fn create(&self) -> Result<Tera, String> {
+pub trait TemplateRegistry: Sized {
+    fn create_tera() -> Result<Tera, String> {
         let mut tera = Tera::default();
 
-        let _ = self.register_templates(&mut tera);
-        let _ = self.register_filters(&mut tera);
+        // register common template
+        template!(tera, "common/header.tera", "templates/header.tera");
+
+        // register common filters
+        tera.register_filter("escape_js", escape_js_filter);
+        tera.register_filter("add_types_prefix", add_types_prefix_filter);
+
+        // register registry specific templates
+        Self::register_templates(&mut tera)?;
+
+        // register registry specific filters
+        Self::register_filters(&mut tera);
 
         Ok(tera)
     }
 
-    /// Register common templates used across all generators
-    fn register_templates(&self, tera: &mut Tera) -> Result<(), String> {
-        template!(tera, "common/header.tera", "templates/header.tera");
+    /// Register specific templates used in the associated generator
+    fn register_templates(tera: &mut Tera) -> Result<(), String>;
 
-        let _ = self.register_generator_templates(tera);
-
-        Ok(())
-    }
-
-    /// Register common string escaping and type formatting filters
-    fn register_filters(&self, tera: &mut Tera) {
-        tera.register_filter("escape_js", escape_js_filter);
-        tera.register_filter("add_types_prefix", add_types_prefix_filter);
-
-        self.register_generator_filters(tera);
-    }
-
-    /// Register generator specific filters
-    fn register_generator_filters(&self, tera: &mut Tera);
-
-    /// Register generator specific templates
-    fn register_generator_templates(&self, tera: &mut Tera) -> Result<(), String>;
+    /// Register spefific filters used in the associated generator
+    fn register_filters(tera: &mut Tera);
 }
 
 /// Filter to escape problematic JS characters

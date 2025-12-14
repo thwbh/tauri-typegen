@@ -1,14 +1,14 @@
-use crate::{generators::base::templates::BaseTemplate, template};
+use crate::{generators::base::templates::TemplateRegistry, template};
 use tera::Tera;
 
 pub struct TypeScriptTemplate;
 
 /// Create and configure a Tera template engine for TypeScript generator
-impl BaseTemplate for TypeScriptTemplate {
-    fn register_generator_filters(&self, _tera: &mut Tera) {}
+impl TemplateRegistry for TypeScriptTemplate {
+    fn register_filters(_tera: &mut Tera) {}
 
     /// Register typescript-specific templates from embedded strings
-    fn register_generator_templates(&self, tera: &mut Tera) -> Result<(), String> {
+    fn register_templates(tera: &mut Tera) -> Result<(), String> {
         // Main templates
         template!(tera, "typescript/types.ts.tera", "templates/types.ts.tera");
         template!(

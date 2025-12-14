@@ -1,7 +1,7 @@
 use crate::analysis::CommandAnalyzer;
 use crate::generators::base::file_writer::FileWriter;
 use crate::generators::base::template_context::FieldContext;
-use crate::generators::base::templates::BaseTemplate;
+use crate::generators::base::templates::TemplateRegistry;
 use crate::generators::base::type_visitor::{TypeScriptVisitor, ZodVisitor};
 use crate::generators::base::BaseBindingsGenerator;
 use crate::generators::zod::templates::ZodTemplate;
@@ -20,9 +20,7 @@ impl ZodBindingsGenerator {
     pub fn new() -> Self {
         Self {
             collector: TypeCollector::new(),
-            tera: ZodTemplate
-                .create()
-                .expect("Failed to initialize Zod template engine"),
+            tera: ZodTemplate::create_tera().expect("Failed to initialize Zod template engine"),
         }
     }
 

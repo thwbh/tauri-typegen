@@ -1,6 +1,6 @@
 use crate::analysis::CommandAnalyzer;
 use crate::generators::base::file_writer::FileWriter;
-use crate::generators::base::templates::BaseTemplate;
+use crate::generators::base::templates::TemplateRegistry;
 use crate::generators::base::type_visitor::TypeScriptVisitor;
 use crate::generators::base::BaseBindingsGenerator;
 use crate::generators::ts::templates::TypeScriptTemplate;
@@ -19,8 +19,7 @@ impl TypeScriptBindingsGenerator {
     pub fn new() -> Self {
         Self {
             collector: TypeCollector::new(),
-            tera: TypeScriptTemplate
-                .create()
+            tera: TypeScriptTemplate::create_tera()
                 .expect("Failed to initialize TypeScript template engine"),
         }
     }

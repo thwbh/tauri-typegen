@@ -2,70 +2,6 @@ use crate::models::{TypeStructure, ValidatorAttributes};
 use std::collections::HashMap;
 use tera::Value;
 
-/// Format TypeScript return type with types. prefix for custom types
-pub fn format_return_type_filter(
-    value: &Value,
-    _args: &HashMap<String, Value>,
-) -> tera::Result<Value> {
-    if let Some(ts_type) = value.as_str() {
-        let formatted = format_typescript_return_type(ts_type);
-        Ok(Value::String(formatted))
-    } else {
-        Err("format_return_type filter expects a string".into())
-    }
-}
-
-fn format_typescript_return_type(ts_type: &str) -> String {
-    // Handle primitives that don't need types. prefix
-    match ts_type {
-        "void" | "string" | "number" | "boolean" => return ts_type.to_string(),
-        _ => {}
-    }
-
-    // Handle arrays of primitives: string[], number[], boolean[]
-    if let Some(base_type) = ts_type.strip_suffix("[]") {
-        match base_type {
-            "string" | "number" | "boolean" | "void" => return ts_type.to_string(),
-            _ => {
-                // Arrays of custom types: CustomType[] -> types.CustomType[]
-                let formatted_base = format_typescript_return_type(base_type);
-                return format!("{}[]", formatted_base);
-            }
-        }
-    }
-
-    // Handle Record<K, V> and Map<K, V>
-    if (ts_type.starts_with("Record<") || ts_type.starts_with("Map<")) && ts_type.ends_with(">") {
-        return ts_type.to_string();
-    }
-
-    // Handle union types with null: Type | null
-    if ts_type.contains(" | null") {
-        let base_type = ts_type.replace(" | null", "");
-        let formatted_base = format_typescript_return_type(&base_type);
-        return format!("{} | null", formatted_base);
-    }
-
-    // Handle union types with undefined: Type | undefined
-    if ts_type.contains(" | undefined") {
-        let base_type = ts_type.replace(" | undefined", "");
-        let formatted_base = format_typescript_return_type(&base_type);
-        return format!("{} | undefined", formatted_base);
-    }
-
-    // Handle tuple types [T, U, ...]
-    if ts_type.starts_with("[") && ts_type.ends_with("]") {
-        return ts_type.to_string();
-    }
-
-    // Custom type - add types. prefix if not already present
-    if ts_type.starts_with("types.") {
-        ts_type.to_string()
-    } else {
-        format!("types.{}", ts_type)
-    }
-}
-
 /// Convert TypeStructure to Zod schema with optional validation
 pub fn to_zod_schema_filter(value: &Value, args: &HashMap<String, Value>) -> tera::Result<Value> {
     let is_record_key = args
@@ -337,31 +273,6 @@ mod tests {
         // Test custom type
         let ts = TypeStructure::Custom("User".to_string());
         assert_eq!(type_structure_to_zod_schema(&ts, false), "UserSchema");
-    }
-
-    #[test]
-    fn test_format_return_type() {
-        // Primitives should not get types. prefix
-        assert_eq!(format_typescript_return_type("string"), "string");
-        assert_eq!(format_typescript_return_type("number"), "number");
-        assert_eq!(format_typescript_return_type("void"), "void");
-
-        // Custom types should get types. prefix
-        assert_eq!(format_typescript_return_type("User"), "types.User");
-        assert_eq!(
-            format_typescript_return_type("CustomType"),
-            "types.CustomType"
-        );
-
-        // Arrays
-        assert_eq!(format_typescript_return_type("string[]"), "string[]");
-        assert_eq!(format_typescript_return_type("User[]"), "types.User[]");
-
-        // Union with null
-        assert_eq!(
-            format_typescript_return_type("User | null"),
-            "types.User | null"
-        );
     }
 }
 

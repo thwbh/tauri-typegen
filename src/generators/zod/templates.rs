@@ -1,12 +1,12 @@
-use crate::{generators::base::templates::BaseTemplate, template};
+use crate::{generators::base::templates::TemplateRegistry, template};
 use tera::Tera;
 
 pub struct ZodTemplate;
 
-impl BaseTemplate for ZodTemplate {
+impl TemplateRegistry for ZodTemplate {
     /// Register zod-specific templates from embedded strings
     /// As standalone crate, tera glob features can't be used
-    fn register_generator_templates(&self, tera: &mut Tera) -> Result<(), String> {
+    fn register_templates(tera: &mut Tera) -> Result<(), String> {
         // Main templates
         template!(tera, "zod/types.ts.tera", "templates/types.ts.tera");
         template!(tera, "zod/commands.ts.tera", "templates/commands.ts.tera");
@@ -59,11 +59,7 @@ impl BaseTemplate for ZodTemplate {
     }
 
     /// Register zod-specific Tera filters
-    fn register_generator_filters(&self, tera: &mut Tera) {
-        tera.register_filter(
-            "format_return_type",
-            super::filters::format_return_type_filter,
-        );
+    fn register_filters(tera: &mut Tera) {
         tera.register_filter("to_zod_schema", super::filters::to_zod_schema_filter);
     }
 }
