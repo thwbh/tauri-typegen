@@ -109,6 +109,7 @@ impl CommandAnalyzer {
                             func,
                             &command.name,
                             parsed_file.path.as_path(),
+                            &mut self.type_resolver,
                         )?;
 
                         // Collect type names from channel message types
@@ -220,6 +221,7 @@ impl CommandAnalyzer {
                                 func,
                                 &command.name,
                                 path_buf.as_path(),
+                                &mut self.type_resolver,
                             )?;
 
                             command.channels = channels;

@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
+use serde_rename_rule::RenameRule;
 
 /// Represents the structure of a type for code generation
 /// This allows generators to work with parsed type information instead of string parsing
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TypeStructure {
     /// Primitive types: "string", "number", "boolean", "void"
     Primitive(String),
@@ -40,8 +40,6 @@ impl Default for TypeStructure {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct CommandInfo {
     pub name: String,
     pub file_path: String,
@@ -49,14 +47,12 @@ pub struct CommandInfo {
     pub parameters: Vec<ParameterInfo>,
     pub return_type: String, // Rust return type (e.g., "Vec<Banana>")
     /// Structured representation of the return type for generators
-    #[serde(default)]
     pub return_type_structure: TypeStructure,
     pub is_async: bool,
     pub channels: Vec<ChannelInfo>,
     /// Serde rename_all attribute: #[serde(rename_all = "...")]
     /// Applied to command function, affects parameter/channel serialization
-    #[serde(default)]
-    pub serde_rename_all: Option<String>,
+    pub serde_rename_all: Option<RenameRule>,
 }
 
 impl CommandInfo {
@@ -90,35 +86,28 @@ impl CommandInfo {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ParameterInfo {
     pub name: String,
     pub rust_type: String,
     pub is_optional: bool,
     /// Structured representation of the type for generators
-    #[serde(default)]
     pub type_structure: TypeStructure,
     /// Serde rename attribute (optional, for future extensibility)
     /// Parameters are serialized following Tauri/JS conventions (camelCase)
-    #[serde(default)]
     pub serde_rename: Option<String>,
 }
 
-// New: Struct field information for better type generation
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug)]
 pub struct StructInfo {
     pub name: String,
     pub fields: Vec<FieldInfo>,
     pub file_path: String,
     pub is_enum: bool,
     /// Serde rename_all attribute: #[serde(rename_all = "...")]
-    pub serde_rename_all: Option<String>,
+    pub serde_rename_all: Option<RenameRule>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug)]
 pub struct FieldInfo {
     pub name: String,
     pub rust_type: String,
@@ -128,7 +117,6 @@ pub struct FieldInfo {
     /// Serde rename attribute: #[serde(rename = "...")]
     pub serde_rename: Option<String>,
     /// Structured representation of the type for generators
-    #[serde(default)]
     pub type_structure: TypeStructure,
 }
 
@@ -159,21 +147,17 @@ pub struct RangeConstraint {
 }
 
 // Event information for frontend event listeners
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct EventInfo {
     pub event_name: String,
     pub payload_type: String,
     /// Structured representation of the payload type for generators
-    #[serde(default)]
     pub payload_type_structure: TypeStructure,
     pub file_path: String,
     pub line_number: usize,
 }
 
 // Channel information for streaming data from Rust to frontend
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone)]
 pub struct ChannelInfo {
     pub parameter_name: String,
     pub message_type: String,
@@ -182,8 +166,9 @@ pub struct ChannelInfo {
     pub line_number: usize,
     /// Serde rename attribute (optional, for future extensibility)
     /// Channel parameters are serialized following Tauri/JS conventions (camelCase)
-    #[serde(default)]
     pub serde_rename: Option<String>,
+    /// Structured representation of the message type for generators
+    pub message_type_structure: TypeStructure,
 }
 
 impl ChannelInfo {
@@ -196,13 +181,17 @@ impl ChannelInfo {
         file_path: impl Into<String>,
         line_number: usize,
     ) -> Self {
+        let message_type_str = message_type.into();
         Self {
             parameter_name: parameter_name.into(),
-            message_type: message_type.into(),
+            message_type: message_type_str.clone(),
             command_name: command_name.into(),
             file_path: file_path.into(),
             line_number,
             serde_rename: None,
+            // Parse message_type into TypeStructure for tests
+            message_type_structure: crate::analysis::type_resolver::TypeResolver::new()
+                .parse_type_structure(&message_type_str),
         }
     }
 }

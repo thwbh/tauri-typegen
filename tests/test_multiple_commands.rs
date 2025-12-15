@@ -1,3 +1,4 @@
+use serde_rename_rule::RenameRule;
 use std::collections::HashMap;
 use std::fs;
 use tauri_typegen::analysis::CommandAnalyzer;
@@ -208,7 +209,7 @@ fn create_sample_structs_with_unused() -> HashMap<String, StructInfo> {
             }],
             file_path: "test_file.rs".to_string(),
             is_enum: false,
-            serde_rename_all: Some("camelCase".to_string()),
+            serde_rename_all: Some(RenameRule::CamelCase),
         },
     );
 

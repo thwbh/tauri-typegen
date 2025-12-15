@@ -1,3 +1,4 @@
+use serde_rename_rule::RenameRule;
 use tauri_typegen::analysis::struct_parser::StructParser;
 use tauri_typegen::analysis::type_resolver::TypeResolver;
 
@@ -40,7 +41,7 @@ fn test_serde_rename_all_camel_case() {
         .unwrap();
 
     // Check that rename_all="camelCase" was parsed
-    assert_eq!(struct_info.serde_rename_all, Some("camelCase".to_string()));
+    assert_eq!(struct_info.serde_rename_all, Some(RenameRule::CamelCase));
     assert_eq!(struct_info.fields.len(), 3);
 
     let user_id_field = struct_info
@@ -159,7 +160,7 @@ fn test_serde_rename_override() {
         .unwrap();
 
     assert_eq!(struct_info.fields.len(), 2);
-    assert_eq!(struct_info.serde_rename_all, Some("camelCase".to_string()));
+    assert_eq!(struct_info.serde_rename_all, Some(RenameRule::CamelCase));
 
     // Field without explicit rename should have None (uses rename_all during generation)
     let user_id_field = struct_info
@@ -264,7 +265,7 @@ fn test_serde_rename_all_snake_case() {
         .unwrap();
 
     assert_eq!(struct_info.fields.len(), 2);
-    assert_eq!(struct_info.serde_rename_all, Some("snake_case".to_string()));
+    assert_eq!(struct_info.serde_rename_all, Some(RenameRule::SnakeCase));
 
     let user_id_field = struct_info
         .fields
@@ -318,7 +319,7 @@ fn test_serde_rename_all_pascal_case() {
         .unwrap();
 
     assert_eq!(struct_info.fields.len(), 2);
-    assert_eq!(struct_info.serde_rename_all, Some("PascalCase".to_string()));
+    assert_eq!(struct_info.serde_rename_all, Some(RenameRule::PascalCase));
 
     let user_id_field = struct_info
         .fields

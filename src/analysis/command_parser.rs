@@ -1,15 +1,20 @@
+use crate::analysis::serde_parser::SerdeParser;
 use crate::analysis::type_resolver::TypeResolver;
 use crate::models::{CommandInfo, ParameterInfo};
 use std::path::Path;
-use syn::{Attribute, File as SynFile, FnArg, ItemFn, PatType, ReturnType, Type};
+use syn::{File as SynFile, FnArg, ItemFn, PatType, ReturnType, Type};
 
 /// Parser for Tauri command functions
 #[derive(Debug)]
-pub struct CommandParser;
+pub struct CommandParser {
+    serde_parser: SerdeParser,
+}
 
 impl CommandParser {
     pub fn new() -> Self {
-        Self
+        Self {
+            serde_parser: SerdeParser::new(),
+        }
     }
 
     /// Extract commands from a cached AST
@@ -63,7 +68,10 @@ impl CommandParser {
         let line_number = func.sig.ident.span().start().line;
 
         // Parse serde rename_all attribute from function attributes
-        let serde_rename_all = self.extract_serde_rename_all(&func.attrs);
+        let serde_rename_all = self
+            .serde_parser
+            .parse_struct_serde_attrs(&func.attrs)
+            .rename_all;
 
         Some(CommandInfo {
             name,
@@ -76,15 +84,6 @@ impl CommandParser {
             channels: Vec::new(), // Will be populated by channel_parser
             serde_rename_all,
         })
-    }
-
-    /// Extract serde rename_all attribute from function attributes
-    /// Example: #[serde(rename_all = "camelCase")]
-    fn extract_serde_rename_all(&self, attrs: &[Attribute]) -> Option<String> {
-        use crate::analysis::serde_parser::SerdeParser;
-        let serde_parser = SerdeParser::new();
-        let serde_attrs = serde_parser.parse_struct_serde_attrs(attrs);
-        serde_attrs.rename_all
     }
 
     /// Extract parameters from function signature

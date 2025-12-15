@@ -1,3 +1,4 @@
+use crate::analysis::type_resolver::TypeResolver;
 use crate::models::ChannelInfo;
 use std::path::Path;
 use syn::spanned::Spanned;
@@ -22,6 +23,7 @@ impl ChannelParser {
         func: &ItemFn,
         command_name: &str,
         file_path: &Path,
+        type_resolver: &mut TypeResolver,
     ) -> Result<Vec<ChannelInfo>, Box<dyn std::error::Error>> {
         let mut channels = Vec::new();
 
@@ -40,6 +42,9 @@ impl ChannelParser {
                     // Get line number from parameter span
                     let line_number = pat_type.ty.span().start().line;
 
+                    // Parse message type into TypeStructure
+                    let message_type_structure = type_resolver.parse_type_structure(&message_type);
+
                     channels.push(ChannelInfo {
                         parameter_name: param_name,
                         message_type: message_type.clone(),
@@ -47,6 +52,7 @@ impl ChannelParser {
                         file_path: file_path.to_string_lossy().to_string(),
                         line_number,
                         serde_rename: None,
+                        message_type_structure,
                     });
                 }
             }

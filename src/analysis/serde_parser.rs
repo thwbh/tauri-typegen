@@ -1,4 +1,5 @@
 use quote::ToTokens;
+use serde_rename_rule::RenameRule;
 use syn::Attribute;
 
 /// Parser for serde attributes from Rust struct/enum definitions and fields
@@ -58,8 +59,9 @@ impl SerdeParser {
         result
     }
 
-    /// Parse rename_all value like "camelCase", "snake_case", "PascalCase", etc.
-    fn parse_rename_all(&self, tokens: &str) -> Option<String> {
+    /// Parse rename_all value like "camelCase", "snake_case", "PascalCase", etc. to
+    /// find a matching `serde_rename_rule::RenameRule`.
+    fn parse_rename_all(&self, tokens: &str) -> Option<RenameRule> {
         if let Some(start) = tokens.find("rename_all") {
             if let Some(eq_pos) = tokens[start..].find('=') {
                 let after_eq = &tokens[start + eq_pos + 1..].trim_start();
@@ -68,7 +70,11 @@ impl SerdeParser {
                 if let Some(quote_start) = after_eq.find('"') {
                     if let Some(quote_end) = after_eq[quote_start + 1..].find('"') {
                         let value = &after_eq[quote_start + 1..quote_start + 1 + quote_end];
-                        return Some(value.to_string());
+
+                        return match RenameRule::from_rename_all_str(value) {
+                            Ok(convention) => Some(convention),
+                            Err(_) => None,
+                        };
                     }
                 }
             }
@@ -119,7 +125,7 @@ impl Default for SerdeParser {
 /// Struct-level serde attributes
 #[derive(Debug, Default, Clone)]
 pub struct SerdeStructAttributes {
-    pub rename_all: Option<String>,
+    pub rename_all: Option<RenameRule>,
 }
 
 /// Field-level serde attributes

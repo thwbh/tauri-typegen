@@ -22,7 +22,7 @@ clap = { version = "4.0", features = ["derive"] }
 chrono = { version = "0.4", features = ["serde"] }
 indicatif = "0.17"
 tera = "1.19"
-heck = "0.5"
+serde-rename-rule = "0.2.2"
 
 [[bin]]
 name = "cargo-tauri-typegen"

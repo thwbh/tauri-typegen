@@ -1,29 +1,24 @@
 use crate::generators::base::type_visitor::TypeVisitor;
 use crate::models::{ChannelInfo, CommandInfo, EventInfo, FieldInfo, ParameterInfo};
 use crate::TypeStructure;
-use heck::{
-    ToKebabCase, ToLowerCamelCase, ToShoutyKebabCase, ToShoutySnakeCase, ToSnakeCase,
-    ToUpperCamelCase,
-};
 use serde::{Deserialize, Serialize};
+use serde_rename_rule::RenameRule;
 
 /// Convert an event name to a TypeScript event listener function name
 /// Example: "user_login" -> "onUserLogin"
 fn event_name_to_function(event_name: &str) -> String {
-    format!("on{}", event_name.to_upper_camel_case())
+    format!(
+        "on{}",
+        apply_naming_convention(event_name, RenameRule::PascalCase)
+    )
 }
 
 /// Apply serde naming convention transformations
 /// Use extension functions provided by `heck`
-fn apply_naming_convention(field_name: &str, convention: &str) -> String {
-    match convention {
-        "camelCase" => field_name.to_lower_camel_case(),
-        "PascalCase" => field_name.to_upper_camel_case(),
-        "snake_case" => field_name.to_snake_case(),
-        "SCREAMING_SNAKE_CASE" => field_name.to_shouty_snake_case(),
-        "kebab-case" => field_name.to_kebab_case(),
-        "SCREAMING-KEBAB-CASE" => field_name.to_shouty_kebab_case(),
-        _ => field_name.to_string(), // Unknown convention, return as-is
+fn apply_naming_convention(field_name: &str, convention: RenameRule) -> String {
+    match RenameRule::from_rename_all_str(&convention.to_string()) {
+        Ok(rule) => rule.apply_to_field(field_name),
+        Err(_) => field_name.to_string(),
     }
 }
 
@@ -32,44 +27,50 @@ fn apply_naming_convention(field_name: &str, convention: &str) -> String {
 /// Priority:
 /// 1. Field-level `#[serde(rename = "...")]` takes precedence
 /// 2. Struct-level `#[serde(rename_all = "...")]` applies naming convention
-/// 3. Otherwise, use typescript conventions (camelCase)
+/// 3. Otherwise, keep name as-is to match what tauri expects
 fn compute_serialized_name(
     field_name: &str,
     field_rename: &Option<String>,
-    struct_rename_all: &Option<String>,
+    struct_rename_all: &Option<RenameRule>,
 ) -> String {
     if let Some(rename) = field_rename {
         // Explicit field-level rename takes precedence
         rename.to_string()
     } else if let Some(convention) = struct_rename_all {
         // Apply struct-level naming convention
-        apply_naming_convention(field_name, convention)
+        apply_naming_convention(field_name, *convention)
     } else {
-        // No serde attributes, use typescript convention (camelCase)
-        field_name.to_lower_camel_case()
+        // No serde attributes, keep as-is
+        field_name.to_string()
+    }
+}
+
+/// Compute the TypeScript name for a function based on serde attributes
+///
+/// Priority
+/// 1. Command-level `#[serde(rename_all = "..." )]` applies naming convention
+/// 2. Otherwise, use typescript conventions (camelCase for functions)
+fn compute_function_name(name: &str, rename_all: &Option<RenameRule>) -> String {
+    if let Some(convention) = rename_all {
+        apply_naming_convention(name, *convention)
+    } else {
+        // No serde attributes, use typescript conventions (camelCase for functions)
+        apply_naming_convention(name, RenameRule::CamelCase)
     }
 }
 
 /// Compute the TypeScript type name (PascalCase) based on serde attributes
 ///
 /// Priority:
-/// 1. Field-level `#[serde(rename = "...")]` takes precedence
-/// 2. Struct-level `#[serde(rename_all = "...")]` applies naming convention
-/// 3. Otherwise, use typescript conventions (PascalCase for types)
-fn compute_type_name(name: &str, rename: &Option<String>, rename_all: &Option<String>) -> String {
-    if let Some(explicit_rename) = rename {
-        // Explicit rename takes precedence - capitalize first letter for type name
-        let mut chars = explicit_rename.chars();
-        match chars.next() {
-            None => String::new(),
-            Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-        }
-    } else if let Some(convention) = rename_all {
+/// 1. Struct-level `#[serde(rename_all = "...")]` applies naming convention
+/// 2. Otherwise, use typescript conventions (PascalCase for types)
+fn compute_type_name(name: &str, rename_all: &Option<RenameRule>) -> String {
+    if let Some(convention) = rename_all {
         // Apply naming convention
-        apply_naming_convention(name, convention)
+        apply_naming_convention(name, *convention)
     } else {
         // No serde attributes, use typescript convention (PascalCase for types)
-        name.to_upper_camel_case()
+        apply_naming_convention(name, RenameRule::PascalCase)
     }
 }
 
@@ -99,8 +100,8 @@ impl CommandContext {
         let return_type_ts = visitor.visit_type(&cmd.return_type_structure);
 
         // serde rename_all attribute on command level affects function and type names
-        let ts_function_name = compute_serialized_name(&cmd.name, &None, &cmd.serde_rename_all);
-        let ts_type_name = compute_type_name(&cmd.name, &None, &cmd.serde_rename_all);
+        let ts_function_name = compute_function_name(&cmd.name, &cmd.serde_rename_all);
+        let ts_type_name = compute_type_name(&cmd.name, &cmd.serde_rename_all);
 
         Self {
             name: cmd.name.clone(),
@@ -147,7 +148,7 @@ pub struct ParameterContext {
 impl ParameterContext {
     pub fn from_parameter_info<V: TypeVisitor>(
         param: &ParameterInfo,
-        command_rename_all: &Option<String>,
+        command_rename_all: &Option<RenameRule>,
         visitor: &V,
     ) -> Self {
         // NO prefix - this is used in type definitions (Params interfaces in types.ts)
@@ -184,7 +185,7 @@ pub struct FieldContext {
 impl FieldContext {
     pub fn from_field_info<V: TypeVisitor>(
         field: &FieldInfo,
-        struct_rename_all: &Option<String>,
+        struct_rename_all: &Option<RenameRule>,
         visitor: &V,
     ) -> Self {
         let typescript_type = visitor.visit_type(&field.type_structure);
@@ -252,7 +253,7 @@ pub struct ChannelContext {
 impl ChannelContext {
     pub fn from_channel_info<V: TypeVisitor>(
         channel: &ChannelInfo,
-        command_rename_all: &Option<String>,
+        command_rename_all: &Option<RenameRule>,
         visitor: &V,
         type_resolver: &dyn Fn(&str) -> TypeStructure,
     ) -> Self {

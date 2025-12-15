@@ -71,8 +71,13 @@ impl TypeCollector {
                 &command.return_type_structure,
                 &mut used_types,
             );
-            // Note: Channel message types don't have type_structure yet,
-            // they would need to be resolved separately if needed
+            // Add channel message types from message_type_structure
+            for channel in &command.channels {
+                self.collect_referenced_types_from_structure(
+                    &channel.message_type_structure,
+                    &mut used_types,
+                );
+            }
         }
 
         // Clone to avoid borrow checker issues

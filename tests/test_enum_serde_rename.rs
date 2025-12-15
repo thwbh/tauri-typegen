@@ -1,3 +1,4 @@
+use serde_rename_rule::RenameRule;
 use tauri_typegen::analysis::struct_parser::StructParser;
 
 #[test]
@@ -35,7 +36,7 @@ fn test_enum_serde_rename_all_screaming_snake_case() {
     assert!(struct_info.is_enum);
     assert_eq!(
         struct_info.serde_rename_all,
-        Some("SCREAMING_SNAKE_CASE".to_string())
+        Some(RenameRule::ScreamingSnakeCase)
     );
 
     let hello_variant = struct_info
@@ -86,7 +87,7 @@ fn test_enum_serde_rename_all_camel_case() {
         .unwrap();
 
     assert_eq!(struct_info.fields.len(), 3);
-    assert_eq!(struct_info.serde_rename_all, Some("camelCase".to_string()));
+    assert_eq!(struct_info.serde_rename_all, Some(RenameRule::CamelCase));
 
     let in_progress = struct_info
         .fields
@@ -196,7 +197,7 @@ fn test_enum_variant_rename_overrides_rename_all() {
     assert_eq!(struct_info.fields.len(), 2);
     assert_eq!(
         struct_info.serde_rename_all,
-        Some("SCREAMING_SNAKE_CASE".to_string())
+        Some(RenameRule::ScreamingSnakeCase)
     );
 
     // Variant without explicit rename should have None (uses rename_all during generation)
@@ -289,7 +290,7 @@ fn test_enum_snake_case_to_pascal_case() {
         .unwrap();
 
     assert_eq!(struct_info.fields.len(), 2);
-    assert_eq!(struct_info.serde_rename_all, Some("PascalCase".to_string()));
+    assert_eq!(struct_info.serde_rename_all, Some(RenameRule::PascalCase));
 
     let hello_variant = struct_info
         .fields
