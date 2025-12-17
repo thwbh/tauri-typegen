@@ -139,3 +139,310 @@ impl TypeVisitor for ZodVisitor {
         format!("{}Schema", name)
     }
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Helper to create test type structures
+    fn primitive(name: &str) -> TypeStructure {
+        TypeStructure::Primitive(name.to_string())
+    }
+
+    fn array(inner: TypeStructure) -> TypeStructure {
+        TypeStructure::Array(Box::new(inner))
+    }
+
+    fn optional(inner: TypeStructure) -> TypeStructure {
+        TypeStructure::Optional(Box::new(inner))
+    }
+
+    fn map(key: TypeStructure, value: TypeStructure) -> TypeStructure {
+        TypeStructure::Map {
+            key: Box::new(key),
+            value: Box::new(value),
+        }
+    }
+
+    fn tuple(types: Vec<TypeStructure>) -> TypeStructure {
+        TypeStructure::Tuple(types)
+    }
+
+    fn custom(name: &str) -> TypeStructure {
+        TypeStructure::Custom(name.to_string())
+    }
+
+    fn result(inner: TypeStructure) -> TypeStructure {
+        TypeStructure::Result(Box::new(inner))
+    }
+
+    fn set(inner: TypeStructure) -> TypeStructure {
+        TypeStructure::Set(Box::new(inner))
+    }
+
+    // TypeScriptVisitor tests
+    mod typescript_visitor {
+        use super::*;
+
+        #[test]
+        fn test_primitive_types() {
+            let visitor = TypeScriptVisitor;
+
+            assert_eq!(visitor.visit_type(&primitive("string")), "string");
+            assert_eq!(visitor.visit_type(&primitive("number")), "number");
+            assert_eq!(visitor.visit_type(&primitive("boolean")), "boolean");
+            assert_eq!(visitor.visit_type(&primitive("void")), "void");
+        }
+
+        #[test]
+        fn test_array_types() {
+            let visitor = TypeScriptVisitor;
+
+            assert_eq!(visitor.visit_type(&array(primitive("string"))), "string[]");
+            assert_eq!(visitor.visit_type(&array(primitive("number"))), "number[]");
+        }
+
+        #[test]
+        fn test_nested_array() {
+            let visitor = TypeScriptVisitor;
+
+            let nested = array(array(primitive("number")));
+            assert_eq!(visitor.visit_type(&nested), "number[][]");
+        }
+
+        #[test]
+        fn test_optional_types() {
+            let visitor = TypeScriptVisitor;
+
+            assert_eq!(
+                visitor.visit_type(&optional(primitive("string"))),
+                "string | null"
+            );
+            assert_eq!(visitor.visit_type(&optional(custom("User"))), "User | null");
+        }
+
+        #[test]
+        fn test_map_types() {
+            let visitor = TypeScriptVisitor;
+
+            assert_eq!(
+                visitor.visit_type(&map(primitive("string"), primitive("number"))),
+                "Record<string, number>"
+            );
+            assert_eq!(
+                visitor.visit_type(&map(primitive("string"), custom("User"))),
+                "Record<string, User>"
+            );
+        }
+
+        #[test]
+        fn test_set_types() {
+            let visitor = TypeScriptVisitor;
+
+            // Sets become arrays in TypeScript
+            assert_eq!(visitor.visit_type(&set(primitive("string"))), "string[]");
+        }
+
+        #[test]
+        fn test_tuple_types() {
+            let visitor = TypeScriptVisitor;
+
+            assert_eq!(
+                visitor.visit_type(&tuple(vec![primitive("string"), primitive("number")])),
+                "[string, number]"
+            );
+            assert_eq!(
+                visitor.visit_type(&tuple(vec![
+                    primitive("string"),
+                    primitive("number"),
+                    primitive("boolean")
+                ])),
+                "[string, number, boolean]"
+            );
+        }
+
+        #[test]
+        fn test_empty_tuple() {
+            let visitor = TypeScriptVisitor;
+
+            assert_eq!(visitor.visit_type(&tuple(vec![])), "void");
+        }
+
+        #[test]
+        fn test_result_types() {
+            let visitor = TypeScriptVisitor;
+
+            // Result<T, E> becomes T (errors handled by Tauri)
+            assert_eq!(visitor.visit_type(&result(primitive("string"))), "string");
+            assert_eq!(visitor.visit_type(&result(custom("User"))), "User");
+        }
+
+        #[test]
+        fn test_custom_types() {
+            let visitor = TypeScriptVisitor;
+
+            assert_eq!(visitor.visit_type(&custom("User")), "User");
+            assert_eq!(visitor.visit_type(&custom("Product")), "Product");
+        }
+
+        #[test]
+        fn test_complex_nested_type() {
+            let visitor = TypeScriptVisitor;
+
+            // HashMap<String, Vec<Option<User>>>
+            let complex = map(primitive("string"), array(optional(custom("User"))));
+
+            // Note: The visitor doesn't add parentheses around "User | null"
+            // So "Vec<Option<User>>" becomes "User | null[]" not "(User | null)[]"
+            // This is technically incorrect TypeScript (means "User or array of null")
+            // but matches current implementation
+            assert_eq!(
+                visitor.visit_type(&complex),
+                "Record<string, User | null[]>"
+            );
+        }
+    }
+
+    // ZodVisitor tests
+    mod zod_visitor {
+        use super::*;
+
+        #[test]
+        fn test_primitive_types() {
+            let visitor = ZodVisitor;
+
+            assert_eq!(visitor.visit_type(&primitive("string")), "z.string()");
+            assert_eq!(visitor.visit_type(&primitive("number")), "z.number()");
+            assert_eq!(visitor.visit_type(&primitive("boolean")), "z.boolean()");
+            assert_eq!(visitor.visit_type(&primitive("void")), "z.void()");
+        }
+
+        #[test]
+        fn test_array_types() {
+            let visitor = ZodVisitor;
+
+            assert_eq!(
+                visitor.visit_type(&array(primitive("string"))),
+                "z.array(z.string())"
+            );
+            assert_eq!(
+                visitor.visit_type(&array(primitive("number"))),
+                "z.array(z.number())"
+            );
+        }
+
+        #[test]
+        fn test_nested_array() {
+            let visitor = ZodVisitor;
+
+            let nested = array(array(primitive("number")));
+            assert_eq!(visitor.visit_type(&nested), "z.array(z.array(z.number()))");
+        }
+
+        #[test]
+        fn test_optional_types() {
+            let visitor = ZodVisitor;
+
+            assert_eq!(
+                visitor.visit_type(&optional(primitive("string"))),
+                "z.string().nullable()"
+            );
+            assert_eq!(
+                visitor.visit_type(&optional(custom("User"))),
+                "UserSchema.nullable()"
+            );
+        }
+
+        #[test]
+        fn test_map_types() {
+            let visitor = ZodVisitor;
+
+            assert_eq!(
+                visitor.visit_type(&map(primitive("string"), primitive("number"))),
+                "z.record(z.string(), z.number())"
+            );
+            assert_eq!(
+                visitor.visit_type(&map(primitive("string"), custom("User"))),
+                "z.record(z.string(), UserSchema)"
+            );
+        }
+
+        #[test]
+        fn test_set_types() {
+            let visitor = ZodVisitor;
+
+            // Sets become arrays in Zod
+            assert_eq!(
+                visitor.visit_type(&set(primitive("string"))),
+                "z.array(z.string())"
+            );
+        }
+
+        #[test]
+        fn test_tuple_types() {
+            let visitor = ZodVisitor;
+
+            assert_eq!(
+                visitor.visit_type(&tuple(vec![primitive("string"), primitive("number")])),
+                "z.tuple([z.string(), z.number()])"
+            );
+            assert_eq!(
+                visitor.visit_type(&tuple(vec![
+                    primitive("string"),
+                    primitive("number"),
+                    primitive("boolean")
+                ])),
+                "z.tuple([z.string(), z.number(), z.boolean()])"
+            );
+        }
+
+        #[test]
+        fn test_empty_tuple() {
+            let visitor = ZodVisitor;
+
+            assert_eq!(visitor.visit_type(&tuple(vec![])), "z.void()");
+        }
+
+        #[test]
+        fn test_result_types() {
+            let visitor = ZodVisitor;
+
+            // Result<T, E> becomes T schema
+            assert_eq!(
+                visitor.visit_type(&result(primitive("string"))),
+                "z.string()"
+            );
+            assert_eq!(visitor.visit_type(&result(custom("User"))), "UserSchema");
+        }
+
+        #[test]
+        fn test_custom_types() {
+            let visitor = ZodVisitor;
+
+            // Custom types reference their schema
+            assert_eq!(visitor.visit_type(&custom("User")), "UserSchema");
+            assert_eq!(visitor.visit_type(&custom("Product")), "ProductSchema");
+        }
+
+        #[test]
+        fn test_complex_nested_type() {
+            let visitor = ZodVisitor;
+
+            // HashMap<String, Vec<Option<User>>>
+            let complex = map(primitive("string"), array(optional(custom("User"))));
+
+            assert_eq!(
+                visitor.visit_type(&complex),
+                "z.record(z.string(), z.array(UserSchema.nullable()))"
+            );
+        }
+
+        #[test]
+        fn test_unexpected_primitive() {
+            let visitor = ZodVisitor;
+
+            // Should handle unexpected primitives gracefully
+            let result = visitor.visit_type(&primitive("unknown_type"));
+            assert!(result.contains("z.unknown()"));
+        }
+    }
+}

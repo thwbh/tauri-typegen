@@ -260,3 +260,461 @@ impl Default for CommandParser {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use syn::parse_quote;
+
+    #[test]
+    fn test_new_command_parser() {
+        let parser = CommandParser::new();
+        // Just verify it constructs without panicking
+        let _ = parser;
+    }
+
+    #[test]
+    fn test_default_impl() {
+        let parser = CommandParser::default();
+        // Just verify default works
+        let _ = parser;
+    }
+
+    // is_tauri_command tests
+    mod is_tauri_command {
+        use super::*;
+
+        #[test]
+        fn test_recognizes_tauri_command_attribute() {
+            let parser = CommandParser::new();
+            let func: ItemFn = parse_quote! {
+                #[tauri::command]
+                fn greet(name: String) -> String {
+                    format!("Hello, {}!", name)
+                }
+            };
+
+            assert!(parser.is_tauri_command(&func));
+        }
+
+        #[test]
+        fn test_recognizes_command_attribute() {
+            let parser = CommandParser::new();
+            let func: ItemFn = parse_quote! {
+                #[command]
+                fn greet(name: String) -> String {
+                    format!("Hello, {}!", name)
+                }
+            };
+
+            assert!(parser.is_tauri_command(&func));
+        }
+
+        #[test]
+        fn test_rejects_non_command_function() {
+            let parser = CommandParser::new();
+            let func: ItemFn = parse_quote! {
+                fn greet(name: String) -> String {
+                    format!("Hello, {}!", name)
+                }
+            };
+
+            assert!(!parser.is_tauri_command(&func));
+        }
+
+        #[test]
+        fn test_rejects_other_attributes() {
+            let parser = CommandParser::new();
+            let func: ItemFn = parse_quote! {
+                #[derive(Debug)]
+                fn greet(name: String) -> String {
+                    format!("Hello, {}!", name)
+                }
+            };
+
+            assert!(!parser.is_tauri_command(&func));
+        }
+    }
+
+    // type_to_string tests
+    mod type_to_string {
+        use super::*;
+
+        #[test]
+        fn test_simple_type() {
+            let ty: Type = parse_quote!(String);
+            assert_eq!(CommandParser::type_to_string(&ty), "String");
+        }
+
+        #[test]
+        fn test_generic_type() {
+            let ty: Type = parse_quote!(Vec<String>);
+            assert_eq!(CommandParser::type_to_string(&ty), "Vec<String>");
+        }
+
+        #[test]
+        fn test_nested_generic() {
+            let ty: Type = parse_quote!(Vec<Option<String>>);
+            assert_eq!(CommandParser::type_to_string(&ty), "Vec<Option<String>>");
+        }
+
+        #[test]
+        fn test_multiple_generics() {
+            let ty: Type = parse_quote!(HashMap<String, i32>);
+            assert_eq!(CommandParser::type_to_string(&ty), "HashMap<String, i32>");
+        }
+
+        #[test]
+        fn test_reference_type() {
+            let ty: Type = parse_quote!(&str);
+            assert_eq!(CommandParser::type_to_string(&ty), "&str");
+        }
+
+        #[test]
+        fn test_empty_tuple() {
+            let ty: Type = parse_quote!(());
+            assert_eq!(CommandParser::type_to_string(&ty), "()");
+        }
+
+        #[test]
+        fn test_tuple_with_elements() {
+            let ty: Type = parse_quote!((String, i32));
+            assert_eq!(CommandParser::type_to_string(&ty), "(String, i32)");
+        }
+
+        #[test]
+        fn test_qualified_path() {
+            let ty: Type = parse_quote!(std::collections::HashMap<String, i32>);
+            assert_eq!(
+                CommandParser::type_to_string(&ty),
+                "std::collections::HashMap<String, i32>"
+            );
+        }
+    }
+
+    // is_optional_type tests
+    mod is_optional_type {
+        use super::*;
+
+        #[test]
+        fn test_recognizes_option() {
+            let parser = CommandParser::new();
+            let ty: Type = parse_quote!(Option<String>);
+            assert!(parser.is_optional_type(&ty));
+        }
+
+        #[test]
+        fn test_recognizes_nested_option() {
+            let parser = CommandParser::new();
+            let ty: Type = parse_quote!(Option<Vec<String>>);
+            assert!(parser.is_optional_type(&ty));
+        }
+
+        #[test]
+        fn test_rejects_non_option() {
+            let parser = CommandParser::new();
+            let ty: Type = parse_quote!(String);
+            assert!(!parser.is_optional_type(&ty));
+        }
+
+        #[test]
+        fn test_rejects_vec() {
+            let parser = CommandParser::new();
+            let ty: Type = parse_quote!(Vec<String>);
+            assert!(!parser.is_optional_type(&ty));
+        }
+    }
+
+    // is_tauri_parameter_type tests
+    mod is_tauri_parameter_type {
+        use super::*;
+
+        #[test]
+        fn test_recognizes_app_handle() {
+            let parser = CommandParser::new();
+            let ty: Type = parse_quote!(tauri::AppHandle);
+            assert!(parser.is_tauri_parameter_type(&ty));
+        }
+
+        #[test]
+        fn test_recognizes_imported_app_handle() {
+            let parser = CommandParser::new();
+            let ty: Type = parse_quote!(AppHandle);
+            assert!(parser.is_tauri_parameter_type(&ty));
+        }
+
+        #[test]
+        fn test_recognizes_window_with_generics() {
+            let parser = CommandParser::new();
+            let ty: Type = parse_quote!(Window<R>);
+            assert!(parser.is_tauri_parameter_type(&ty));
+        }
+
+        #[test]
+        fn test_recognizes_state_with_generics() {
+            let parser = CommandParser::new();
+            let ty: Type = parse_quote!(State<AppState>);
+            assert!(parser.is_tauri_parameter_type(&ty));
+        }
+
+        #[test]
+        fn test_recognizes_webview_window() {
+            let parser = CommandParser::new();
+            let ty: Type = parse_quote!(tauri::WebviewWindow);
+            assert!(parser.is_tauri_parameter_type(&ty));
+        }
+
+        #[test]
+        fn test_recognizes_imported_webview_window() {
+            let parser = CommandParser::new();
+            let ty: Type = parse_quote!(WebviewWindow);
+            assert!(parser.is_tauri_parameter_type(&ty));
+        }
+
+        #[test]
+        fn test_recognizes_ipc_request() {
+            let parser = CommandParser::new();
+            let ty: Type = parse_quote!(tauri::ipc::Request);
+            assert!(parser.is_tauri_parameter_type(&ty));
+        }
+
+        #[test]
+        fn test_recognizes_ipc_channel() {
+            let parser = CommandParser::new();
+            let ty: Type = parse_quote!(tauri::ipc::Channel<String>);
+            assert!(parser.is_tauri_parameter_type(&ty));
+        }
+
+        #[test]
+        fn test_recognizes_channel_with_generics() {
+            let parser = CommandParser::new();
+            let ty: Type = parse_quote!(Channel<ProgressUpdate>);
+            assert!(parser.is_tauri_parameter_type(&ty));
+        }
+
+        #[test]
+        fn test_rejects_user_string_type() {
+            let parser = CommandParser::new();
+            let ty: Type = parse_quote!(String);
+            assert!(!parser.is_tauri_parameter_type(&ty));
+        }
+
+        #[test]
+        fn test_rejects_user_custom_type() {
+            let parser = CommandParser::new();
+            let ty: Type = parse_quote!(User);
+            assert!(!parser.is_tauri_parameter_type(&ty));
+        }
+
+        #[test]
+        fn test_rejects_state_without_generics() {
+            let parser = CommandParser::new();
+            // User might have their own State type without generics
+            let ty: Type = parse_quote!(State);
+            assert!(!parser.is_tauri_parameter_type(&ty));
+        }
+
+        #[test]
+        fn test_rejects_window_without_generics() {
+            let parser = CommandParser::new();
+            // User might have their own Window type without generics
+            let ty: Type = parse_quote!(Window);
+            assert!(!parser.is_tauri_parameter_type(&ty));
+        }
+    }
+
+    // extract_return_type tests
+    mod extract_return_type {
+        use super::*;
+
+        #[test]
+        fn test_extract_simple_return() {
+            let parser = CommandParser::new();
+            let output: ReturnType = parse_quote!(-> String);
+            assert_eq!(parser.extract_return_type(&output), "String");
+        }
+
+        #[test]
+        fn test_extract_generic_return() {
+            let parser = CommandParser::new();
+            let output: ReturnType = parse_quote!(-> Vec<String>);
+            assert_eq!(parser.extract_return_type(&output), "Vec<String>");
+        }
+
+        #[test]
+        fn test_extract_result_return() {
+            let parser = CommandParser::new();
+            let output: ReturnType = parse_quote!(-> Result<String, Error>);
+            assert_eq!(parser.extract_return_type(&output), "Result<String, Error>");
+        }
+
+        #[test]
+        fn test_extract_default_return() {
+            let parser = CommandParser::new();
+            let output: ReturnType = parse_quote!();
+            assert_eq!(parser.extract_return_type(&output), "()");
+        }
+    }
+
+    // extract_parameters tests
+    mod extract_parameters {
+        use super::*;
+
+        #[test]
+        fn test_extract_simple_parameter() {
+            let parser = CommandParser::new();
+            let mut type_resolver = TypeResolver::new();
+            let inputs = parse_quote!(name: String);
+
+            let params = parser.extract_parameters(&inputs, &mut type_resolver);
+
+            assert_eq!(params.len(), 1);
+            assert_eq!(params[0].name, "name");
+            assert_eq!(params[0].rust_type, "String");
+            assert!(!params[0].is_optional);
+        }
+
+        #[test]
+        fn test_extract_optional_parameter() {
+            let parser = CommandParser::new();
+            let mut type_resolver = TypeResolver::new();
+            let inputs = parse_quote!(email: Option<String>);
+
+            let params = parser.extract_parameters(&inputs, &mut type_resolver);
+
+            assert_eq!(params.len(), 1);
+            assert_eq!(params[0].name, "email");
+            assert!(params[0].is_optional);
+        }
+
+        #[test]
+        fn test_extract_multiple_parameters() {
+            let parser = CommandParser::new();
+            let mut type_resolver = TypeResolver::new();
+            let inputs = parse_quote!(name: String, age: i32);
+
+            let params = parser.extract_parameters(&inputs, &mut type_resolver);
+
+            assert_eq!(params.len(), 2);
+            assert_eq!(params[0].name, "name");
+            assert_eq!(params[1].name, "age");
+        }
+
+        #[test]
+        fn test_filters_app_handle() {
+            let parser = CommandParser::new();
+            let mut type_resolver = TypeResolver::new();
+            let inputs = parse_quote!(app: AppHandle, name: String);
+
+            let params = parser.extract_parameters(&inputs, &mut type_resolver);
+
+            // AppHandle should be filtered out
+            assert_eq!(params.len(), 1);
+            assert_eq!(params[0].name, "name");
+        }
+
+        #[test]
+        fn test_filters_state() {
+            let parser = CommandParser::new();
+            let mut type_resolver = TypeResolver::new();
+            let inputs = parse_quote!(state: State<AppState>, name: String);
+
+            let params = parser.extract_parameters(&inputs, &mut type_resolver);
+
+            // State should be filtered out
+            assert_eq!(params.len(), 1);
+            assert_eq!(params[0].name, "name");
+        }
+
+        #[test]
+        fn test_filters_channel() {
+            let parser = CommandParser::new();
+            let mut type_resolver = TypeResolver::new();
+            let inputs = parse_quote!(progress: Channel<u32>, name: String);
+
+            let params = parser.extract_parameters(&inputs, &mut type_resolver);
+
+            // Channel should be filtered out
+            assert_eq!(params.len(), 1);
+            assert_eq!(params[0].name, "name");
+        }
+
+        #[test]
+        fn test_empty_parameters() {
+            let parser = CommandParser::new();
+            let mut type_resolver = TypeResolver::new();
+            let inputs = parse_quote!();
+
+            let params = parser.extract_parameters(&inputs, &mut type_resolver);
+
+            assert_eq!(params.len(), 0);
+        }
+    }
+
+    // extract_command_info tests
+    mod extract_command_info {
+        use super::*;
+        use std::path::PathBuf;
+
+        #[test]
+        fn test_extract_simple_command() {
+            let parser = CommandParser::new();
+            let mut type_resolver = TypeResolver::new();
+            let func: ItemFn = parse_quote! {
+                #[tauri::command]
+                fn greet(name: String) -> String {
+                    format!("Hello, {}!", name)
+                }
+            };
+            let path = PathBuf::from("test.rs");
+
+            let info = parser.extract_command_info(&func, &path, &mut type_resolver);
+
+            assert!(info.is_some());
+            let info = info.unwrap();
+            assert_eq!(info.name, "greet");
+            assert_eq!(info.parameters.len(), 1);
+            assert_eq!(info.return_type, "String");
+            assert!(!info.is_async);
+        }
+
+        #[test]
+        fn test_extract_async_command() {
+            let parser = CommandParser::new();
+            let mut type_resolver = TypeResolver::new();
+            let func: ItemFn = parse_quote! {
+                #[tauri::command]
+                async fn fetch_data() -> Result<String, Error> {
+                    Ok("data".to_string())
+                }
+            };
+            let path = PathBuf::from("test.rs");
+
+            let info = parser.extract_command_info(&func, &path, &mut type_resolver);
+
+            assert!(info.is_some());
+            let info = info.unwrap();
+            assert!(info.is_async);
+            assert_eq!(info.return_type, "Result<String, Error>");
+        }
+
+        #[test]
+        fn test_extract_command_with_no_return() {
+            let parser = CommandParser::new();
+            let mut type_resolver = TypeResolver::new();
+            let func: ItemFn = parse_quote! {
+                #[tauri::command]
+                fn log_message(msg: String) {
+                    println!("{}", msg);
+                }
+            };
+            let path = PathBuf::from("test.rs");
+
+            let info = parser.extract_command_info(&func, &path, &mut type_resolver);
+
+            assert!(info.is_some());
+            let info = info.unwrap();
+            assert_eq!(info.return_type, "()");
+        }
+    }
+}

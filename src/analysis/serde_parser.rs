@@ -131,3 +131,168 @@ pub struct SerdeFieldAttributes {
     pub rename: Option<String>,
     pub skip: bool,
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use syn::parse_quote;
+
+    #[test]
+    fn test_parse_rename_all_camel_case() {
+        let parser = SerdeParser::new();
+        let result = parser.parse_rename_all(r#"rename_all = "camelCase""#);
+
+        assert!(result.is_some());
+        assert!(matches!(result.unwrap(), RenameRule::CamelCase));
+    }
+
+    #[test]
+    fn test_parse_rename_all_snake_case() {
+        let parser = SerdeParser::new();
+        let result = parser.parse_rename_all(r#"rename_all = "snake_case""#);
+
+        assert!(result.is_some());
+        assert!(matches!(result.unwrap(), RenameRule::SnakeCase));
+    }
+
+    #[test]
+    fn test_parse_rename_all_pascal_case() {
+        let parser = SerdeParser::new();
+        let result = parser.parse_rename_all(r#"rename_all = "PascalCase""#);
+
+        assert!(result.is_some());
+        assert!(matches!(result.unwrap(), RenameRule::PascalCase));
+    }
+
+    #[test]
+    fn test_parse_rename_all_screaming_snake_case() {
+        let parser = SerdeParser::new();
+        let result = parser.parse_rename_all(r#"rename_all = "SCREAMING_SNAKE_CASE""#);
+
+        assert!(result.is_some());
+        assert!(matches!(result.unwrap(), RenameRule::ScreamingSnakeCase));
+    }
+
+    #[test]
+    fn test_parse_rename_all_kebab_case() {
+        let parser = SerdeParser::new();
+        let result = parser.parse_rename_all(r#"rename_all = "kebab-case""#);
+
+        assert!(result.is_some());
+        assert!(matches!(result.unwrap(), RenameRule::KebabCase));
+    }
+
+    #[test]
+    fn test_parse_rename_all_not_present() {
+        let parser = SerdeParser::new();
+        let result = parser.parse_rename_all(r#"skip_serializing_if = "Option::is_none""#);
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_parse_rename() {
+        let parser = SerdeParser::new();
+
+        let result = parser.parse_rename(r#"rename = "customName""#);
+        assert_eq!(result, Some("customName".to_string()));
+
+        let result = parser.parse_rename(r#"rename = "id""#);
+        assert_eq!(result, Some("id".to_string()));
+    }
+
+    #[test]
+    fn test_parse_rename_not_rename_all() {
+        let parser = SerdeParser::new();
+
+        // Should not match rename_all
+        let result = parser.parse_rename(r#"rename_all = "camelCase""#);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_parse_rename_with_rename_all_present() {
+        let parser = SerdeParser::new();
+
+        // Should find "rename" even if rename_all is also present
+        let result = parser.parse_rename(r#"rename_all = "camelCase", rename = "id""#);
+        assert_eq!(result, Some("id".to_string()));
+    }
+
+    #[test]
+    fn test_parse_struct_serde_attrs_with_rename_all() {
+        let parser = SerdeParser::new();
+        let attrs: Vec<Attribute> = vec![parse_quote!(#[serde(rename_all = "camelCase")])];
+
+        let result = parser.parse_struct_serde_attrs(&attrs);
+        assert!(result.rename_all.is_some());
+        assert!(matches!(result.rename_all.unwrap(), RenameRule::CamelCase));
+    }
+
+    #[test]
+    fn test_parse_struct_serde_attrs_no_serde() {
+        let parser = SerdeParser::new();
+        let attrs: Vec<Attribute> = vec![parse_quote!(#[derive(Debug)])];
+
+        let result = parser.parse_struct_serde_attrs(&attrs);
+        assert!(result.rename_all.is_none());
+    }
+
+    #[test]
+    fn test_parse_field_serde_attrs_with_rename() {
+        let parser = SerdeParser::new();
+        let attrs: Vec<Attribute> = vec![parse_quote!(#[serde(rename = "customName")])];
+
+        let result = parser.parse_field_serde_attrs(&attrs);
+        assert_eq!(result.rename, Some("customName".to_string()));
+        assert!(!result.skip);
+    }
+
+    #[test]
+    fn test_parse_field_serde_attrs_with_skip() {
+        let parser = SerdeParser::new();
+        let attrs: Vec<Attribute> = vec![parse_quote!(#[serde(skip)])];
+
+        let result = parser.parse_field_serde_attrs(&attrs);
+        assert!(result.skip);
+        assert!(result.rename.is_none());
+    }
+
+    #[test]
+    fn test_parse_field_serde_attrs_skip_serializing_not_skip() {
+        let parser = SerdeParser::new();
+        let attrs: Vec<Attribute> = vec![parse_quote!(#[serde(skip_serializing)])];
+
+        let result = parser.parse_field_serde_attrs(&attrs);
+        // skip_serializing should not set skip flag
+        assert!(!result.skip);
+    }
+
+    #[test]
+    fn test_parse_field_serde_attrs_multiple() {
+        let parser = SerdeParser::new();
+        let attrs: Vec<Attribute> = vec![
+            parse_quote!(#[serde(rename = "id")]),
+            parse_quote!(#[derive(Debug)]),
+        ];
+
+        let result = parser.parse_field_serde_attrs(&attrs);
+        assert_eq!(result.rename, Some("id".to_string()));
+    }
+
+    #[test]
+    fn test_parse_field_serde_attrs_no_serde() {
+        let parser = SerdeParser::new();
+        let attrs: Vec<Attribute> = vec![parse_quote!(#[derive(Debug)])];
+
+        let result = parser.parse_field_serde_attrs(&attrs);
+        assert!(result.rename.is_none());
+        assert!(!result.skip);
+    }
+
+    #[test]
+    fn test_default_impl() {
+        let parser = SerdeParser::default();
+        let result = parser.parse_rename(r#"rename = "test""#);
+        assert_eq!(result, Some("test".to_string()));
+    }
+}

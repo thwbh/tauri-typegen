@@ -20,10 +20,7 @@ pub trait NamingContext {
 
     /// Apply serde naming convention transformations
     fn apply_naming_convention(&self, field_name: &str, convention: RenameRule) -> String {
-        match RenameRule::from_rename_all_str(&convention.to_string()) {
-            Ok(rule) => rule.apply_to_field(field_name),
-            Err(_) => field_name.to_string(),
-        }
+        convention.apply_to_field(field_name)
     }
 
     /// Compute the serialized name for a field based on serde attributes
@@ -496,5 +493,315 @@ impl EventContext {
         self.ts_function_name = ts_function_name;
 
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_rename_rule::RenameRule;
+
+    // Mock config for testing
+    fn mock_config() -> crate::GenerateConfig {
+        crate::GenerateConfig::default()
+    }
+
+    fn mock_config_with_snake_case() -> crate::GenerateConfig {
+        let mut config = crate::GenerateConfig::default();
+        config.default_parameter_case = "snake_case".to_string();
+        config.default_field_case = "snake_case".to_string();
+        config
+    }
+
+    // Mock NamingContext for testing
+    struct MockContext {
+        config: crate::GenerateConfig,
+    }
+
+    impl NamingContext for MockContext {
+        fn config(&self) -> &crate::GenerateConfig {
+            &self.config
+        }
+    }
+
+    #[test]
+    fn test_apply_naming_convention_camel_case() {
+        let ctx = MockContext {
+            config: mock_config(),
+        };
+
+        assert_eq!(
+            ctx.apply_naming_convention("user_name", RenameRule::CamelCase),
+            "userName"
+        );
+        assert_eq!(
+            ctx.apply_naming_convention("first_last_name", RenameRule::CamelCase),
+            "firstLastName"
+        );
+    }
+
+    #[test]
+    fn test_apply_naming_convention_snake_case() {
+        let ctx = MockContext {
+            config: mock_config(),
+        };
+
+        // SnakeCase rule assumes input is in Rust format (snake_case)
+        // and keeps it as snake_case for serialization
+        assert_eq!(
+            ctx.apply_naming_convention("user_name", RenameRule::SnakeCase),
+            "user_name"
+        );
+        assert_eq!(
+            ctx.apply_naming_convention("first_last_name", RenameRule::SnakeCase),
+            "first_last_name"
+        );
+    }
+
+    #[test]
+    fn test_apply_naming_convention_pascal_case() {
+        let ctx = MockContext {
+            config: mock_config(),
+        };
+
+        assert_eq!(
+            ctx.apply_naming_convention("user_name", RenameRule::PascalCase),
+            "UserName"
+        );
+        assert_eq!(
+            ctx.apply_naming_convention("userName", RenameRule::PascalCase),
+            "UserName"
+        );
+    }
+
+    #[test]
+    fn test_apply_naming_convention_screaming_snake_case() {
+        let ctx = MockContext {
+            config: mock_config(),
+        };
+
+        // ScreamingSnakeCase rule assumes input is in Rust format (snake_case)
+        assert_eq!(
+            ctx.apply_naming_convention("user_name", RenameRule::ScreamingSnakeCase),
+            "USER_NAME"
+        );
+        assert_eq!(
+            ctx.apply_naming_convention("first_last_name", RenameRule::ScreamingSnakeCase),
+            "FIRST_LAST_NAME"
+        );
+    }
+
+    #[test]
+    fn test_compute_field_name_with_explicit_rename() {
+        let ctx = MockContext {
+            config: mock_config(),
+        };
+
+        // Field-level rename takes precedence
+        let result = ctx.compute_field_name(
+            "user_id",
+            &Some("id".to_string()),
+            &Some(RenameRule::CamelCase),
+        );
+        assert_eq!(result, "id");
+    }
+
+    #[test]
+    fn test_compute_field_name_with_struct_rename_all() {
+        let ctx = MockContext {
+            config: mock_config(),
+        };
+
+        // Struct-level rename_all applies
+        let result = ctx.compute_field_name("user_id", &None, &Some(RenameRule::CamelCase));
+        assert_eq!(result, "userId");
+    }
+
+    #[test]
+    fn test_compute_field_name_with_config_default() {
+        let ctx = MockContext {
+            config: mock_config(),
+        };
+
+        // No serde attributes, use config default (camelCase)
+        let result = ctx.compute_field_name("user_id", &None, &None);
+        assert_eq!(result, "userId");
+    }
+
+    #[test]
+    fn test_compute_field_name_with_snake_case_default() {
+        let ctx = MockContext {
+            config: mock_config_with_snake_case(),
+        };
+
+        // Config default is snake_case - input should be Rust field name (snake_case)
+        let result = ctx.compute_field_name("user_id", &None, &None);
+        assert_eq!(result, "user_id");
+    }
+
+    #[test]
+    fn test_compute_parameter_name_with_explicit_rename() {
+        let ctx = MockContext {
+            config: mock_config(),
+        };
+
+        // Parameter-level rename takes precedence
+        let result = ctx.compute_parameter_name(
+            "order_id",
+            &Some("id".to_string()),
+            &Some(RenameRule::SnakeCase),
+        );
+        assert_eq!(result, "id");
+    }
+
+    #[test]
+    fn test_compute_parameter_name_with_command_rename_all() {
+        let ctx = MockContext {
+            config: mock_config(),
+        };
+
+        // Command-level rename_all applies
+        let result = ctx.compute_parameter_name("order_id", &None, &Some(RenameRule::SnakeCase));
+        assert_eq!(result, "order_id");
+    }
+
+    #[test]
+    fn test_compute_parameter_name_with_config_default() {
+        let ctx = MockContext {
+            config: mock_config(),
+        };
+
+        // No serde attributes, use config default
+        let result = ctx.compute_parameter_name("order_id", &None, &None);
+        assert_eq!(result, "orderId");
+    }
+
+    #[test]
+    fn test_compute_function_name_ignores_rename_all() {
+        let ctx = MockContext {
+            config: mock_config(),
+        };
+
+        // Function names always use camelCase, ignore rename_all
+        let result = ctx.compute_function_name("get_user", &Some(RenameRule::SnakeCase));
+        assert_eq!(result, "getUser");
+
+        let result = ctx.compute_function_name("get_user", &None);
+        assert_eq!(result, "getUser");
+    }
+
+    #[test]
+    fn test_compute_type_name_ignores_rename_all() {
+        let ctx = MockContext {
+            config: mock_config(),
+        };
+
+        // Type names always use PascalCase, ignore rename_all
+        let result = ctx.compute_type_name("user_profile", &Some(RenameRule::SnakeCase));
+        assert_eq!(result, "UserProfile");
+
+        let result = ctx.compute_type_name("user_profile", &None);
+        assert_eq!(result, "UserProfile");
+    }
+
+    #[test]
+    fn test_event_name_to_function() {
+        let ctx = MockContext {
+            config: mock_config(),
+        };
+
+        // Event names convert to "on" + PascalCase
+        // Note: apply_to_field only handles snake_case input correctly
+        assert_eq!(ctx.event_name_to_function("user_login"), "onUserLogin");
+        assert_eq!(ctx.event_name_to_function("data_update"), "onDataUpdate");
+        assert_eq!(
+            ctx.event_name_to_function("status_changed"),
+            "onStatusChanged"
+        );
+    }
+
+    #[test]
+    fn test_serde_rename_priority_order() {
+        let ctx = MockContext {
+            config: mock_config_with_snake_case(),
+        };
+
+        // Priority: explicit rename > container rename_all > config default
+
+        // 1. Explicit rename wins
+        let result = ctx.compute_field_name(
+            "field_name",
+            &Some("customName".to_string()),
+            &Some(RenameRule::CamelCase),
+        );
+        assert_eq!(result, "customName");
+
+        // 2. Container rename_all beats config
+        let result = ctx.compute_field_name("field_name", &None, &Some(RenameRule::CamelCase));
+        assert_eq!(result, "fieldName"); // Not field_name from config
+
+        // 3. Config default is last resort - input should be Rust field name (snake_case)
+        let result = ctx.compute_field_name("field_name", &None, &None);
+        assert_eq!(result, "field_name"); // Config has snake_case, so it stays as-is
+    }
+
+    #[test]
+    fn test_command_context_builder_pattern() {
+        let config = mock_config();
+        let ctx = CommandContext::new(&config);
+
+        assert_eq!(ctx.name, "");
+        assert_eq!(ctx.parameters.len(), 0);
+        assert_eq!(ctx.config.default_parameter_case, "camelCase");
+    }
+
+    #[test]
+    fn test_parameter_context_builder_pattern() {
+        let config = mock_config();
+        let ctx = ParameterContext::new(&config);
+
+        assert_eq!(ctx.name, "");
+        assert_eq!(ctx.rust_type, "");
+        assert!(matches!(ctx.type_structure, TypeStructure::Primitive(_)));
+    }
+
+    #[test]
+    fn test_field_context_builder_pattern() {
+        let config = mock_config();
+        let ctx = FieldContext::new(&config);
+
+        assert_eq!(ctx.name, "");
+        assert!(!ctx.is_optional);
+        assert!(ctx.validator_attributes.is_none());
+    }
+
+    #[test]
+    fn test_struct_context_builder_pattern() {
+        let config = mock_config();
+        let ctx = StructContext::new(&config);
+
+        assert_eq!(ctx.name, "");
+        assert_eq!(ctx.fields.len(), 0);
+        assert!(!ctx.is_enum);
+    }
+
+    #[test]
+    fn test_channel_context_builder_pattern() {
+        let config = mock_config();
+        let ctx = ChannelContext::new(&config);
+
+        assert_eq!(ctx.parameter_name, "");
+        assert_eq!(ctx.message_type, "");
+        assert_eq!(ctx.line_number, 0);
+    }
+
+    #[test]
+    fn test_event_context_builder_pattern() {
+        let config = mock_config();
+        let ctx = EventContext::new(&config);
+
+        assert_eq!(ctx.event_name, "");
+        assert_eq!(ctx.payload_type, "");
+        assert_eq!(ctx.ts_function_name, "");
     }
 }
