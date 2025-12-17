@@ -25,21 +25,32 @@ impl ZodBindingsGenerator {
     }
 
     /// Generate Zod schema for a struct
-    fn generate_struct_schema(&self, name: &str, struct_info: &StructInfo) -> String {
+    fn generate_struct_schema(
+        &self,
+        name: &str,
+        struct_info: &StructInfo,
+        config: &crate::GenerateConfig,
+    ) -> String {
         if struct_info.is_enum {
-            self.generate_enum_schema(name, struct_info)
+            self.generate_enum_schema(name, struct_info, config)
         } else {
-            self.generate_object_schema(name, struct_info)
+            self.generate_object_schema(name, struct_info, config)
         }
     }
 
     /// Generate Zod schema for an enum
-    fn generate_enum_schema(&self, name: &str, struct_info: &StructInfo) -> String {
+    fn generate_enum_schema(
+        &self,
+        name: &str,
+        struct_info: &StructInfo,
+        config: &crate::GenerateConfig,
+    ) -> String {
         let visitor = ZodVisitor;
 
         // Convert fields to context to get serialized names
         let field_contexts: Vec<FieldContext> =
-            self.collector.create_field_contexts(struct_info, &visitor);
+            self.collector
+                .create_field_contexts(struct_info, &visitor, config);
 
         let variants: Vec<String> = field_contexts
             .iter()
@@ -54,12 +65,18 @@ impl ZodBindingsGenerator {
     }
 
     /// Generate Zod schema for an object/struct using templates
-    fn generate_object_schema(&self, name: &str, struct_info: &StructInfo) -> String {
+    fn generate_object_schema(
+        &self,
+        name: &str,
+        struct_info: &StructInfo,
+        config: &crate::GenerateConfig,
+    ) -> String {
         let visitor = ZodVisitor;
 
         // Convert FieldInfo to FieldContext with computed Zod schemas
         let field_contexts: Vec<FieldContext> =
-            self.collector.create_field_contexts(struct_info, &visitor);
+            self.collector
+                .create_field_contexts(struct_info, &visitor, config);
 
         let mut context = Context::new();
         context.insert("name", name);
@@ -78,6 +95,7 @@ impl ZodBindingsGenerator {
         commands: &[CommandInfo],
         used_structs: &HashMap<String, StructInfo>,
         analyzer: &CommandAnalyzer,
+        config: &crate::GenerateConfig,
     ) -> String {
         // Sort structs topologically
         let type_names: HashSet<String> = used_structs.keys().cloned().collect();
@@ -87,7 +105,7 @@ impl ZodBindingsGenerator {
         let mut struct_schemas = String::new();
         for name in &sorted_types {
             if let Some(struct_info) = used_structs.get(name) {
-                struct_schemas.push_str(&self.generate_struct_schema(name, struct_info));
+                struct_schemas.push_str(&self.generate_struct_schema(name, struct_info, config));
             }
         }
 
@@ -95,7 +113,7 @@ impl ZodBindingsGenerator {
         let visitor = ZodVisitor;
         let command_contexts = self
             .collector
-            .create_command_contexts(commands, &visitor, analyzer);
+            .create_command_contexts(commands, &visitor, analyzer, config);
 
         // Generate parameter schemas using template
         let param_schemas = {
@@ -143,6 +161,7 @@ impl ZodBindingsGenerator {
         &self,
         commands: &[CommandInfo],
         analyzer: &CommandAnalyzer,
+        config: &crate::GenerateConfig,
     ) -> String {
         // Use TypeScriptVisitor for command bindings to get proper TS types
         // (not Zod schemas) in function signatures
@@ -151,7 +170,7 @@ impl ZodBindingsGenerator {
         // Convert commands to context wrappers
         let command_contexts = self
             .collector
-            .create_command_contexts(commands, &visitor, analyzer);
+            .create_command_contexts(commands, &visitor, analyzer, config);
 
         let mut context = Context::new();
         context.insert("header", &self.generate_file_header());
@@ -182,13 +201,18 @@ impl ZodBindingsGenerator {
     }
 
     /// Generate events file content
-    fn generate_events_file(&self, events: &[EventInfo], analyzer: &CommandAnalyzer) -> String {
+    fn generate_events_file(
+        &self,
+        events: &[EventInfo],
+        analyzer: &CommandAnalyzer,
+        config: &crate::GenerateConfig,
+    ) -> String {
         let visitor = ZodVisitor;
 
         // Convert events to context wrappers
         let event_contexts = self
             .collector
-            .create_event_contexts(events, &visitor, analyzer);
+            .create_event_contexts(events, &visitor, analyzer, config);
 
         let mut context = Context::new();
         context.insert("header", &self.generate_file_header());
@@ -221,6 +245,7 @@ impl BaseBindingsGenerator for ZodBindingsGenerator {
         discovered_structs: &HashMap<String, StructInfo>,
         output_path: &str,
         analyzer: &CommandAnalyzer,
+        config: &crate::GenerateConfig,
     ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
         // Store known structs for reference
         self.collector.known_structs = discovered_structs.clone();
@@ -251,17 +276,18 @@ impl BaseBindingsGenerator for ZodBindingsGenerator {
         let mut file_writer = FileWriter::new(output_path)?;
 
         // Generate and write types file (with embedded schemas)
-        let types_content = self.generate_types_file_content(commands, &used_structs, analyzer);
+        let types_content =
+            self.generate_types_file_content(commands, &used_structs, analyzer, config);
         file_writer.write_types_file(&types_content)?;
 
         // Generate and write commands file
-        let commands_content = self.generate_command_bindings(commands, analyzer);
+        let commands_content = self.generate_command_bindings(commands, analyzer, config);
         file_writer.write_commands_file(&commands_content)?;
 
         // Generate and write events file if there are any events
         let events = analyzer.get_discovered_events();
         if !events.is_empty() {
-            let events_content = self.generate_events_file(events, analyzer);
+            let events_content = self.generate_events_file(events, analyzer, config);
             file_writer.write_events_file(&events_content)?;
         }
 

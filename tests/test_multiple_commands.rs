@@ -4,6 +4,7 @@ use std::fs;
 use tauri_typegen::analysis::CommandAnalyzer;
 use tauri_typegen::generators::create_generator;
 use tauri_typegen::models::{CommandInfo, FieldInfo, ParameterInfo, StructInfo, TypeStructure};
+use tauri_typegen::GenerateConfig;
 use tempfile::TempDir;
 
 // Helper function to create a test Rust file with mixed content
@@ -252,6 +253,7 @@ fn test_only_generates_types_used_by_commands() {
             &all_discovered_structs,
             output_path,
             &CommandAnalyzer::new(),
+            &GenerateConfig::new(),
         )
         .unwrap();
 
@@ -364,6 +366,7 @@ fn test_integration_with_real_analyzer() {
             analyzer.get_discovered_structs(),
             &output_path.to_string_lossy(),
             &analyzer,
+            &GenerateConfig::new(),
         )
         .unwrap();
 
@@ -395,6 +398,7 @@ fn test_type_filtering_with_validation_library() {
             &all_discovered_structs,
             output_path,
             &CommandAnalyzer::new(),
+            &GenerateConfig::new(),
         )
         .unwrap();
 
@@ -430,6 +434,7 @@ fn test_empty_commands_generates_no_unnecessary_types() {
             &all_discovered_structs,
             output_path,
             &CommandAnalyzer::new(),
+            &GenerateConfig::new(),
         )
         .unwrap();
 

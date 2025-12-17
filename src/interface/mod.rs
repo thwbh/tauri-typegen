@@ -113,6 +113,7 @@ pub fn generate_from_config(
         analyzer.get_discovered_structs(),
         &config.output_path,
         &analyzer,
+        config,
     )?;
 
     if config.is_verbose() {

@@ -3,6 +3,7 @@ use std::fs;
 use tauri_typegen::analysis::CommandAnalyzer;
 use tauri_typegen::generators::create_generator;
 use tauri_typegen::models::{CommandInfo, ParameterInfo};
+use tauri_typegen::GenerateConfig;
 use tempfile::TempDir;
 
 fn create_test_command() -> CommandInfo {
@@ -42,6 +43,7 @@ fn test_command_hooks_interface_generated() {
             &discovered_structs,
             output_path,
             &CommandAnalyzer::new(),
+            &GenerateConfig::new(),
         )
         .unwrap();
 
@@ -70,6 +72,7 @@ fn test_command_with_hooks_parameter() {
             &discovered_structs,
             output_path,
             &CommandAnalyzer::new(),
+            &GenerateConfig::new(),
         )
         .unwrap();
 
@@ -99,6 +102,7 @@ fn test_command_without_params_has_hooks() {
             &discovered_structs,
             output_path,
             &CommandAnalyzer::new(),
+            &GenerateConfig::new(),
         )
         .unwrap();
 
@@ -124,6 +128,7 @@ fn test_hooks_implementation_structure() {
             &discovered_structs,
             output_path,
             &CommandAnalyzer::new(),
+            &GenerateConfig::new(),
         )
         .unwrap();
 
@@ -160,6 +165,7 @@ fn test_zod_error_import_present() {
             &discovered_structs,
             output_path,
             &CommandAnalyzer::new(),
+            &GenerateConfig::new(),
         )
         .unwrap();
 
@@ -187,6 +193,7 @@ fn test_safe_parse_used_instead_of_parse() {
             &discovered_structs,
             output_path,
             &CommandAnalyzer::new(),
+            &GenerateConfig::new(),
         )
         .unwrap();
 
@@ -217,6 +224,7 @@ fn test_backward_compatibility_with_vanilla_typescript() {
             &discovered_structs,
             output_path,
             &CommandAnalyzer::new(),
+            &GenerateConfig::new(),
         )
         .unwrap();
 

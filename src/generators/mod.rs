@@ -172,13 +172,14 @@ impl TypeCollector {
         commands: &[CommandInfo],
         visitor: &V,
         analyzer: &CommandAnalyzer,
+        config: &crate::GenerateConfig,
     ) -> Vec<CommandContext> {
         let type_resolver = analyzer.get_type_resolver();
 
         commands
             .iter()
             .map(|cmd| {
-                CommandContext::from_command_info(cmd, visitor, &|rust_type: &str| {
+                CommandContext::new(config).from_command_info(cmd, visitor, &|rust_type: &str| {
                     type_resolver.borrow_mut().parse_type_structure(rust_type)
                 })
             })
@@ -191,13 +192,14 @@ impl TypeCollector {
         events: &[EventInfo],
         visitor: &V,
         analyzer: &CommandAnalyzer,
+        config: &crate::GenerateConfig,
     ) -> Vec<EventContext> {
         let type_resolver = analyzer.get_type_resolver();
 
         events
             .iter()
             .map(|event| {
-                EventContext::from_event_info(event, visitor, &|rust_type: &str| {
+                EventContext::new(config).from_event_info(event, visitor, &|rust_type: &str| {
                     type_resolver.borrow_mut().parse_type_structure(rust_type)
                 })
             })
@@ -209,10 +211,13 @@ impl TypeCollector {
         &self,
         used_structs: &HashMap<String, StructInfo>,
         visitor: &V,
+        config: &crate::GenerateConfig,
     ) -> Vec<StructContext> {
         used_structs
             .iter()
-            .map(|(name, struct_info)| StructContext::from_struct_info(name, struct_info, visitor))
+            .map(|(name, struct_info)| {
+                StructContext::new(config).from_struct_info(name, struct_info, visitor)
+            })
             .collect()
     }
 
@@ -221,12 +226,17 @@ impl TypeCollector {
         &self,
         struct_info: &StructInfo,
         visitor: &V,
+        config: &crate::GenerateConfig,
     ) -> Vec<FieldContext> {
         struct_info
             .fields
             .iter()
             .map(|field| {
-                FieldContext::from_field_info(field, &struct_info.serde_rename_all, visitor)
+                FieldContext::new(config).from_field_info(
+                    field,
+                    &struct_info.serde_rename_all,
+                    visitor,
+                )
             })
             .collect()
     }

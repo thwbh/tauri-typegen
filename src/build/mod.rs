@@ -171,6 +171,7 @@ impl BuildSystem {
             analyzer.get_discovered_structs(),
             &config.output_path,
             &analyzer,
+            &config,
         )?;
 
         // Generate dependency visualization if requested

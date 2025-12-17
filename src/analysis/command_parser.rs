@@ -95,7 +95,7 @@ impl CommandParser {
         inputs
             .iter()
             .filter_map(|input| {
-                if let FnArg::Typed(PatType { pat, ty, .. }) = input {
+                if let FnArg::Typed(PatType { pat, ty, attrs, .. }) = input {
                     if let syn::Pat::Ident(pat_ident) = pat.as_ref() {
                         let name = pat_ident.ident.to_string();
 
@@ -108,12 +108,15 @@ impl CommandParser {
                         let type_structure = type_resolver.parse_type_structure(&rust_type);
                         let is_optional = self.is_optional_type(ty);
 
+                        // Parse serde rename attribute from parameter attributes
+                        let serde_rename = self.serde_parser.parse_field_serde_attrs(attrs).rename;
+
                         return Some(ParameterInfo {
                             name,
                             rust_type,
                             is_optional,
                             type_structure,
-                            serde_rename: None,
+                            serde_rename,
                         });
                     }
                 }

@@ -2,6 +2,7 @@ use std::fs;
 use std::path::Path;
 use tauri_typegen::analysis::CommandAnalyzer;
 use tauri_typegen::generators::create_generator;
+use tauri_typegen::GenerateConfig;
 use tempfile::TempDir;
 
 #[test]
@@ -132,6 +133,7 @@ fn test_full_generation_with_complex_types() {
             discovered_structs,
             output_path.to_str().unwrap(),
             &CommandAnalyzer::new(),
+            &GenerateConfig::new(),
         )
         .unwrap();
 

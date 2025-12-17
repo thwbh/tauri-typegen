@@ -8,6 +8,7 @@ use tera::{Context, Tera};
 use crate::analysis::CommandAnalyzer;
 use crate::generators::{GlobalContext, TypeCollector};
 use crate::models::{CommandInfo, StructInfo};
+use crate::GenerateConfig;
 use std::collections::HashMap;
 
 /// Common trait for all generators
@@ -28,6 +29,7 @@ pub trait BaseBindingsGenerator {
         discovered_structs: &HashMap<String, StructInfo>,
         output_path: &str,
         analyzer: &CommandAnalyzer,
+        config: &GenerateConfig,
     ) -> Result<Vec<String>, Box<dyn std::error::Error>>;
 
     /// Base method for generating the default file header

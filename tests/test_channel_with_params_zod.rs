@@ -3,6 +3,7 @@ use std::fs;
 use tauri_typegen::analysis::CommandAnalyzer;
 use tauri_typegen::generators::create_generator;
 use tauri_typegen::models::{ChannelInfo, CommandInfo, ParameterInfo};
+use tauri_typegen::GenerateConfig;
 use tempfile::TempDir;
 
 /// Test for issue: Commands with both regular parameters and channels should generate
@@ -54,6 +55,7 @@ fn test_zod_command_with_params_and_channels_generates_valid_code() {
             &discovered_structs,
             output_path,
             &CommandAnalyzer::new(),
+            &GenerateConfig::new(),
         )
         .unwrap();
 
@@ -124,6 +126,7 @@ fn test_zod_command_with_multiple_channels_generates_all_references() {
             &discovered_structs,
             output_path,
             &CommandAnalyzer::new(),
+            &GenerateConfig::new(),
         )
         .unwrap();
 
@@ -177,6 +180,7 @@ fn test_zod_command_with_only_params_no_channels() {
             &discovered_structs,
             output_path,
             &CommandAnalyzer::new(),
+            &GenerateConfig::new(),
         )
         .unwrap();
 
@@ -226,6 +230,7 @@ fn test_zod_command_with_only_channels_no_params() {
             &discovered_structs,
             output_path,
             &CommandAnalyzer::new(),
+            &GenerateConfig::new(),
         )
         .unwrap();
 
@@ -282,6 +287,7 @@ fn test_vanilla_ts_command_with_params_and_channels() {
             &discovered_structs,
             output_path,
             &CommandAnalyzer::new(),
+            &GenerateConfig::new(),
         )
         .unwrap();
 

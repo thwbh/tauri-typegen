@@ -1,6 +1,7 @@
 use std::fs;
 use tauri_typegen::analysis::CommandAnalyzer;
 use tauri_typegen::generators::create_generator;
+use tauri_typegen::GenerateConfig;
 use tempfile::TempDir;
 
 #[test]
@@ -129,6 +130,7 @@ pub async fn create_product(data: ProductData) -> Result<String, String> {
             discovered_structs,
             output_dir.to_str().unwrap(),
             &CommandAnalyzer::new(),
+            &GenerateConfig::new(),
         )
         .unwrap();
 
@@ -197,6 +199,7 @@ pub async fn update_profile(profile: UserProfile) -> Result<String, String> {
             discovered_structs,
             output_dir.to_str().unwrap(),
             &CommandAnalyzer::new(),
+            &GenerateConfig::new(),
         )
         .unwrap();
 
@@ -297,6 +300,7 @@ pub async fn submit_form(data: FormData) -> Result<String, String> {
             discovered_structs,
             output_dir.to_str().unwrap(),
             &CommandAnalyzer::new(),
+            &GenerateConfig::new(),
         )
         .unwrap();
 

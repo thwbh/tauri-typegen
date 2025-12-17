@@ -30,6 +30,7 @@ impl TypeScriptBindingsGenerator {
         commands: &[CommandInfo],
         used_structs: &HashMap<String, StructInfo>,
         analyzer: &CommandAnalyzer,
+        config: &crate::GenerateConfig,
     ) -> String {
         let has_channels = commands.iter().any(|cmd| !cmd.channels.is_empty());
         let visitor = TypeScriptVisitor;
@@ -37,12 +38,12 @@ impl TypeScriptBindingsGenerator {
         // Convert structs to context wrappers
         let struct_context = self
             .collector
-            .create_struct_contexts(used_structs, &visitor);
+            .create_struct_contexts(used_structs, &visitor, config);
 
         // Convert commands to context wrappers
         let command_context = self
             .collector
-            .create_command_contexts(commands, &visitor, analyzer);
+            .create_command_contexts(commands, &visitor, analyzer, config);
 
         // Render main types.ts template
         let mut context = Context::new();
@@ -63,6 +64,7 @@ impl TypeScriptBindingsGenerator {
         &self,
         commands: &[CommandInfo],
         analyzer: &CommandAnalyzer,
+        config: &crate::GenerateConfig,
     ) -> String {
         let has_channels = commands.iter().any(|cmd| !cmd.channels.is_empty());
         let visitor = TypeScriptVisitor;
@@ -70,7 +72,7 @@ impl TypeScriptBindingsGenerator {
         // Convert commands to context wrappers
         let command_contexts = self
             .collector
-            .create_command_contexts(commands, &visitor, analyzer);
+            .create_command_contexts(commands, &visitor, analyzer, config);
 
         let mut context = Context::new();
         context.insert("header", &self.generate_file_header());
@@ -98,13 +100,18 @@ impl TypeScriptBindingsGenerator {
     }
 
     /// Generate events file content
-    fn generate_events_file(&self, events: &[EventInfo], analyzer: &CommandAnalyzer) -> String {
+    fn generate_events_file(
+        &self,
+        events: &[EventInfo],
+        analyzer: &CommandAnalyzer,
+        config: &crate::GenerateConfig,
+    ) -> String {
         let visitor = TypeScriptVisitor;
 
         // Convert events to context wrappers
         let event_contexts = self
             .collector
-            .create_event_contexts(events, &visitor, analyzer);
+            .create_event_contexts(events, &visitor, analyzer, config);
 
         let mut context = Context::new();
         context.insert("header", &self.generate_file_header());
@@ -137,6 +144,7 @@ impl BaseBindingsGenerator for TypeScriptBindingsGenerator {
         discovered_structs: &HashMap<String, StructInfo>,
         output_path: &str,
         analyzer: &CommandAnalyzer,
+        config: &crate::GenerateConfig,
     ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
         // Store known structs for reference
         self.collector.known_structs = discovered_structs.clone();
@@ -168,17 +176,18 @@ impl BaseBindingsGenerator for TypeScriptBindingsGenerator {
         let mut file_writer = FileWriter::new(output_path)?;
 
         // Generate and write types file
-        let types_content = self.generate_types_file_content(commands, &used_structs, analyzer);
+        let types_content =
+            self.generate_types_file_content(commands, &used_structs, analyzer, config);
         file_writer.write_types_file(&types_content)?;
 
         // Generate and write commands file
-        let commands_content = self.generate_command_bindings(commands, analyzer);
+        let commands_content = self.generate_command_bindings(commands, analyzer, config);
         file_writer.write_commands_file(&commands_content)?;
 
         // Generate and write events file if there are any events
         let events = analyzer.get_discovered_events();
         if !events.is_empty() {
-            let events_content = self.generate_events_file(events, analyzer);
+            let events_content = self.generate_events_file(events, analyzer, config);
             file_writer.write_events_file(&events_content)?;
         }
 

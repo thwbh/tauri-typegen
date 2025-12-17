@@ -52,6 +52,18 @@ pub struct GenerateConfig {
     /// File patterns to include in analysis (overrides excludes)
     #[serde(default)]
     pub include_patterns: Option<Vec<String>>,
+
+    /// Default naming convention for command parameters when no serde attribute is present
+    /// Options: "camelCase", "snake_case", "PascalCase", "SCREAMING_SNAKE_CASE", "kebab-case", "SCREAMING-KEBAB-CASE"
+    /// Default: "camelCase" for backward compatibility
+    #[serde(default = "default_parameter_case")]
+    pub default_parameter_case: String,
+
+    /// Default naming convention for struct fields when no serde attribute is present
+    /// Options: same as default_parameter_case
+    /// Default: "camelCase" for backward compatibility
+    #[serde(default = "default_field_case")]
+    pub default_field_case: String,
 }
 
 fn default_project_path() -> String {
@@ -66,6 +78,14 @@ fn default_validation_library() -> String {
     "none".to_string()
 }
 
+fn default_parameter_case() -> String {
+    "camelCase".to_string()
+}
+
+fn default_field_case() -> String {
+    "camelCase".to_string()
+}
+
 impl Default for GenerateConfig {
     fn default() -> Self {
         Self {
@@ -78,6 +98,8 @@ impl Default for GenerateConfig {
             type_mappings: None,
             exclude_patterns: None,
             include_patterns: None,
+            default_parameter_case: default_parameter_case(),
+            default_field_case: default_field_case(),
         }
     }
 }

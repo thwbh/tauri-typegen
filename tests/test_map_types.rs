@@ -1,6 +1,7 @@
 use std::fs;
 use tauri_typegen::analysis::CommandAnalyzer;
 use tauri_typegen::generators::create_generator;
+use tauri_typegen::GenerateConfig;
 use tempfile::TempDir;
 
 #[test]
@@ -55,6 +56,7 @@ pub async fn get_config() -> Result<BTreeMap<String, i32>, String> {
             discovered_structs,
             output_dir.to_str().unwrap(),
             &CommandAnalyzer::new(),
+            &GenerateConfig::new(),
         )
         .unwrap();
 
@@ -78,6 +80,7 @@ pub async fn get_config() -> Result<BTreeMap<String, i32>, String> {
             discovered_structs,
             output_dir_zod.to_str().unwrap(),
             &CommandAnalyzer::new(),
+            &GenerateConfig::new(),
         )
         .unwrap();
 
@@ -135,6 +138,7 @@ pub async fn get_wizard_results() -> Result<WizardTargetDateResult, String> {
             discovered_structs,
             output_dir.to_str().unwrap(),
             &CommandAnalyzer::new(),
+            &GenerateConfig::new(),
         )
         .unwrap();
 

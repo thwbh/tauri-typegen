@@ -218,6 +218,7 @@ fn run_generate(
         analyzer.get_discovered_structs(),
         &config.output_path,
         &analyzer,
+        &config,
     )?;
     reporter.complete_step(Some(&format!("Generated {} files", generated_files.len())));
 

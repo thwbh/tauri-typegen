@@ -1,6 +1,7 @@
 use std::fs;
 use tauri_typegen::analysis::CommandAnalyzer;
 use tauri_typegen::generators::create_generator;
+use tauri_typegen::GenerateConfig;
 use tempfile::TempDir;
 
 fn create_complex_test_project() -> TempDir {
@@ -203,6 +204,7 @@ fn test_full_pipeline_complex_project() {
             analyzer.get_discovered_structs(),
             output_path.to_str().unwrap(),
             &analyzer,
+            &GenerateConfig::new(),
         )
         .unwrap();
 
@@ -305,6 +307,7 @@ fn test_full_pipeline_without_validation() {
             analyzer.get_discovered_structs(),
             output_path.to_str().unwrap(),
             &analyzer,
+            &GenerateConfig::new(),
         )
         .unwrap();
 
@@ -379,6 +382,7 @@ fn test_generated_content_syntax_valid() {
             analyzer.get_discovered_structs(),
             output_path.to_str().unwrap(),
             &analyzer,
+            &GenerateConfig::new(),
         )
         .unwrap();
 

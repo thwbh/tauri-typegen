@@ -3,6 +3,7 @@ use std::fs;
 use tauri_typegen::analysis::CommandAnalyzer;
 use tauri_typegen::generators::create_generator;
 use tauri_typegen::models::{CommandInfo, ParameterInfo, StructInfo};
+use tauri_typegen::GenerateConfig;
 use tempfile::TempDir;
 
 fn create_sample_commands() -> Vec<CommandInfo> {
@@ -54,6 +55,7 @@ fn test_generator_creates_all_files() {
             &discovered_structs,
             output_path,
             &CommandAnalyzer::new(),
+            &GenerateConfig::new(),
         )
         .unwrap();
 
@@ -83,6 +85,7 @@ fn test_generator_without_validation_library() {
             &discovered_structs,
             output_path,
             &CommandAnalyzer::new(),
+            &GenerateConfig::new(),
         )
         .unwrap();
 
@@ -107,6 +110,7 @@ fn test_types_file_generation() {
             &discovered_structs,
             output_path,
             &CommandAnalyzer::new(),
+            &GenerateConfig::new(),
         )
         .unwrap();
 
@@ -135,6 +139,7 @@ fn test_zod_schemas_in_types_file() {
             &discovered_structs,
             output_path,
             &CommandAnalyzer::new(),
+            &GenerateConfig::new(),
         )
         .unwrap();
 
@@ -166,6 +171,7 @@ fn test_yup_schemas_generation() {
             &discovered_structs,
             output_path,
             &CommandAnalyzer::new(),
+            &GenerateConfig::new(),
         )
         .unwrap();
 
@@ -192,6 +198,7 @@ fn test_commands_file_generation() {
             &discovered_structs,
             output_path,
             &CommandAnalyzer::new(),
+            &GenerateConfig::new(),
         )
         .unwrap();
 
@@ -230,6 +237,7 @@ fn test_commands_without_validation() {
             &discovered_structs,
             output_path,
             &CommandAnalyzer::new(),
+            &GenerateConfig::new(),
         )
         .unwrap();
 
@@ -256,6 +264,7 @@ fn test_index_file_generation() {
             &discovered_structs,
             output_path,
             &CommandAnalyzer::new(),
+            &GenerateConfig::new(),
         )
         .unwrap();
 
@@ -295,6 +304,7 @@ fn test_generator_with_void_return() {
             &discovered_structs,
             output_path,
             &CommandAnalyzer::new(),
+            &GenerateConfig::new(),
         )
         .unwrap();
 
@@ -317,6 +327,7 @@ fn test_generator_empty_commands_list() {
             &discovered_structs,
             output_path,
             &CommandAnalyzer::new(),
+            &GenerateConfig::new(),
         )
         .unwrap();
 
@@ -395,6 +406,7 @@ fn test_primitive_arrays_and_optional_custom_types() {
             &discovered_structs,
             output_path,
             &CommandAnalyzer::new(),
+            &GenerateConfig::new(),
         )
         .unwrap();
 
