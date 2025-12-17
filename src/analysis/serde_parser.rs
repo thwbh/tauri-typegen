@@ -71,10 +71,7 @@ impl SerdeParser {
                     if let Some(quote_end) = after_eq[quote_start + 1..].find('"') {
                         let value = &after_eq[quote_start + 1..quote_start + 1 + quote_end];
 
-                        return match RenameRule::from_rename_all_str(value) {
-                            Ok(convention) => Some(convention),
-                            Err(_) => None,
-                        };
+                        return RenameRule::from_rename_all_str(value).ok();
                     }
                 }
             }

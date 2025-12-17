@@ -61,19 +61,19 @@ impl TypeCollector {
         for command in commands {
             // Add parameter types from type_structure
             for param in &command.parameters {
-                self.collect_referenced_types_from_structure(
+                Self::collect_referenced_types_from_structure(
                     &param.type_structure,
                     &mut used_types,
                 );
             }
             // Add return type from return_type_structure
-            self.collect_referenced_types_from_structure(
+            Self::collect_referenced_types_from_structure(
                 &command.return_type_structure,
                 &mut used_types,
             );
             // Add channel message types from message_type_structure
             for channel in &command.channels {
-                self.collect_referenced_types_from_structure(
+                Self::collect_referenced_types_from_structure(
                     &channel.message_type_structure,
                     &mut used_types,
                 );
@@ -114,7 +114,7 @@ impl TypeCollector {
                 for field in &struct_info.fields {
                     let mut nested_types = std::collections::HashSet::new();
                     // Use type_structure to collect referenced types
-                    self.collect_referenced_types_from_structure(
+                    Self::collect_referenced_types_from_structure(
                         &field.type_structure,
                         &mut nested_types,
                     );
@@ -135,7 +135,6 @@ impl TypeCollector {
     /// Recursively collect custom type names from TypeStructure
     /// Works directly with structured type information instead of string parsing
     pub fn collect_referenced_types_from_structure(
-        &self,
         type_structure: &crate::TypeStructure,
         used_types: &mut std::collections::HashSet<String>,
     ) {
@@ -149,15 +148,15 @@ impl TypeCollector {
             | TypeStructure::Set(inner)
             | TypeStructure::Optional(inner)
             | TypeStructure::Result(inner) => {
-                self.collect_referenced_types_from_structure(inner, used_types);
+                Self::collect_referenced_types_from_structure(inner, used_types);
             }
             TypeStructure::Map { key, value } => {
-                self.collect_referenced_types_from_structure(key, used_types);
-                self.collect_referenced_types_from_structure(value, used_types);
+                Self::collect_referenced_types_from_structure(key, used_types);
+                Self::collect_referenced_types_from_structure(value, used_types);
             }
             TypeStructure::Tuple(types) => {
                 for t in types {
-                    self.collect_referenced_types_from_structure(t, used_types);
+                    Self::collect_referenced_types_from_structure(t, used_types);
                 }
             }
             TypeStructure::Primitive(_) => {

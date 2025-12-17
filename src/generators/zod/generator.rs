@@ -259,7 +259,7 @@ impl BaseBindingsGenerator for ZodBindingsGenerator {
         let events = analyzer.get_discovered_events();
         for event in events {
             let mut event_types = std::collections::HashSet::new();
-            self.collector.collect_referenced_types_from_structure(
+            TypeCollector::collect_referenced_types_from_structure(
                 &event.payload_type_structure,
                 &mut event_types,
             );
