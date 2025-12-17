@@ -1,114 +1,112 @@
+/// Fixture: Commands with complex Rust types
+
+pub const NESTED_STRUCT: &str = r#"
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, BTreeMap, HashSet, BTreeSet};
-use tauri::command;
 
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Address {
+    pub street: String,
+    pub city: String,
+    pub zip: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
-    pub id: i32,
+    pub id: String,
     pub name: String,
-    pub metadata: HashMap<String, String>,
-    pub tags: HashSet<String>,
+    pub address: Address,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Product {
-    pub id: i32,
+#[tauri::command]
+pub fn get_user(id: String) -> User {
+    User {
+        id,
+        name: "John".to_string(),
+        address: Address {
+            street: "123 Main St".to_string(),
+            city: "Springfield".to_string(),
+            zip: "12345".to_string(),
+        },
+    }
+}
+"#;
+
+pub const COLLECTIONS: &str = r#"
+use std::collections::{HashMap, HashSet};
+
+#[tauri::command]
+pub fn get_tags() -> Vec<String> {
+    vec!["tag1".to_string(), "tag2".to_string()]
+}
+
+#[tauri::command]
+pub fn get_metadata() -> HashMap<String, String> {
+    HashMap::new()
+}
+
+#[tauri::command]
+pub fn get_unique_ids() -> HashSet<String> {
+    HashSet::new()
+}
+"#;
+
+pub const TUPLES: &str = r#"
+#[tauri::command]
+pub fn get_coordinates() -> (f64, f64) {
+    (40.7128, -74.0060)
+}
+
+#[tauri::command]
+pub fn parse_response() -> (String, u32, bool) {
+    ("OK".to_string(), 200, true)
+}
+"#;
+
+pub const GENERIC_RESULT: &str = r#"
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApiError {
+    pub code: u32,
+    pub message: String,
+}
+
+#[tauri::command]
+pub fn fetch_data(id: String) -> Result<String, ApiError> {
+    Ok("data".to_string())
+}
+"#;
+
+pub const NESTED_COLLECTIONS: &str = r#"
+use std::collections::HashMap;
+
+#[tauri::command]
+pub fn get_user_permissions() -> HashMap<String, Vec<String>> {
+    HashMap::new()
+}
+
+#[tauri::command]
+pub fn get_matrix() -> Vec<Vec<i32>> {
+    vec![vec![1, 2], vec![3, 4]]
+}
+"#;
+
+pub const OPTION_TYPES: &str = r#"
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Profile {
     pub name: String,
-    pub price: f64,
-    pub categories: Vec<String>,
-    pub attributes: BTreeMap<String, AttributeValue>,
+    pub email: Option<String>,
+    pub age: Option<u32>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AttributeValue {
-    pub value: String,
-    pub data_type: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub enum OrderStatus {
-    Pending,
-    Processing { estimated_completion: String },
-    Shipped(String), // tracking number
-    Delivered { delivery_date: String, signed_by: Option<String> },
-    Cancelled,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Order {
-    pub id: i32,
-    pub user_id: i32,
-    pub status: OrderStatus,
-    pub items: Vec<(i32, i32)>, // (product_id, quantity) tuples
-    pub shipping_info: Option<(String, String, String)>, // (address, city, zip) tuple
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct NestedContainer {
-    pub deep_map: HashMap<String, Vec<Option<User>>>,
-    pub complex_result: Result<HashMap<i32, Product>, String>,
-    pub tuple_data: (String, i32, Option<f64>),
-    pub set_of_maps: BTreeSet<HashMap<String, i32>>,
-}
-
-// Commands using complex types
-#[command]
-pub async fn create_user_with_metadata(
-    name: String,
-    metadata: HashMap<String, String>,
-    tags: HashSet<String>
-) -> Result<User, String> {
-    Ok(User {
-        id: 1,
-        name,
-        metadata,
-        tags,
+#[tauri::command]
+pub fn get_profile(id: String) -> Option<Profile> {
+    Some(Profile {
+        name: "John".to_string(),
+        email: None,
+        age: Some(30),
     })
 }
-
-#[command]
-pub async fn get_user_products(
-    user_id: i32,
-    filters: Option<BTreeMap<String, Vec<String>>>
-) -> Result<Vec<Product>, String> {
-    Ok(vec![])
-}
-
-#[command]
-pub async fn update_order_status(
-    order_id: i32,
-    status: OrderStatus
-) -> Result<Order, String> {
-    Ok(Order {
-        id: order_id,
-        user_id: 1,
-        status,
-        items: vec![],
-        shipping_info: None,
-    })
-}
-
-#[command]
-pub fn process_complex_data(
-    data: NestedContainer
-) -> Result<HashMap<String, i32>, String> {
-    Ok(HashMap::new())
-}
-
-#[command]
-pub fn get_tuple_data() -> (String, i32, Option<f64>) {
-    ("test".to_string(), 42, Some(3.14))
-}
-
-#[command]
-pub async fn bulk_update_attributes(
-    product_ids: Vec<i32>,
-    attribute_updates: HashMap<String, AttributeValue>
-) -> Result<Vec<Product>, String> {
-    Ok(vec![])
-}
+"#;
