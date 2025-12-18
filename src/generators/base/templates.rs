@@ -127,3 +127,225 @@ fn add_types_prefix(ts_type: &str) -> String {
         format!("types.{}", ts_type)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod global_context {
+        use super::*;
+
+        #[test]
+        fn test_new_creates_context() {
+            let ctx = GlobalContext::new("test-generator");
+            assert_eq!(ctx.generator_name, "test-generator");
+            assert_eq!(ctx.version, env!("CARGO_PKG_VERSION"));
+            assert!(!ctx.timestamp.is_empty());
+        }
+
+        #[test]
+        fn test_timestamp_format() {
+            let ctx = GlobalContext::new("test");
+            // RFC3339 format should contain T and Z
+            assert!(ctx.timestamp.contains('T'));
+            assert!(ctx.timestamp.ends_with('Z') || ctx.timestamp.contains('+'));
+        }
+
+        #[test]
+        fn test_clone_works() {
+            let ctx1 = GlobalContext::new("test");
+            let ctx2 = ctx1.clone();
+            assert_eq!(ctx1.generator_name, ctx2.generator_name);
+            assert_eq!(ctx1.version, ctx2.version);
+            assert_eq!(ctx1.timestamp, ctx2.timestamp);
+        }
+    }
+
+    mod escape_js_filter {
+        use super::*;
+
+        #[test]
+        fn test_escapes_backslash() {
+            let value = Value::String("test\\path".to_string());
+            let result = escape_js_filter(&value, &HashMap::new()).unwrap();
+            assert_eq!(result.as_str().unwrap(), "test\\\\path");
+        }
+
+        #[test]
+        fn test_escapes_double_quotes() {
+            let value = Value::String("test\"quoted\"".to_string());
+            let result = escape_js_filter(&value, &HashMap::new()).unwrap();
+            assert_eq!(result.as_str().unwrap(), "test\\\"quoted\\\"");
+        }
+
+        #[test]
+        fn test_escapes_newline() {
+            let value = Value::String("line1\nline2".to_string());
+            let result = escape_js_filter(&value, &HashMap::new()).unwrap();
+            assert_eq!(result.as_str().unwrap(), "line1\\nline2");
+        }
+
+        #[test]
+        fn test_escapes_carriage_return() {
+            let value = Value::String("test\rvalue".to_string());
+            let result = escape_js_filter(&value, &HashMap::new()).unwrap();
+            assert_eq!(result.as_str().unwrap(), "test\\rvalue");
+        }
+
+        #[test]
+        fn test_escapes_tab() {
+            let value = Value::String("test\tvalue".to_string());
+            let result = escape_js_filter(&value, &HashMap::new()).unwrap();
+            assert_eq!(result.as_str().unwrap(), "test\\tvalue");
+        }
+
+        #[test]
+        fn test_escapes_multiple_special_chars() {
+            let value = Value::String("test\\\"line\n\ttab".to_string());
+            let result = escape_js_filter(&value, &HashMap::new()).unwrap();
+            assert_eq!(result.as_str().unwrap(), "test\\\\\\\"line\\n\\ttab");
+        }
+
+        #[test]
+        fn test_empty_string() {
+            let value = Value::String("".to_string());
+            let result = escape_js_filter(&value, &HashMap::new()).unwrap();
+            assert_eq!(result.as_str().unwrap(), "");
+        }
+
+        #[test]
+        fn test_no_special_chars() {
+            let value = Value::String("hello world".to_string());
+            let result = escape_js_filter(&value, &HashMap::new()).unwrap();
+            assert_eq!(result.as_str().unwrap(), "hello world");
+        }
+
+        #[test]
+        fn test_non_string_value_errors() {
+            let value = Value::Number(42.into());
+            let result = escape_js_filter(&value, &HashMap::new());
+            assert!(result.is_err());
+        }
+    }
+
+    mod add_types_prefix_func {
+        use super::*;
+
+        #[test]
+        fn test_primitives_unchanged() {
+            assert_eq!(add_types_prefix("void"), "void");
+            assert_eq!(add_types_prefix("string"), "string");
+            assert_eq!(add_types_prefix("number"), "number");
+            assert_eq!(add_types_prefix("boolean"), "boolean");
+            assert_eq!(add_types_prefix("any"), "any");
+            assert_eq!(add_types_prefix("unknown"), "unknown");
+            assert_eq!(add_types_prefix("null"), "null");
+            assert_eq!(add_types_prefix("undefined"), "undefined");
+        }
+
+        #[test]
+        fn test_custom_type_gets_prefix() {
+            assert_eq!(add_types_prefix("User"), "types.User");
+            assert_eq!(add_types_prefix("Product"), "types.Product");
+        }
+
+        #[test]
+        fn test_already_prefixed_unchanged() {
+            assert_eq!(add_types_prefix("types.User"), "types.User");
+            assert_eq!(add_types_prefix("types.Product"), "types.Product");
+        }
+
+        #[test]
+        fn test_primitive_arrays_unchanged() {
+            assert_eq!(add_types_prefix("string[]"), "string[]");
+            assert_eq!(add_types_prefix("number[]"), "number[]");
+            assert_eq!(add_types_prefix("boolean[]"), "boolean[]");
+        }
+
+        #[test]
+        fn test_custom_type_arrays_get_prefix() {
+            assert_eq!(add_types_prefix("User[]"), "types.User[]");
+            assert_eq!(add_types_prefix("Product[]"), "types.Product[]");
+        }
+
+        #[test]
+        fn test_union_with_null() {
+            assert_eq!(add_types_prefix("User | null"), "types.User | null");
+            assert_eq!(add_types_prefix("string | null"), "string | null");
+        }
+
+        #[test]
+        fn test_union_with_undefined() {
+            assert_eq!(
+                add_types_prefix("User | undefined"),
+                "types.User | undefined"
+            );
+            assert_eq!(add_types_prefix("number | undefined"), "number | undefined");
+        }
+
+        #[test]
+        fn test_record_types_unchanged() {
+            assert_eq!(
+                add_types_prefix("Record<string, number>"),
+                "Record<string, number>"
+            );
+            assert_eq!(
+                add_types_prefix("Record<string, User>"),
+                "Record<string, User>"
+            );
+        }
+
+        #[test]
+        fn test_map_types_unchanged() {
+            assert_eq!(
+                add_types_prefix("Map<string, number>"),
+                "Map<string, number>"
+            );
+        }
+
+        #[test]
+        fn test_tuple_types_unchanged() {
+            assert_eq!(add_types_prefix("[string, number]"), "[string, number]");
+            assert_eq!(add_types_prefix("[User, Product]"), "[User, Product]");
+        }
+
+        #[test]
+        fn test_empty_array_syntax() {
+            // "[]" by itself is treated as a custom type name, gets prefix
+            // This is an edge case - in practice arrays are always "SomeType[]"
+            assert_eq!(add_types_prefix("[]"), "types.[]");
+        }
+    }
+
+    mod add_types_prefix_filter_func {
+        use super::*;
+
+        #[test]
+        fn test_filter_with_custom_type() {
+            let value = Value::String("User".to_string());
+            let result = add_types_prefix_filter(&value, &HashMap::new()).unwrap();
+            assert_eq!(result.as_str().unwrap(), "types.User");
+        }
+
+        #[test]
+        fn test_filter_with_primitive() {
+            let value = Value::String("string".to_string());
+            let result = add_types_prefix_filter(&value, &HashMap::new()).unwrap();
+            assert_eq!(result.as_str().unwrap(), "string");
+        }
+
+        #[test]
+        fn test_filter_with_array() {
+            let value = Value::String("User[]".to_string());
+            let result = add_types_prefix_filter(&value, &HashMap::new()).unwrap();
+            assert_eq!(result.as_str().unwrap(), "types.User[]");
+        }
+
+        #[test]
+        fn test_filter_non_string_errors() {
+            let value = Value::Bool(true);
+            let result = add_types_prefix_filter(&value, &HashMap::new());
+            assert!(result.is_err());
+        }
+    }
+}

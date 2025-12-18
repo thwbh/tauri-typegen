@@ -1,13 +1,13 @@
 use crate::generators::base::type_visitor::TypeVisitor;
 use crate::models::{ChannelInfo, CommandInfo, EventInfo, FieldInfo, ParameterInfo};
-use crate::TypeStructure;
+use crate::{GenerateConfig, TypeStructure};
 use serde::{Deserialize, Serialize};
 use serde_rename_rule::RenameRule;
 
 /// Trait for contexts that provide naming convention functionality
 pub trait NamingContext {
     /// Get the config reference
-    fn config(&self) -> &crate::GenerateConfig;
+    fn config(&self) -> &GenerateConfig;
 
     /// Convert an event name to a TypeScript event listener function name
     /// Example: "user_login" -> "onUserLogin"
@@ -112,18 +112,18 @@ pub struct CommandContext {
     pub ts_function_name: String, // Computed field
     pub ts_type_name: String,     // Computed field
     #[serde(skip)]
-    config: crate::GenerateConfig,
+    config: GenerateConfig,
 }
 
 impl NamingContext for CommandContext {
-    fn config(&self) -> &crate::GenerateConfig {
+    fn config(&self) -> &GenerateConfig {
         &self.config
     }
 }
 
 impl CommandContext {
     /// Create a new CommandContext with the given config
-    pub fn new(config: &crate::GenerateConfig) -> Self {
+    pub fn new(config: &GenerateConfig) -> Self {
         Self {
             name: String::new(),
             file_path: String::new(),
@@ -216,18 +216,18 @@ pub struct ParameterContext {
     pub serialized_name: String, // Computed field
     pub type_structure: TypeStructure,
     #[serde(skip)]
-    config: crate::GenerateConfig,
+    config: GenerateConfig,
 }
 
 impl NamingContext for ParameterContext {
-    fn config(&self) -> &crate::GenerateConfig {
+    fn config(&self) -> &GenerateConfig {
         &self.config
     }
 }
 
 impl ParameterContext {
     /// Create a new ParameterContext with the given config
-    pub fn new(config: &crate::GenerateConfig) -> Self {
+    pub fn new(config: &GenerateConfig) -> Self {
         Self {
             name: String::new(),
             rust_type: String::new(),
@@ -274,18 +274,18 @@ pub struct FieldContext {
     pub validator_attributes: Option<crate::models::ValidatorAttributes>,
     pub type_structure: TypeStructure,
     #[serde(skip)]
-    config: crate::GenerateConfig,
+    config: GenerateConfig,
 }
 
 impl NamingContext for FieldContext {
-    fn config(&self) -> &crate::GenerateConfig {
+    fn config(&self) -> &GenerateConfig {
         &self.config
     }
 }
 
 impl FieldContext {
     /// Create a new FieldContext with the given config
-    pub fn new(config: &crate::GenerateConfig) -> Self {
+    pub fn new(config: &GenerateConfig) -> Self {
         Self {
             name: String::new(),
             rust_type: String::new(),
@@ -331,18 +331,18 @@ pub struct StructContext {
     pub fields: Vec<FieldContext>,
     pub is_enum: bool,
     #[serde(skip)]
-    config: crate::GenerateConfig,
+    config: GenerateConfig,
 }
 
 impl NamingContext for StructContext {
-    fn config(&self) -> &crate::GenerateConfig {
+    fn config(&self) -> &GenerateConfig {
         &self.config
     }
 }
 
 impl StructContext {
     /// Create a new StructContext with the given config
-    pub fn new(config: &crate::GenerateConfig) -> Self {
+    pub fn new(config: &GenerateConfig) -> Self {
         Self {
             name: String::new(),
             fields: Vec::new(),
@@ -390,18 +390,18 @@ pub struct ChannelContext {
     pub line_number: usize,
     pub serialized_parameter_name: String, // Computed field
     #[serde(skip)]
-    config: crate::GenerateConfig,
+    config: GenerateConfig,
 }
 
 impl NamingContext for ChannelContext {
-    fn config(&self) -> &crate::GenerateConfig {
+    fn config(&self) -> &GenerateConfig {
         &self.config
     }
 }
 
 impl ChannelContext {
     /// Create a new ChannelContext with the given config
-    pub fn new(config: &crate::GenerateConfig) -> Self {
+    pub fn new(config: &GenerateConfig) -> Self {
         Self {
             parameter_name: String::new(),
             message_type: String::new(),
@@ -449,18 +449,18 @@ pub struct EventContext {
     pub line_number: usize,
     pub ts_function_name: String, // Computed field
     #[serde(skip)]
-    config: crate::GenerateConfig,
+    config: GenerateConfig,
 }
 
 impl NamingContext for EventContext {
-    fn config(&self) -> &crate::GenerateConfig {
+    fn config(&self) -> &GenerateConfig {
         &self.config
     }
 }
 
 impl EventContext {
     /// Create a new EventContext with the given config
-    pub fn new(config: &crate::GenerateConfig) -> Self {
+    pub fn new(config: &GenerateConfig) -> Self {
         Self {
             event_name: String::new(),
             payload_type: String::new(),
@@ -498,16 +498,18 @@ impl EventContext {
 
 #[cfg(test)]
 mod tests {
+    use GenerateConfig;
+
     use super::*;
     use serde_rename_rule::RenameRule;
 
     // Mock config for testing
-    fn mock_config() -> crate::GenerateConfig {
-        crate::GenerateConfig::default()
+    fn mock_config() -> GenerateConfig {
+        GenerateConfig::default()
     }
 
-    fn mock_config_with_snake_case() -> crate::GenerateConfig {
-        let mut config = crate::GenerateConfig::default();
+    fn mock_config_with_snake_case() -> GenerateConfig {
+        let mut config = GenerateConfig::default();
         config.default_parameter_case = "snake_case".to_string();
         config.default_field_case = "snake_case".to_string();
         config
@@ -515,11 +517,11 @@ mod tests {
 
     // Mock NamingContext for testing
     struct MockContext {
-        config: crate::GenerateConfig,
+        config: GenerateConfig,
     }
 
     impl NamingContext for MockContext {
-        fn config(&self) -> &crate::GenerateConfig {
+        fn config(&self) -> &GenerateConfig {
             &self.config
         }
     }

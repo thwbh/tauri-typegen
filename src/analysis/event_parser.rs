@@ -333,3 +333,434 @@ impl Default for EventParser {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use syn::parse_quote;
+
+    #[test]
+    fn test_new_parser() {
+        let parser = EventParser::new();
+        let _ = parser;
+    }
+
+    #[test]
+    fn test_default_impl() {
+        let parser = EventParser::default();
+        let _ = parser;
+    }
+
+    // extract_string_literal tests
+    mod extract_string_literal {
+        use super::*;
+
+        #[test]
+        fn test_extract_from_string_literal() {
+            let parser = EventParser::new();
+            let expr: Expr = parse_quote!("user-login");
+
+            let result = parser.extract_string_literal(&expr);
+            assert_eq!(result, Some("user-login".to_string()));
+        }
+
+        #[test]
+        fn test_extract_from_empty_string() {
+            let parser = EventParser::new();
+            let expr: Expr = parse_quote!("");
+
+            let result = parser.extract_string_literal(&expr);
+            assert_eq!(result, Some("".to_string()));
+        }
+
+        #[test]
+        fn test_extract_from_non_string() {
+            let parser = EventParser::new();
+            let expr: Expr = parse_quote!(42);
+
+            let result = parser.extract_string_literal(&expr);
+            assert!(result.is_none());
+        }
+
+        #[test]
+        fn test_extract_from_variable() {
+            let parser = EventParser::new();
+            let expr: Expr = parse_quote!(event_name);
+
+            let result = parser.extract_string_literal(&expr);
+            assert!(result.is_none());
+        }
+    }
+
+    // infer_payload_type tests
+    mod infer_payload_type {
+        use super::*;
+
+        #[test]
+        fn test_infer_string_literal() {
+            let expr: Expr = parse_quote!("hello");
+            assert_eq!(EventParser::infer_payload_type(&expr), "String");
+        }
+
+        #[test]
+        fn test_infer_int_literal() {
+            let expr: Expr = parse_quote!(42);
+            assert_eq!(EventParser::infer_payload_type(&expr), "i32");
+        }
+
+        #[test]
+        fn test_infer_float_literal() {
+            let expr: Expr = parse_quote!(3.14);
+            assert_eq!(EventParser::infer_payload_type(&expr), "f64");
+        }
+
+        #[test]
+        fn test_infer_bool_literal() {
+            let expr: Expr = parse_quote!(true);
+            assert_eq!(EventParser::infer_payload_type(&expr), "bool");
+        }
+
+        #[test]
+        fn test_infer_struct_construction() {
+            let expr: Expr = parse_quote!(User {
+                id: 1,
+                name: "Alice"
+            });
+            assert_eq!(EventParser::infer_payload_type(&expr), "User");
+        }
+
+        #[test]
+        fn test_infer_qualified_struct() {
+            let expr: Expr = parse_quote!(models::User { id: 1 });
+            assert_eq!(EventParser::infer_payload_type(&expr), "User");
+        }
+
+        #[test]
+        fn test_infer_variable_path() {
+            let expr: Expr = parse_quote!(user_data);
+            assert_eq!(EventParser::infer_payload_type(&expr), "user_data");
+        }
+
+        #[test]
+        fn test_infer_reference() {
+            let expr: Expr = parse_quote!(&data);
+            assert_eq!(EventParser::infer_payload_type(&expr), "data");
+        }
+
+        #[test]
+        fn test_infer_empty_tuple() {
+            let expr: Expr = parse_quote!(());
+            assert_eq!(EventParser::infer_payload_type(&expr), "()");
+        }
+
+        #[test]
+        fn test_infer_non_empty_tuple() {
+            let expr: Expr = parse_quote!((1, 2, 3));
+            assert_eq!(EventParser::infer_payload_type(&expr), "tuple");
+        }
+
+        #[test]
+        fn test_infer_method_call() {
+            let expr: Expr = parse_quote!(get_user());
+            assert_eq!(EventParser::infer_payload_type(&expr), "unknown");
+        }
+
+        #[test]
+        fn test_infer_function_call() {
+            let expr: Expr = parse_quote!(calculate(x, y));
+            assert_eq!(EventParser::infer_payload_type(&expr), "unknown");
+        }
+    }
+
+    // is_likely_tauri_emitter tests
+    mod is_likely_tauri_emitter {
+        use super::*;
+
+        #[test]
+        fn test_recognizes_app_identifier() {
+            let parser = EventParser::new();
+            let expr: Expr = parse_quote!(app);
+            assert!(parser.is_likely_tauri_emitter(&expr));
+        }
+
+        #[test]
+        fn test_recognizes_window_identifier() {
+            let parser = EventParser::new();
+            let expr: Expr = parse_quote!(window);
+            assert!(parser.is_likely_tauri_emitter(&expr));
+        }
+
+        #[test]
+        fn test_recognizes_webview_identifier() {
+            let parser = EventParser::new();
+            let expr: Expr = parse_quote!(webview);
+            assert!(parser.is_likely_tauri_emitter(&expr));
+        }
+
+        #[test]
+        fn test_recognizes_qualified_app_handle() {
+            let parser = EventParser::new();
+            let expr: Expr = parse_quote!(tauri::AppHandle);
+            assert!(parser.is_likely_tauri_emitter(&expr));
+        }
+
+        #[test]
+        fn test_recognizes_qualified_window() {
+            let parser = EventParser::new();
+            let expr: Expr = parse_quote!(tauri::Window);
+            assert!(parser.is_likely_tauri_emitter(&expr));
+        }
+
+        #[test]
+        fn test_recognizes_qualified_webview_window() {
+            let parser = EventParser::new();
+            let expr: Expr = parse_quote!(tauri::WebviewWindow);
+            assert!(parser.is_likely_tauri_emitter(&expr));
+        }
+
+        #[test]
+        fn test_recognizes_field_access() {
+            let parser = EventParser::new();
+            let expr: Expr = parse_quote!(self.app);
+            assert!(parser.is_likely_tauri_emitter(&expr));
+        }
+
+        #[test]
+        fn test_recognizes_method_call_receiver() {
+            let parser = EventParser::new();
+            // Method calls are considered permissive emitters (could return AppHandle)
+            let expr: Expr = parse_quote!(obj.method());
+            assert!(parser.is_likely_tauri_emitter(&expr));
+        }
+
+        #[test]
+        fn test_rejects_user_variable() {
+            let parser = EventParser::new();
+            let expr: Expr = parse_quote!(my_data);
+            assert!(!parser.is_likely_tauri_emitter(&expr));
+        }
+
+        #[test]
+        fn test_rejects_user_type() {
+            let parser = EventParser::new();
+            let expr: Expr = parse_quote!(User);
+            assert!(!parser.is_likely_tauri_emitter(&expr));
+        }
+
+        #[test]
+        fn test_recognizes_app_handle_in_path() {
+            let parser = EventParser::new();
+            // Complex path with AppHandle segment
+            let expr: Expr = parse_quote!(tauri::AppHandle);
+            assert!(parser.is_likely_tauri_emitter(&expr));
+        }
+
+        #[test]
+        fn test_recognizes_qualified_tauri_window() {
+            let parser = EventParser::new();
+            let expr: Expr = parse_quote!(tauri::Window);
+            assert!(parser.is_likely_tauri_emitter(&expr));
+        }
+
+        #[test]
+        fn test_rejects_function_call() {
+            let parser = EventParser::new();
+            // Function calls (not method calls) are not automatically emitters
+            let expr: Expr = parse_quote!(get_app());
+            assert!(!parser.is_likely_tauri_emitter(&expr));
+        }
+    }
+
+    // Integration tests with AST parsing
+    mod ast_parsing {
+        use super::*;
+        use std::path::PathBuf;
+
+        #[test]
+        fn test_extract_simple_emit() {
+            let parser = EventParser::new();
+            let mut type_resolver = TypeResolver::new();
+            let ast: SynFile = parse_quote! {
+                fn notify_user() {
+                    app.emit("user-login", "Alice");
+                }
+            };
+            let path = PathBuf::from("test.rs");
+
+            let events = parser
+                .extract_events_from_ast(&ast, &path, &mut type_resolver)
+                .unwrap();
+
+            assert_eq!(events.len(), 1);
+            assert_eq!(events[0].event_name, "user-login");
+            assert_eq!(events[0].payload_type, "String");
+        }
+
+        #[test]
+        fn test_extract_emit_with_struct() {
+            let parser = EventParser::new();
+            let mut type_resolver = TypeResolver::new();
+            let ast: SynFile = parse_quote! {
+                fn notify_user() {
+                    app.emit("user-updated", User { id: 1, name: "Alice" });
+                }
+            };
+            let path = PathBuf::from("test.rs");
+
+            let events = parser
+                .extract_events_from_ast(&ast, &path, &mut type_resolver)
+                .unwrap();
+
+            assert_eq!(events.len(), 1);
+            assert_eq!(events[0].event_name, "user-updated");
+            assert_eq!(events[0].payload_type, "User");
+        }
+
+        #[test]
+        fn test_extract_emit_to() {
+            let parser = EventParser::new();
+            let mut type_resolver = TypeResolver::new();
+            let ast: SynFile = parse_quote! {
+                fn notify_window() {
+                    app.emit_to("main", "progress", 50);
+                }
+            };
+            let path = PathBuf::from("test.rs");
+
+            let events = parser
+                .extract_events_from_ast(&ast, &path, &mut type_resolver)
+                .unwrap();
+
+            assert_eq!(events.len(), 1);
+            assert_eq!(events[0].event_name, "progress");
+            assert_eq!(events[0].payload_type, "i32");
+        }
+
+        #[test]
+        fn test_extract_multiple_emits() {
+            let parser = EventParser::new();
+            let mut type_resolver = TypeResolver::new();
+            let ast: SynFile = parse_quote! {
+                fn notify_all() {
+                    app.emit("event1", "data1");
+                    window.emit("event2", 42);
+                }
+            };
+            let path = PathBuf::from("test.rs");
+
+            let events = parser
+                .extract_events_from_ast(&ast, &path, &mut type_resolver)
+                .unwrap();
+
+            assert_eq!(events.len(), 2);
+            assert_eq!(events[0].event_name, "event1");
+            assert_eq!(events[1].event_name, "event2");
+        }
+
+        #[test]
+        fn test_extract_emit_in_if_block() {
+            let parser = EventParser::new();
+            let mut type_resolver = TypeResolver::new();
+            let ast: SynFile = parse_quote! {
+                fn conditional_notify() {
+                    if condition {
+                        app.emit("success", true);
+                    } else {
+                        app.emit("failure", false);
+                    }
+                }
+            };
+            let path = PathBuf::from("test.rs");
+
+            let events = parser
+                .extract_events_from_ast(&ast, &path, &mut type_resolver)
+                .unwrap();
+
+            assert_eq!(events.len(), 2);
+            assert_eq!(events[0].event_name, "success");
+            assert_eq!(events[1].event_name, "failure");
+        }
+
+        #[test]
+        fn test_extract_emit_in_loop() {
+            let parser = EventParser::new();
+            let mut type_resolver = TypeResolver::new();
+            let ast: SynFile = parse_quote! {
+                fn loop_notify() {
+                    for i in 0..10 {
+                        app.emit("iteration", i);
+                    }
+                }
+            };
+            let path = PathBuf::from("test.rs");
+
+            let events = parser
+                .extract_events_from_ast(&ast, &path, &mut type_resolver)
+                .unwrap();
+
+            assert_eq!(events.len(), 1);
+            assert_eq!(events[0].event_name, "iteration");
+        }
+
+        #[test]
+        fn test_extract_emit_in_match() {
+            let parser = EventParser::new();
+            let mut type_resolver = TypeResolver::new();
+            let ast: SynFile = parse_quote! {
+                fn match_notify() {
+                    match result {
+                        Ok(val) => app.emit("success", val),
+                        Err(e) => app.emit("error", e),
+                    }
+                }
+            };
+            let path = PathBuf::from("test.rs");
+
+            let events = parser
+                .extract_events_from_ast(&ast, &path, &mut type_resolver)
+                .unwrap();
+
+            assert_eq!(events.len(), 2);
+            assert_eq!(events[0].event_name, "success");
+            assert_eq!(events[1].event_name, "error");
+        }
+
+        #[test]
+        fn test_no_events_in_non_emit_function() {
+            let parser = EventParser::new();
+            let mut type_resolver = TypeResolver::new();
+            let ast: SynFile = parse_quote! {
+                fn regular_function() {
+                    let x = 42;
+                    println!("Hello");
+                }
+            };
+            let path = PathBuf::from("test.rs");
+
+            let events = parser
+                .extract_events_from_ast(&ast, &path, &mut type_resolver)
+                .unwrap();
+
+            assert_eq!(events.len(), 0);
+        }
+
+        #[test]
+        fn test_ignores_user_emit_method() {
+            let parser = EventParser::new();
+            let mut type_resolver = TypeResolver::new();
+            let ast: SynFile = parse_quote! {
+                fn user_emit() {
+                    my_object.emit("not-a-tauri-event", data);
+                }
+            };
+            let path = PathBuf::from("test.rs");
+
+            let events = parser
+                .extract_events_from_ast(&ast, &path, &mut type_resolver)
+                .unwrap();
+
+            // Should not detect this as a Tauri event since my_object is not a Tauri emitter
+            assert_eq!(events.len(), 0);
+        }
+    }
+}

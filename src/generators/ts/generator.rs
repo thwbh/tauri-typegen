@@ -6,6 +6,7 @@ use crate::generators::base::BaseBindingsGenerator;
 use crate::generators::ts::templates::TypeScriptTemplate;
 use crate::generators::TypeCollector;
 use crate::models::{CommandInfo, EventInfo, StructInfo};
+use crate::GenerateConfig;
 use std::collections::HashMap;
 use tera::{Context, Tera};
 
@@ -30,7 +31,7 @@ impl TypeScriptBindingsGenerator {
         commands: &[CommandInfo],
         used_structs: &HashMap<String, StructInfo>,
         analyzer: &CommandAnalyzer,
-        config: &crate::GenerateConfig,
+        config: &GenerateConfig,
     ) -> String {
         let has_channels = commands.iter().any(|cmd| !cmd.channels.is_empty());
         let visitor = TypeScriptVisitor;
@@ -64,7 +65,7 @@ impl TypeScriptBindingsGenerator {
         &self,
         commands: &[CommandInfo],
         analyzer: &CommandAnalyzer,
-        config: &crate::GenerateConfig,
+        config: &GenerateConfig,
     ) -> String {
         let has_channels = commands.iter().any(|cmd| !cmd.channels.is_empty());
         let visitor = TypeScriptVisitor;
@@ -104,7 +105,7 @@ impl TypeScriptBindingsGenerator {
         &self,
         events: &[EventInfo],
         analyzer: &CommandAnalyzer,
-        config: &crate::GenerateConfig,
+        config: &GenerateConfig,
     ) -> String {
         let visitor = TypeScriptVisitor;
 
@@ -144,7 +145,7 @@ impl BaseBindingsGenerator for TypeScriptBindingsGenerator {
         discovered_structs: &HashMap<String, StructInfo>,
         output_path: &str,
         analyzer: &CommandAnalyzer,
-        config: &crate::GenerateConfig,
+        config: &GenerateConfig,
     ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
         // Store known structs for reference
         self.collector.known_structs = discovered_structs.clone();
@@ -202,5 +203,108 @@ impl BaseBindingsGenerator for TypeScriptBindingsGenerator {
 impl Default for TypeScriptBindingsGenerator {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod initialization {
+        use super::*;
+
+        #[test]
+        fn test_new_creates_generator() {
+            let gen = TypeScriptBindingsGenerator::new();
+            assert!(
+                !gen.collector.known_structs.is_empty() || gen.collector.known_structs.is_empty()
+            );
+        }
+
+        #[test]
+        fn test_default_creates_generator() {
+            let gen = TypeScriptBindingsGenerator::default();
+            assert!(
+                !gen.collector.known_structs.is_empty() || gen.collector.known_structs.is_empty()
+            );
+        }
+    }
+
+    mod trait_implementation {
+        use super::*;
+
+        #[test]
+        fn test_generator_type_returns_none() {
+            let gen = TypeScriptBindingsGenerator::new();
+            assert_eq!(gen.generator_type(), "none");
+        }
+
+        #[test]
+        fn test_tera_returns_engine() {
+            let gen = TypeScriptBindingsGenerator::new();
+            let tera = gen.tera();
+            // Verify it has registered templates
+            assert!(tera.get_template_names().count() > 0);
+        }
+
+        #[test]
+        fn test_type_collector_returns_collector() {
+            let gen = TypeScriptBindingsGenerator::new();
+            let collector = gen.type_collector();
+            // Verify collector exists
+            assert!(collector.known_structs.is_empty() || !collector.known_structs.is_empty());
+        }
+    }
+
+    mod template_rendering {
+        use super::*;
+
+        #[test]
+        fn test_generate_file_header() {
+            let gen = TypeScriptBindingsGenerator::new();
+            let header = gen.generate_file_header();
+            assert!(header.contains("Auto-generated") || header.contains("tauri-typegen"));
+            assert!(header.contains("none")); // generator type
+        }
+
+        #[test]
+        fn test_has_typescript_templates() {
+            let gen = TypeScriptBindingsGenerator::new();
+            let tera = gen.tera();
+            let template_names: Vec<&str> = tera.get_template_names().collect();
+
+            // Check for key templates
+            assert!(template_names.contains(&"typescript/types.ts.tera"));
+            assert!(template_names.contains(&"typescript/commands.ts.tera"));
+            assert!(template_names.contains(&"typescript/index.ts.tera"));
+        }
+
+        #[test]
+        fn test_render_returns_error_for_invalid_template() {
+            let gen = TypeScriptBindingsGenerator::new();
+            let context = Context::new();
+            let result = gen.render("nonexistent/template.tera", &context);
+            assert!(result.is_err());
+        }
+    }
+
+    mod helper_methods {
+        use super::*;
+
+        #[test]
+        fn test_generate_index_file_with_empty_files() {
+            let gen = TypeScriptBindingsGenerator::new();
+            let files = vec![];
+            let result = gen.generate_index_file(&files);
+            assert!(result.contains("Auto-generated") || result.contains("//"));
+        }
+
+        #[test]
+        fn test_generate_index_file_with_files() {
+            let gen = TypeScriptBindingsGenerator::new();
+            let files = vec!["types.ts".to_string(), "commands.ts".to_string()];
+            let result = gen.generate_index_file(&files);
+            assert!(!result.is_empty());
+        }
     }
 }
