@@ -1,7 +1,12 @@
 use crate::models::TypeStructure;
+use crate::GenerateConfig;
 
 /// Visitor pattern for converting TypeStructure to target-specific type representations
 pub trait TypeVisitor {
+    /// Get the config (if any) for type mappings
+    fn get_config(&self) -> Option<&GenerateConfig> {
+        None
+    }
     /// Convert a TypeStructure to the target language's type string
     fn visit_type(&self, structure: &TypeStructure) -> String {
         match structure {
@@ -59,7 +64,17 @@ pub trait TypeVisitor {
     }
 
     /// Visit a custom/user-defined type
+    /// Checks config.type_mappings first before returning the type name as-is
     fn visit_custom(&self, name: &str) -> String {
+        // Check if there's a custom type mapping configured
+        if let Some(config) = self.get_config() {
+            if let Some(ref mappings) = config.type_mappings {
+                if let Some(mapped_type) = mappings.get(name) {
+                    return mapped_type.clone();
+                }
+            }
+        }
+        // No mapping found, return the type name as-is
         name.to_string()
     }
 }
@@ -67,21 +82,56 @@ pub trait TypeVisitor {
 /// TypeScript type visitor - converts TypeStructure to TypeScript types
 /// Note: Does NOT add "types." prefix - that's handled at the template context level
 /// for function signatures only (return types, parameters)
-pub struct TypeScriptVisitor;
+pub struct TypeScriptVisitor<'a> {
+    config: Option<&'a GenerateConfig>,
+}
 
-impl TypeVisitor for TypeScriptVisitor {
+impl<'a> TypeScriptVisitor<'a> {
+    pub fn new() -> Self {
+        Self { config: None }
+    }
+
+    pub fn with_config(config: &'a GenerateConfig) -> Self {
+        Self {
+            config: Some(config),
+        }
+    }
+}
+
+impl<'a> TypeVisitor for TypeScriptVisitor<'a> {
+    fn get_config(&self) -> Option<&GenerateConfig> {
+        self.config
+    }
+
     fn visit_primitive(&self, type_name: &str) -> String {
         // TypeStructure::Primitive should only contain: "string", "number", "boolean", "void"
         type_name.to_string()
     }
 
-    // Uses default visit_custom implementation which returns the name as-is
+    // Uses default visit_custom implementation which checks type_mappings
 }
 
 /// Zod schema visitor - converts TypeStructure to Zod schema strings
-pub struct ZodVisitor;
+pub struct ZodVisitor<'a> {
+    config: Option<&'a GenerateConfig>,
+}
 
-impl TypeVisitor for ZodVisitor {
+impl<'a> ZodVisitor<'a> {
+    pub fn new() -> Self {
+        Self { config: None }
+    }
+
+    pub fn with_config(config: &'a GenerateConfig) -> Self {
+        Self {
+            config: Some(config),
+        }
+    }
+}
+
+impl<'a> TypeVisitor for ZodVisitor<'a> {
+    fn get_config(&self) -> Option<&GenerateConfig> {
+        self.config
+    }
     fn visit_primitive(&self, type_name: &str) -> String {
         // TypeStructure::Primitive should only contain: "string", "number", "boolean", "void"
         match type_name {
@@ -135,7 +185,26 @@ impl TypeVisitor for ZodVisitor {
     }
 
     fn visit_custom(&self, name: &str) -> String {
-        // Reference the schema for custom types
+        // Check if there's a custom type mapping configured
+        if let Some(config) = self.get_config() {
+            if let Some(ref mappings) = config.type_mappings {
+                if let Some(mapped_type) = mappings.get(name) {
+                    // Type is mapped to a primitive TypeScript type
+                    // Convert to appropriate Zod schema
+                    return match mapped_type.as_str() {
+                        "string" => "z.string()".to_string(),
+                        "number" => "z.number()".to_string(),
+                        "boolean" => "z.boolean()".to_string(),
+                        "void" => "z.void()".to_string(),
+                        _ => {
+                            // For non-primitive mappings, use z.custom()
+                            format!("z.custom<{}>((val) => true)", mapped_type)
+                        }
+                    };
+                }
+            }
+        }
+        // No mapping found, reference the schema for custom types
         format!("{}Schema", name)
     }
 }
@@ -185,7 +254,7 @@ mod tests {
 
         #[test]
         fn test_primitive_types() {
-            let visitor = TypeScriptVisitor;
+            let visitor = TypeScriptVisitor::new();
 
             assert_eq!(visitor.visit_type(&primitive("string")), "string");
             assert_eq!(visitor.visit_type(&primitive("number")), "number");
@@ -195,7 +264,7 @@ mod tests {
 
         #[test]
         fn test_array_types() {
-            let visitor = TypeScriptVisitor;
+            let visitor = TypeScriptVisitor::new();
 
             assert_eq!(visitor.visit_type(&array(primitive("string"))), "string[]");
             assert_eq!(visitor.visit_type(&array(primitive("number"))), "number[]");
@@ -203,7 +272,7 @@ mod tests {
 
         #[test]
         fn test_nested_array() {
-            let visitor = TypeScriptVisitor;
+            let visitor = TypeScriptVisitor::new();
 
             let nested = array(array(primitive("number")));
             assert_eq!(visitor.visit_type(&nested), "number[][]");
@@ -211,7 +280,7 @@ mod tests {
 
         #[test]
         fn test_optional_types() {
-            let visitor = TypeScriptVisitor;
+            let visitor = TypeScriptVisitor::new();
 
             assert_eq!(
                 visitor.visit_type(&optional(primitive("string"))),
@@ -222,7 +291,7 @@ mod tests {
 
         #[test]
         fn test_map_types() {
-            let visitor = TypeScriptVisitor;
+            let visitor = TypeScriptVisitor::new();
 
             assert_eq!(
                 visitor.visit_type(&map(primitive("string"), primitive("number"))),
@@ -236,7 +305,7 @@ mod tests {
 
         #[test]
         fn test_set_types() {
-            let visitor = TypeScriptVisitor;
+            let visitor = TypeScriptVisitor::new();
 
             // Sets become arrays in TypeScript
             assert_eq!(visitor.visit_type(&set(primitive("string"))), "string[]");
@@ -244,7 +313,7 @@ mod tests {
 
         #[test]
         fn test_tuple_types() {
-            let visitor = TypeScriptVisitor;
+            let visitor = TypeScriptVisitor::new();
 
             assert_eq!(
                 visitor.visit_type(&tuple(vec![primitive("string"), primitive("number")])),
@@ -262,14 +331,14 @@ mod tests {
 
         #[test]
         fn test_empty_tuple() {
-            let visitor = TypeScriptVisitor;
+            let visitor = TypeScriptVisitor::new();
 
             assert_eq!(visitor.visit_type(&tuple(vec![])), "void");
         }
 
         #[test]
         fn test_result_types() {
-            let visitor = TypeScriptVisitor;
+            let visitor = TypeScriptVisitor::new();
 
             // Result<T, E> becomes T (errors handled by Tauri)
             assert_eq!(visitor.visit_type(&result(primitive("string"))), "string");
@@ -278,7 +347,7 @@ mod tests {
 
         #[test]
         fn test_custom_types() {
-            let visitor = TypeScriptVisitor;
+            let visitor = TypeScriptVisitor::new();
 
             assert_eq!(visitor.visit_type(&custom("User")), "User");
             assert_eq!(visitor.visit_type(&custom("Product")), "Product");
@@ -286,7 +355,7 @@ mod tests {
 
         #[test]
         fn test_complex_nested_type() {
-            let visitor = TypeScriptVisitor;
+            let visitor = TypeScriptVisitor::new();
 
             // HashMap<String, Vec<Option<User>>>
             let complex = map(primitive("string"), array(optional(custom("User"))));
@@ -308,7 +377,7 @@ mod tests {
 
         #[test]
         fn test_primitive_types() {
-            let visitor = ZodVisitor;
+            let visitor = ZodVisitor::new();
 
             assert_eq!(visitor.visit_type(&primitive("string")), "z.string()");
             assert_eq!(visitor.visit_type(&primitive("number")), "z.number()");
@@ -318,7 +387,7 @@ mod tests {
 
         #[test]
         fn test_array_types() {
-            let visitor = ZodVisitor;
+            let visitor = ZodVisitor::new();
 
             assert_eq!(
                 visitor.visit_type(&array(primitive("string"))),
@@ -332,7 +401,7 @@ mod tests {
 
         #[test]
         fn test_nested_array() {
-            let visitor = ZodVisitor;
+            let visitor = ZodVisitor::new();
 
             let nested = array(array(primitive("number")));
             assert_eq!(visitor.visit_type(&nested), "z.array(z.array(z.number()))");
@@ -340,7 +409,7 @@ mod tests {
 
         #[test]
         fn test_optional_types() {
-            let visitor = ZodVisitor;
+            let visitor = ZodVisitor::new();
 
             assert_eq!(
                 visitor.visit_type(&optional(primitive("string"))),
@@ -354,7 +423,7 @@ mod tests {
 
         #[test]
         fn test_map_types() {
-            let visitor = ZodVisitor;
+            let visitor = ZodVisitor::new();
 
             assert_eq!(
                 visitor.visit_type(&map(primitive("string"), primitive("number"))),
@@ -368,7 +437,7 @@ mod tests {
 
         #[test]
         fn test_set_types() {
-            let visitor = ZodVisitor;
+            let visitor = ZodVisitor::new();
 
             // Sets become arrays in Zod
             assert_eq!(
@@ -379,7 +448,7 @@ mod tests {
 
         #[test]
         fn test_tuple_types() {
-            let visitor = ZodVisitor;
+            let visitor = ZodVisitor::new();
 
             assert_eq!(
                 visitor.visit_type(&tuple(vec![primitive("string"), primitive("number")])),
@@ -397,14 +466,14 @@ mod tests {
 
         #[test]
         fn test_empty_tuple() {
-            let visitor = ZodVisitor;
+            let visitor = ZodVisitor::new();
 
             assert_eq!(visitor.visit_type(&tuple(vec![])), "z.void()");
         }
 
         #[test]
         fn test_result_types() {
-            let visitor = ZodVisitor;
+            let visitor = ZodVisitor::new();
 
             // Result<T, E> becomes T schema
             assert_eq!(
@@ -416,7 +485,7 @@ mod tests {
 
         #[test]
         fn test_custom_types() {
-            let visitor = ZodVisitor;
+            let visitor = ZodVisitor::new();
 
             // Custom types reference their schema
             assert_eq!(visitor.visit_type(&custom("User")), "UserSchema");
@@ -425,7 +494,7 @@ mod tests {
 
         #[test]
         fn test_complex_nested_type() {
-            let visitor = ZodVisitor;
+            let visitor = ZodVisitor::new();
 
             // HashMap<String, Vec<Option<User>>>
             let complex = map(primitive("string"), array(optional(custom("User"))));
@@ -438,11 +507,173 @@ mod tests {
 
         #[test]
         fn test_unexpected_primitive() {
-            let visitor = ZodVisitor;
+            let visitor = ZodVisitor::new();
 
             // Should handle unexpected primitives gracefully
             let result = visitor.visit_type(&primitive("unknown_type"));
             assert!(result.contains("z.unknown()"));
+        }
+    }
+
+    // Type mappings tests
+    mod type_mappings {
+        use super::*;
+        use crate::GenerateConfig;
+        use std::collections::HashMap;
+
+        fn create_test_config_with_mappings() -> GenerateConfig {
+            let mut type_mappings = HashMap::new();
+            type_mappings.insert("CustomDateTime".to_string(), "string".to_string());
+            type_mappings.insert("CustomDate".to_string(), "string".to_string());
+
+            GenerateConfig {
+                project_path: ".".to_string(),
+                output_path: "./output".to_string(),
+                validation_library: "none".to_string(),
+                visualize_deps: Some(false),
+                verbose: Some(false),
+                include_private: Some(false),
+                type_mappings: Some(type_mappings),
+                exclude_patterns: None,
+                include_patterns: None,
+                default_parameter_case: "camelCase".to_string(),
+                default_field_case: "camelCase".to_string(),
+            }
+        }
+
+        #[test]
+        fn test_typescript_visitor_without_mappings() {
+            let visitor = TypeScriptVisitor::new();
+
+            // Without mappings, custom types should return their name as-is
+            assert_eq!(
+                visitor.visit_type(&custom("CustomDateTime")),
+                "CustomDateTime"
+            );
+            assert_eq!(visitor.visit_type(&custom("CustomDate")), "CustomDate");
+        }
+
+        #[test]
+        fn test_typescript_visitor_with_mappings() {
+            let config = create_test_config_with_mappings();
+            let visitor = TypeScriptVisitor::with_config(&config);
+
+            // With mappings, custom types should return the mapped type
+            assert_eq!(visitor.visit_type(&custom("CustomDateTime")), "string");
+            assert_eq!(visitor.visit_type(&custom("CustomDate")), "string");
+
+            // Unmapped types should still return their name
+            assert_eq!(visitor.visit_type(&custom("UnmappedType")), "UnmappedType");
+        }
+
+        #[test]
+        fn test_typescript_visitor_mappings_in_complex_types() {
+            let config = create_test_config_with_mappings();
+            let visitor = TypeScriptVisitor::with_config(&config);
+
+            // Array of mapped type
+            let array_of_custom = array(custom("CustomDateTime"));
+            assert_eq!(visitor.visit_type(&array_of_custom), "string[]");
+
+            // Optional mapped type
+            let optional_custom = optional(custom("CustomDate"));
+            assert_eq!(visitor.visit_type(&optional_custom), "string | null");
+
+            // Map with mapped value
+            let map_with_custom = map(primitive("string"), custom("CustomDateTime"));
+            assert_eq!(
+                visitor.visit_type(&map_with_custom),
+                "Record<string, string>"
+            );
+        }
+
+        #[test]
+        fn test_zod_visitor_without_mappings() {
+            let visitor = ZodVisitor::new();
+
+            // Without mappings, custom types should reference their schema
+            assert_eq!(
+                visitor.visit_type(&custom("CustomDateTime")),
+                "CustomDateTimeSchema"
+            );
+            assert_eq!(
+                visitor.visit_type(&custom("CustomDate")),
+                "CustomDateSchema"
+            );
+        }
+
+        #[test]
+        fn test_zod_visitor_with_string_mapping() {
+            let config = create_test_config_with_mappings();
+            let visitor = ZodVisitor::with_config(&config);
+
+            // With string mapping, should return z.string()
+            assert_eq!(visitor.visit_type(&custom("CustomDateTime")), "z.string()");
+            assert_eq!(visitor.visit_type(&custom("CustomDate")), "z.string()");
+
+            // Unmapped types should still reference their schema
+            assert_eq!(
+                visitor.visit_type(&custom("UnmappedType")),
+                "UnmappedTypeSchema"
+            );
+        }
+
+        #[test]
+        fn test_zod_visitor_with_number_mapping() {
+            let mut type_mappings = HashMap::new();
+            type_mappings.insert("Timestamp".to_string(), "number".to_string());
+
+            let config = GenerateConfig {
+                type_mappings: Some(type_mappings),
+                ..Default::default()
+            };
+
+            let visitor = ZodVisitor::with_config(&config);
+
+            // Should map to z.number()
+            assert_eq!(visitor.visit_type(&custom("Timestamp")), "z.number()");
+        }
+
+        #[test]
+        fn test_zod_visitor_mappings_in_complex_types() {
+            let config = create_test_config_with_mappings();
+            let visitor = ZodVisitor::with_config(&config);
+
+            // Array of mapped type
+            let array_of_custom = array(custom("CustomDateTime"));
+            assert_eq!(visitor.visit_type(&array_of_custom), "z.array(z.string())");
+
+            // Optional mapped type
+            let optional_custom = optional(custom("CustomDate"));
+            assert_eq!(
+                visitor.visit_type(&optional_custom),
+                "z.string().nullable()"
+            );
+
+            // Map with mapped value
+            let map_with_custom = map(primitive("string"), custom("CustomDateTime"));
+            assert_eq!(
+                visitor.visit_type(&map_with_custom),
+                "z.record(z.string(), z.string())"
+            );
+        }
+
+        #[test]
+        fn test_zod_visitor_with_non_primitive_mapping() {
+            let mut type_mappings = HashMap::new();
+            type_mappings.insert("CustomType".to_string(), "MyCustomType".to_string());
+
+            let config = GenerateConfig {
+                type_mappings: Some(type_mappings),
+                ..Default::default()
+            };
+
+            let visitor = ZodVisitor::with_config(&config);
+
+            // Non-primitive mappings should use z.custom()
+            let result = visitor.visit_type(&custom("CustomType"));
+            assert!(result.contains("z.custom<MyCustomType>"));
+            assert!(result.contains("(val) => true"));
         }
     }
 }

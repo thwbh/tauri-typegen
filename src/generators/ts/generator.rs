@@ -34,7 +34,7 @@ impl TypeScriptBindingsGenerator {
         config: &GenerateConfig,
     ) -> String {
         let has_channels = commands.iter().any(|cmd| !cmd.channels.is_empty());
-        let visitor = TypeScriptVisitor;
+        let visitor = TypeScriptVisitor::with_config(config);
 
         // Convert structs to context wrappers
         let struct_context = self
@@ -68,7 +68,7 @@ impl TypeScriptBindingsGenerator {
         config: &GenerateConfig,
     ) -> String {
         let has_channels = commands.iter().any(|cmd| !cmd.channels.is_empty());
-        let visitor = TypeScriptVisitor;
+        let visitor = TypeScriptVisitor::with_config(config);
 
         // Convert commands to context wrappers
         let command_contexts = self
@@ -107,7 +107,7 @@ impl TypeScriptBindingsGenerator {
         analyzer: &CommandAnalyzer,
         config: &GenerateConfig,
     ) -> String {
-        let visitor = TypeScriptVisitor;
+        let visitor = TypeScriptVisitor::with_config(config);
 
         // Convert events to context wrappers
         let event_contexts = self

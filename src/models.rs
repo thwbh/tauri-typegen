@@ -4,6 +4,7 @@ use serde_rename_rule::RenameRule;
 /// Represents the structure of a type for code generation
 /// This allows generators to work with parsed type information instead of string parsing
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum TypeStructure {
     /// Primitive types: "string", "number", "boolean", "void"
     Primitive(String),

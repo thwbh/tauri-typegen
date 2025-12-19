@@ -10,11 +10,13 @@ pub trait NamingContext {
     fn config(&self) -> &GenerateConfig;
 
     /// Convert an event name to a TypeScript event listener function name
-    /// Example: "user_login" -> "onUserLogin"
+    /// Example: "user_login" -> "onUserLogin", "user-login" -> "onUserLogin"
     fn event_name_to_function(&self, event_name: &str) -> String {
+        // Normalize kebab-case to snake_case since serde_rename_rule expects snake_case
+        let normalized = event_name.replace('-', "_");
         format!(
             "on{}",
-            self.apply_naming_convention(event_name, RenameRule::PascalCase)
+            self.apply_naming_convention(&normalized, RenameRule::PascalCase)
         )
     }
 
@@ -268,11 +270,12 @@ impl ParameterContext {
 pub struct FieldContext {
     pub name: String,
     pub rust_type: String,
-    pub typescript_type: String, // Computed field
+    pub typescript_type: String, // Computed field (for vanilla TS or zod schemas)
     pub is_optional: bool,
     pub serialized_name: String,
     pub validator_attributes: Option<crate::models::ValidatorAttributes>,
-    pub type_structure: TypeStructure,
+    #[serde(skip_serializing)]
+    pub type_structure: TypeStructure, // Keep for internal use but don't expose to templates
     #[serde(skip)]
     config: GenerateConfig,
 }
@@ -625,9 +628,9 @@ mod tests {
             config: mock_config(),
         };
 
-        // No serde attributes, use config default (camelCase)
+        // No serde attributes, use config default (snake_case to match serde's default)
         let result = ctx.compute_field_name("user_id", &None, &None);
-        assert_eq!(result, "userId");
+        assert_eq!(result, "user_id");
     }
 
     #[test]
@@ -713,12 +716,22 @@ mod tests {
         };
 
         // Event names convert to "on" + PascalCase
-        // Note: apply_to_field only handles snake_case input correctly
+        // Handles both snake_case and kebab-case inputs
         assert_eq!(ctx.event_name_to_function("user_login"), "onUserLogin");
         assert_eq!(ctx.event_name_to_function("data_update"), "onDataUpdate");
         assert_eq!(
             ctx.event_name_to_function("status_changed"),
             "onStatusChanged"
+        );
+
+        // Kebab-case is normalized to snake_case before conversion
+        assert_eq!(
+            ctx.event_name_to_function("progress-update"),
+            "onProgressUpdate"
+        );
+        assert_eq!(
+            ctx.event_name_to_function("user-notification"),
+            "onUserNotification"
         );
     }
 

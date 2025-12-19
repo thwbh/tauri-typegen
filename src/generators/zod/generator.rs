@@ -4,6 +4,7 @@ use crate::generators::base::template_context::FieldContext;
 use crate::generators::base::templates::TemplateRegistry;
 use crate::generators::base::type_visitor::{TypeScriptVisitor, ZodVisitor};
 use crate::generators::base::BaseBindingsGenerator;
+use crate::generators::zod::schema_builder::ZodSchemaBuilder;
 use crate::generators::zod::templates::ZodTemplate;
 use crate::generators::TypeCollector;
 use crate::models::{CommandInfo, EventInfo, StructInfo};
@@ -46,7 +47,7 @@ impl ZodBindingsGenerator {
         struct_info: &StructInfo,
         config: &GenerateConfig,
     ) -> String {
-        let visitor = ZodVisitor;
+        let visitor = ZodVisitor::with_config(config);
 
         // Convert fields to context to get serialized names
         let field_contexts: Vec<FieldContext> =
@@ -72,12 +73,22 @@ impl ZodBindingsGenerator {
         struct_info: &StructInfo,
         config: &GenerateConfig,
     ) -> String {
-        let visitor = ZodVisitor;
+        let visitor = ZodVisitor::with_config(config);
+        let schema_builder = ZodSchemaBuilder::new(config);
 
         // Convert FieldInfo to FieldContext with computed Zod schemas
-        let field_contexts: Vec<FieldContext> =
+        let mut field_contexts: Vec<FieldContext> =
             self.collector
                 .create_field_contexts(struct_info, &visitor, config);
+
+        // Enrich with complete zod schemas including validators
+        for field_context in &mut field_contexts {
+            let zod_schema = schema_builder.build_schema(
+                &field_context.type_structure,
+                &field_context.validator_attributes,
+            );
+            field_context.typescript_type = zod_schema;
+        }
 
         let mut context = Context::new();
         context.insert("name", name);
@@ -111,10 +122,19 @@ impl ZodBindingsGenerator {
         }
 
         // Convert commands to context wrappers
-        let visitor = ZodVisitor;
-        let command_contexts = self
+        let visitor = ZodVisitor::with_config(config);
+        let schema_builder = ZodSchemaBuilder::new(config);
+        let mut command_contexts = self
             .collector
             .create_command_contexts(commands, &visitor, analyzer, config);
+
+        // Enrich parameters with complete zod schemas
+        for command_context in &mut command_contexts {
+            for param in &mut command_context.parameters {
+                let zod_schema = schema_builder.build_param_schema(&param.type_structure);
+                param.typescript_type = zod_schema;
+            }
+        }
 
         // Generate parameter schemas using template
         let param_schemas = {
@@ -166,7 +186,7 @@ impl ZodBindingsGenerator {
     ) -> String {
         // Use TypeScriptVisitor for command bindings to get proper TS types
         // (not Zod schemas) in function signatures
-        let visitor = TypeScriptVisitor;
+        let visitor = TypeScriptVisitor::with_config(config);
 
         // Convert commands to context wrappers
         let command_contexts = self
@@ -208,7 +228,7 @@ impl ZodBindingsGenerator {
         analyzer: &CommandAnalyzer,
         config: &GenerateConfig,
     ) -> String {
-        let visitor = ZodVisitor;
+        let visitor = ZodVisitor::with_config(config);
 
         // Convert events to context wrappers
         let event_contexts = self

@@ -16,21 +16,15 @@ tests/
 │   ├── channels.rs              # IPC channel examples
 │   └── complex_types.rs         # Nested types, collections, tuples
 │
-├── integration/                  # End-to-end integration tests
-│   ├── test_basic_generation.rs
-│   ├── test_serde_support.rs
-│   ├── test_channels.rs
-│   └── test_validation_libraries.rs
-│
 ├── regression/                   # Backward compatibility tests
 │   └── test_backward_compat.rs
 │
-└── [legacy test files]          # Old test files (to be migrated/deleted)
+└── integration_e2e.rs          # End-to-end integration tests
 ```
 
 ## Test Types
 
-### Integration Tests (`integration/`)
+### Integration Tests (`integration_e2e`)
 
 End-to-end tests that verify the complete pipeline:
 1. Parse Rust code
@@ -46,7 +40,7 @@ Tests that ensure backward compatibility is maintained across versions.
 
 ### Unit Tests (in source files)
 
-Focused tests for individual functions/traits. Located in `#[cfg(test)]` modules within source files (Phase 1 - not yet implemented).
+Focused tests for individual functions/traits. Located in `#[cfg(test)]` modules within source files.
 
 ## Writing New Integration Tests
 
@@ -95,17 +89,3 @@ cargo test test_simple_command_generates_typescript
 cargo test -- --nocapture
 ```
 
-## Migration Status
-
-See `MIGRATION.md` for the detailed migration plan from old test structure to new.
-
-Current status: **Phase 2 in progress** - Integration test reorganization partially complete.
-
-## Next Steps
-
-1. ✅ Create common utilities and fixtures
-2. ✅ Create initial integration test files
-3. 🔄 Complete remaining integration tests
-4. 🔄 Update old tests with new config parameter
-5. ⏳ Delete old test files after verification
-6. ⏳ Phase 1: Add unit tests to source files

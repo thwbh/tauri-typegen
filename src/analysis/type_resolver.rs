@@ -1,10 +1,11 @@
 use crate::models::TypeStructure;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 /// Type resolver for mapping Rust types to TypeScript types
 #[derive(Debug)]
 pub struct TypeResolver {
     type_set: HashSet<String>,
+    type_mappings: HashMap<String, String>,
 }
 
 impl TypeResolver {
@@ -38,7 +39,10 @@ impl TypeResolver {
         type_set.insert("HashSet".to_string());
         type_set.insert("BTreeSet".to_string());
 
-        Self { type_set }
+        Self {
+            type_set,
+            type_mappings: HashMap::new(),
+        }
     }
 
     /// Extract inner type from Option<T>
@@ -248,6 +252,24 @@ impl TypeResolver {
             "()" => Some("void".to_string()),
             // Not a primitive
             _ => None,
+        }
+    }
+
+    /// Get the type mappings
+    pub fn get_type_mappings(&self) -> &HashMap<String, String> {
+        &self.type_mappings
+    }
+
+    /// Add a custom type mapping
+    pub fn add_type_mapping(&mut self, rust_type: String, typescript_type: String) {
+        self.type_mappings.insert(rust_type, typescript_type);
+    }
+
+    /// Apply type mappings from a HashMap (typically from config)
+    pub fn apply_type_mappings(&mut self, mappings: &HashMap<String, String>) {
+        for (rust_type, ts_type) in mappings {
+            self.type_mappings
+                .insert(rust_type.clone(), ts_type.clone());
         }
     }
 }

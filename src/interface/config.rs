@@ -55,13 +55,14 @@ pub struct GenerateConfig {
 
     /// Default naming convention for command parameters when no serde attribute is present
     /// Options: "camelCase", "snake_case", "PascalCase", "SCREAMING_SNAKE_CASE", "kebab-case", "SCREAMING-KEBAB-CASE"
-    /// Default: "camelCase" for backward compatibility
+    /// Default: "camelCase" (matches Tauri's default behavior - Tauri converts camelCase from JS to snake_case in Rust)
     #[serde(default = "default_parameter_case")]
     pub default_parameter_case: String,
 
     /// Default naming convention for struct fields when no serde attribute is present
     /// Options: same as default_parameter_case
-    /// Default: "camelCase" for backward compatibility
+    /// Default: "snake_case" (matches serde's default serialization behavior)
+    /// Note: Use #[serde(rename_all = "camelCase")] on your structs if you want camelCase in TypeScript
     #[serde(default = "default_field_case")]
     pub default_field_case: String,
 }
@@ -83,7 +84,9 @@ fn default_parameter_case() -> String {
 }
 
 fn default_field_case() -> String {
-    "camelCase".to_string()
+    // Default to snake_case to match serde's default serialization behavior
+    // Users should add #[serde(rename_all = "camelCase")] if they want camelCase
+    "snake_case".to_string()
 }
 
 impl Default for GenerateConfig {
