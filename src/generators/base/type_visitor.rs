@@ -93,6 +93,12 @@ pub struct TypeScriptVisitor<'a> {
     config: Option<&'a GenerateConfig>,
 }
 
+impl<'a> Default for TypeScriptVisitor<'a> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<'a> TypeScriptVisitor<'a> {
     pub fn new() -> Self {
         Self { config: None }
@@ -121,6 +127,12 @@ impl<'a> TypeVisitor for TypeScriptVisitor<'a> {
 /// Zod schema visitor - converts TypeStructure to Zod schema strings
 pub struct ZodVisitor<'a> {
     config: Option<&'a GenerateConfig>,
+}
+
+impl<'a> Default for ZodVisitor<'a> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<'a> ZodVisitor<'a> {
