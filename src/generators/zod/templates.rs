@@ -88,9 +88,7 @@ mod tests {
             let template_names: Vec<&str> = tera.get_template_names().collect();
 
             assert!(template_names.contains(&"zod/partials/schema.ts.tera"));
-            assert!(template_names.contains(&"zod/partials/field_schema.ts.tera"));
             assert!(template_names.contains(&"zod/partials/enum_schema.ts.tera"));
-            assert!(template_names.contains(&"zod/partials/param_schema.ts.tera"));
             assert!(template_names.contains(&"zod/partials/param_schemas.ts.tera"));
             assert!(template_names.contains(&"zod/partials/type_aliases.ts.tera"));
             assert!(template_names.contains(&"zod/partials/command_function.ts.tera"));
@@ -109,8 +107,8 @@ mod tests {
         fn test_template_count() {
             let tera = ZodTemplate::create_tera().unwrap();
             let count = tera.get_template_names().count();
-            // Should have at least 13 templates (4 main + 8 partials + 1 common)
-            assert!(count >= 13);
+            // Should have 11 templates (4 main + 6 partials + 1 common)
+            assert!(count == 11);
         }
 
         #[test]
