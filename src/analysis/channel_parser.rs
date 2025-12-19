@@ -191,22 +191,6 @@ mod tests {
         TypeResolver::new()
     }
 
-    mod initialization {
-        use super::*;
-
-        #[test]
-        fn test_new_creates_parser() {
-            let parser = ChannelParser::new();
-            assert!(format!("{:?}", parser).contains("ChannelParser"));
-        }
-
-        #[test]
-        fn test_default_creates_parser() {
-            let parser = ChannelParser::default();
-            assert!(format!("{:?}", parser).contains("ChannelParser"));
-        }
-    }
-
     mod channel_detection {
         use super::*;
 

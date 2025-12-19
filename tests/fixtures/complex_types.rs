@@ -1,5 +1,5 @@
+#![allow(dead_code)]
 /// Fixture: Commands with complex Rust types
-
 pub const NESTED_STRUCT: &str = r#"
 use serde::{Deserialize, Serialize};
 

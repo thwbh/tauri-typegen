@@ -271,7 +271,7 @@ mod tests {
         #[test]
         fn test_parse_skips_target_directory() {
             let dir = temp_dir();
-            fs::create_dir_all(&format!("{}/target", dir)).unwrap();
+            fs::create_dir_all(format!("{}/target", dir)).unwrap();
 
             create_rust_file(&dir, "lib.rs", "pub fn hello() {}");
             create_rust_file(&dir, "target/debug.rs", "fn debug() {}");
@@ -288,7 +288,7 @@ mod tests {
         #[test]
         fn test_parse_skips_git_directory() {
             let dir = temp_dir();
-            fs::create_dir_all(&format!("{}/.git", dir)).unwrap();
+            fs::create_dir_all(format!("{}/.git", dir)).unwrap();
 
             create_rust_file(&dir, "lib.rs", "pub fn hello() {}");
             create_rust_file(&dir, ".git/hooks.rs", "fn hook() {}");

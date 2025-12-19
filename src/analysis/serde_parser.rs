@@ -291,7 +291,7 @@ mod tests {
 
     #[test]
     fn test_default_impl() {
-        let parser = SerdeParser::default();
+        let parser = SerdeParser;
         let result = parser.parse_rename(r#"rename = "test""#);
         assert_eq!(result, Some("test".to_string()));
     }

@@ -1,5 +1,5 @@
+#![allow(dead_code)]
 /// Fixture: Basic Tauri commands without complex types or attributes
-
 pub const SIMPLE_COMMAND: &str = r#"
 #[tauri::command]
 pub fn greet(name: String) -> String {

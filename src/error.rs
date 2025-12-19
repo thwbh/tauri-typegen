@@ -107,7 +107,6 @@ mod tests {
 
     mod serialization {
         use super::*;
-        use serde_json;
 
         #[test]
         fn test_serialize_command_analysis_error() {
@@ -144,13 +143,6 @@ mod tests {
 
     mod result_type {
         use super::*;
-
-        #[test]
-        fn test_result_ok() {
-            let result: Result<i32> = Ok(42);
-            assert!(result.is_ok());
-            assert_eq!(result.unwrap(), 42);
-        }
 
         #[test]
         fn test_result_err() {

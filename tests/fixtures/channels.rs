@@ -1,5 +1,5 @@
+#![allow(dead_code)]
 /// Fixture: Commands with Tauri IPC channels
-
 pub const SIMPLE_CHANNEL: &str = r#"
 use tauri::ipc::Channel;
 

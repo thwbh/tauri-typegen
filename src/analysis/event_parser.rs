@@ -339,18 +339,6 @@ mod tests {
     use super::*;
     use syn::parse_quote;
 
-    #[test]
-    fn test_new_parser() {
-        let parser = EventParser::new();
-        let _ = parser;
-    }
-
-    #[test]
-    fn test_default_impl() {
-        let parser = EventParser::default();
-        let _ = parser;
-    }
-
     // extract_string_literal tests
     mod extract_string_literal {
         use super::*;

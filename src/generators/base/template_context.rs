@@ -512,10 +512,11 @@ mod tests {
     }
 
     fn mock_config_with_snake_case() -> GenerateConfig {
-        let mut config = GenerateConfig::default();
-        config.default_parameter_case = "snake_case".to_string();
-        config.default_field_case = "snake_case".to_string();
-        config
+        GenerateConfig {
+            default_parameter_case: "snake_case".to_string(),
+            default_field_case: "snake_case".to_string(),
+            ..Default::default()
+        }
     }
 
     // Mock NamingContext for testing

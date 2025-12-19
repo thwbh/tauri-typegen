@@ -753,7 +753,7 @@ mod tests {
             let analyzer = analyzer();
             let resolver = analyzer.get_type_resolver();
             // Just verify it returns a RefCell
-            assert!(resolver.borrow().get_type_set().len() > 0);
+            assert!(!resolver.borrow().get_type_set().is_empty());
         }
 
         #[test]

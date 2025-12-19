@@ -243,7 +243,6 @@ impl TypeDependencyGraph {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::FieldInfo;
 
     fn create_test_struct(name: &str, file: &str) -> StructInfo {
         StructInfo {

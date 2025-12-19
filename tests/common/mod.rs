@@ -1,7 +1,7 @@
+#![allow(dead_code)]
 /// Common test utilities and helpers
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
 use tauri_typegen::analysis::CommandAnalyzer;
 use tauri_typegen::generators::create_generator;
 use tauri_typegen::models::{CommandInfo, StructInfo};

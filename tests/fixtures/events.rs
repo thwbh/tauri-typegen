@@ -1,5 +1,5 @@
+#![allow(dead_code)]
 /// Fixture: Tauri event emissions
-
 pub const SIMPLE_EVENT: &str = r#"
 use tauri::Manager;
 

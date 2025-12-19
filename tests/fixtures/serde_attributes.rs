@@ -1,5 +1,5 @@
+#![allow(dead_code)]
 /// Fixture: Commands and structs with serde attributes
-
 pub const COMMAND_WITH_RENAME_ALL: &str = r#"
 #[tauri::command]
 #[serde(rename_all = "snake_case")]

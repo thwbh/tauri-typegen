@@ -226,6 +226,15 @@ fn apply_range_constraint(mut schema: String, range: &crate::models::RangeConstr
     schema
 }
 
+/// Helper function to escape strings for JavaScript
+pub fn escape_for_js(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
+        .replace('\t', "\\t")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -274,13 +283,4 @@ mod tests {
         let ts = TypeStructure::Custom("User".to_string());
         assert_eq!(type_structure_to_zod_schema(&ts, false), "UserSchema");
     }
-}
-
-/// Helper function to escape strings for JavaScript
-pub fn escape_for_js(s: &str) -> String {
-    s.replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('\n', "\\n")
-        .replace('\r', "\\r")
-        .replace('\t', "\\t")
 }
