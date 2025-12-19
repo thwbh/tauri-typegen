@@ -427,7 +427,7 @@ impl ChannelContext {
         serialized_parameter_name: &str,
     ) -> Self {
         let message_type_structure = type_resolver(&channel.message_type);
-        let typescript_message_type = visitor.visit_type(&message_type_structure);
+        let typescript_message_type = visitor.visit_type_for_interface(&message_type_structure);
 
         self.parameter_name = channel.parameter_name.clone();
         self.message_type = channel.message_type.clone();
@@ -483,7 +483,7 @@ impl EventContext {
         type_resolver: &dyn Fn(&str) -> TypeStructure,
     ) -> Self {
         let payload_type_structure = type_resolver(&event.payload_type);
-        let typescript_payload_type = visitor.visit_type(&payload_type_structure);
+        let typescript_payload_type = visitor.visit_type_for_interface(&payload_type_structure);
 
         // Use NamingContext trait method
         let ts_function_name = self.event_name_to_function(&event.event_name);

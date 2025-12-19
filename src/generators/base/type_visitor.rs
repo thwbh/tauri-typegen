@@ -77,6 +77,13 @@ pub trait TypeVisitor {
         // No mapping found, return the type name as-is
         name.to_string()
     }
+
+    /// Visit a type for use in TypeScript type interfaces (not schemas)
+    /// Default implementation uses visit_type, but can be overridden by visitors
+    /// that need different representations for type interfaces vs schemas (e.g., ZodVisitor)
+    fn visit_type_for_interface(&self, structure: &TypeStructure) -> String {
+        self.visit_type(structure)
+    }
 }
 
 /// TypeScript type visitor - converts TypeStructure to TypeScript types
@@ -207,10 +214,77 @@ impl<'a> TypeVisitor for ZodVisitor<'a> {
         // No mapping found, reference the schema for custom types
         format!("{}Schema", name)
     }
+
+    /// Override to return TypeScript types (not zod schemas) for type interfaces
+    /// This uses the default trait implementations which return proper TypeScript types
+    fn visit_type_for_interface(&self, structure: &TypeStructure) -> String {
+        // Use the default trait implementations by matching on the structure
+        // and calling the trait's default methods
+        match structure {
+            TypeStructure::Primitive(prim) => prim.clone(),
+            TypeStructure::Array(inner) => {
+                format!("{}[]", self.visit_type_for_interface(inner))
+            }
+            TypeStructure::Map { key, value } => {
+                format!(
+                    "Record<{}, {}>",
+                    self.visit_type_for_interface(key),
+                    self.visit_type_for_interface(value)
+                )
+            }
+            TypeStructure::Set(inner) => {
+                format!("{}[]", self.visit_type_for_interface(inner))
+            }
+            TypeStructure::Tuple(types) => {
+                if types.is_empty() {
+                    "void".to_string()
+                } else {
+                    let type_strs: Vec<String> = types
+                        .iter()
+                        .map(|t| self.visit_type_for_interface(t))
+                        .collect();
+                    format!("[{}]", type_strs.join(", "))
+                }
+            }
+            TypeStructure::Optional(inner) => {
+                format!("{} | null", self.visit_type_for_interface(inner))
+            }
+            TypeStructure::Result(inner) => self.visit_type_for_interface(inner),
+            TypeStructure::Custom(name) => {
+                // Apply custom type mappings
+                if let Some(config) = self.get_config() {
+                    if let Some(ref mappings) = config.type_mappings {
+                        if let Some(mapped_type) = mappings.get(name) {
+                            return mapped_type.clone();
+                        }
+                    }
+                }
+                // Return the type name (not schema name)
+                name.clone()
+            }
+        }
+    }
 }
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_zod_visitor_interface_types() {
+        let config = GenerateConfig::default();
+        let visitor = ZodVisitor::with_config(&config);
+
+        let num_type = TypeStructure::Primitive("number".to_string());
+        let custom_type = TypeStructure::Custom("LogEntry".to_string());
+
+        // For schemas
+        assert_eq!(visitor.visit_type(&num_type), "z.number()");
+        assert_eq!(visitor.visit_type(&custom_type), "LogEntrySchema");
+
+        // For type interfaces
+        assert_eq!(visitor.visit_type_for_interface(&num_type), "number");
+        assert_eq!(visitor.visit_type_for_interface(&custom_type), "LogEntry");
+    }
 
     // Helper to create test type structures
     fn primitive(name: &str) -> TypeStructure {

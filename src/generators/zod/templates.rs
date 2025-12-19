@@ -19,31 +19,25 @@ impl TemplateRegistry for ZodTemplate {
             "zod/partials/schema.ts.tera",
             "templates/partials/schema.ts.tera"
         );
-        template!(
-            tera,
-            "zod/partials/field_schema.ts.tera",
-            "templates/partials/field_schema.ts.tera"
-        );
+
         template!(
             tera,
             "zod/partials/enum_schema.ts.tera",
             "templates/partials/enum_schema.ts.tera"
         );
-        template!(
-            tera,
-            "zod/partials/param_schema.ts.tera",
-            "templates/partials/param_schema.ts.tera"
-        );
+
         template!(
             tera,
             "zod/partials/param_schemas.ts.tera",
             "templates/partials/param_schemas.ts.tera"
         );
+
         template!(
             tera,
             "zod/partials/type_aliases.ts.tera",
             "templates/partials/type_aliases.ts.tera"
         );
+
         template!(
             tera,
             "zod/partials/command_function.ts.tera",

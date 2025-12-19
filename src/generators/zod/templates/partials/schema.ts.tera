@@ -1,7 +1,8 @@
 export const {{ name }}Schema = z.object({
-  {% for field in fields -%}
-  {{ field.serializedName | default(value=field.name) }}: {% include "zod/partials/field_schema.ts.tera" %},
-  {% endfor -%}
+  {%- for field in fields %}
+  {{ field.serializedName | default(value=field.name) }}: {{ field.typescriptType }},
+  {%- endfor %}
 });
 
 export type {{ name }} = z.infer<typeof {{ name }}Schema>;
+
