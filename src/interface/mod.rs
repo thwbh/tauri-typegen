@@ -9,7 +9,45 @@ pub use cli::*;
 pub use config::*;
 pub use output::*;
 
-/// Generate TypeScript bindings from configuration (backward compatibility function)
+/// Generate TypeScript bindings from a Tauri project.
+///
+/// This is the main entry point for programmatic generation of TypeScript bindings.
+/// It analyzes Rust source code in the specified project, discovers Tauri commands,
+/// and generates TypeScript interfaces and command functions.
+///
+/// # Arguments
+///
+/// * `config` - Configuration specifying project paths, output location, and validation options
+///
+/// # Returns
+///
+/// Returns a list of generated file paths on success.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Configuration is invalid
+/// - Project directory cannot be read
+/// - Rust code has syntax errors
+/// - Output directory cannot be written to
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use tauri_typegen::{GenerateConfig, generate_from_config};
+///
+/// let config = GenerateConfig {
+///     project_path: "./src-tauri".to_string(),
+///     output_path: "./src/generated".to_string(),
+///     validation_library: "zod".to_string(),
+///     verbose: Some(true),
+///     ..Default::default()
+/// };
+///
+/// let files = generate_from_config(&config)?;
+/// println!("Generated {} files", files.len());
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 pub fn generate_from_config(
     config: &config::GenerateConfig,
 ) -> Result<Vec<String>, Box<dyn std::error::Error>> {

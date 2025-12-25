@@ -9,25 +9,25 @@ pub enum TypeStructure {
     /// Primitive types: "string", "number", "boolean", "void"
     Primitive(String),
 
-    /// Array/Vec types: Vec<T> -> Array(T)
+    /// Array/Vec types: `Vec<T>` -> `Array(T)`
     Array(Box<TypeStructure>),
 
-    /// Map types: HashMap<K, V>, BTreeMap<K, V> -> Map { key: K, value: V }
+    /// Map types: `HashMap<K, V>`, `BTreeMap<K, V>` -> `Map { key: K, value: V }`
     Map {
         key: Box<TypeStructure>,
         value: Box<TypeStructure>,
     },
 
-    /// Set types: HashSet<T>, BTreeSet<T> -> Set(T)
+    /// Set types: `HashSet<T>`, `BTreeSet<T>` -> `Set(T)`
     Set(Box<TypeStructure>),
 
-    /// Tuple types: (T, U, V) -> Tuple([T, U, V])
+    /// Tuple types: `(T, U, V)` -> `Tuple([T, U, V])`
     Tuple(Vec<TypeStructure>),
 
-    /// Optional types: Option<T> -> Optional(T)
+    /// Optional types: `Option<T>` -> `Optional(T)`
     Optional(Box<TypeStructure>),
 
-    /// Result types: Result<T, E> -> Result(T) (error type ignored for TS)
+    /// Result types: `Result<T, E>` -> `Result(T)` (error type ignored for TS)
     Result(Box<TypeStructure>),
 
     /// Custom/User-defined types

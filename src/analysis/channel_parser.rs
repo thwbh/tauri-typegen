@@ -17,7 +17,7 @@ impl ChannelParser {
     }
 
     /// Extract channel parameters from a command function signature
-    /// Looks for parameters with type Channel<T>, tauri::ipc::Channel<T>, etc.
+    /// Looks for parameters with type `Channel<T>`, `tauri::ipc::Channel<T>`, etc.
     pub fn extract_channels_from_command(
         &self,
         func: &ItemFn,
