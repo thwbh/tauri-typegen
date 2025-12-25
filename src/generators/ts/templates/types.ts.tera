@@ -1,0 +1,20 @@
+{{ header }}
+{% if has_channels -%}
+import type { Channel } from '@tauri-apps/api/core';
+{% endif %}
+
+{% for struct in structs -%}
+{%- set name = struct.name -%}
+{%- set fields = struct.fields -%}
+{%- set isEnum = struct.isEnum -%}
+{% if isEnum -%}
+{% include "typescript/partials/enum.tera" %}
+{% else -%}
+{% include "typescript/partials/interface.tera" %}
+{% endif -%}
+{% endfor -%}
+
+{% for command in commands -%}
+{% include "typescript/partials/param_interface.ts.tera" %}
+{% endfor -%}
+

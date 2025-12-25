@@ -1,0 +1,21 @@
+{%- for command in commands %}
+{%- if command.parameters | length == 0 and command.channels | length > 0 %}
+{# Only channels, generate interface manually #}
+export interface {{ command.tsTypeName }}Params {
+  {%- for channel in command.channels %}
+  {{ channel.serializedParameterName }}: Channel<{{ channel.typescriptMessageType }}>;
+  {%- endfor %}
+  [key: string]: unknown;
+}
+{%- elif command.parameters | length > 0 and command.channels | length == 0 %}
+{# Only regular params #}
+export type {{ command.tsTypeName }}Params = z.infer<typeof {{ command.tsTypeName }}ParamsSchema>;
+{%- elif command.parameters | length > 0 and command.channels | length > 0 %}
+{# Both params and channels #}
+export interface {{ command.tsTypeName }}Params extends z.infer<typeof {{ command.tsTypeName }}ParamsSchema> {
+  {%- for channel in command.channels %}
+  {{ channel.serializedParameterName }}: Channel<{{ channel.typescriptMessageType }}>;
+  {%- endfor %}
+}
+{%- endif %}
+{%- endfor %}

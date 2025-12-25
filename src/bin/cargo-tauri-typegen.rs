@@ -2,7 +2,7 @@ use clap::Parser;
 use std::fs;
 use std::path::PathBuf;
 use tauri_typegen::analysis::CommandAnalyzer;
-use tauri_typegen::generators::generator::BindingsGenerator;
+use tauri_typegen::generators::create_generator;
 use tauri_typegen::interface::{
     print_dependency_visualization_info, print_usage_info, CargoCli, CargoSubcommands,
     GenerateConfig, Logger, ProgressReporter, TypegenCommands,
@@ -212,12 +212,13 @@ fn run_generate(
         _ => return Err("Invalid validation library. Use 'zod' or 'none'".into()),
     };
 
-    let mut generator = BindingsGenerator::new(validation);
+    let mut generator = create_generator(validation);
     let generated_files = generator.generate_models(
         &commands,
         analyzer.get_discovered_structs(),
         &config.output_path,
         &analyzer,
+        &config,
     )?;
     reporter.complete_step(Some(&format!("Generated {} files", generated_files.len())));
 

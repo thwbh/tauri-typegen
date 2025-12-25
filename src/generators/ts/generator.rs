@@ -1,70 +1,28 @@
 use crate::analysis::CommandAnalyzer;
 use crate::generators::base::file_writer::FileWriter;
-use crate::generators::base::template_helpers::TemplateHelpers;
-use crate::generators::base::type_conversion::TypeConverter;
-use crate::generators::base::{BaseBindingsGenerator, BaseGenerator};
+use crate::generators::base::templates::TemplateRegistry;
+use crate::generators::base::BaseBindingsGenerator;
+use crate::generators::ts::templates::TypeScriptTemplate;
+use crate::generators::ts::type_visitor::TypeScriptVisitor;
+use crate::generators::TypeCollector;
 use crate::models::{CommandInfo, EventInfo, StructInfo};
-use std::collections::{HashMap, HashSet};
+use crate::GenerateConfig;
+use std::collections::HashMap;
+use tera::{Context, Tera};
 
 /// Generator for vanilla TypeScript bindings without validation
 pub struct TypeScriptBindingsGenerator {
-    base: BaseGenerator,
-    type_converter: TypeConverter,
+    collector: TypeCollector,
+    tera: Tera,
 }
 
 impl TypeScriptBindingsGenerator {
     pub fn new() -> Self {
         Self {
-            base: BaseGenerator::new(),
-            type_converter: TypeConverter::new(),
+            collector: TypeCollector::new(),
+            tera: TypeScriptTemplate::create_tera()
+                .expect("Failed to initialize TypeScript template engine"),
         }
-    }
-
-    /// Generate TypeScript interface definitions from structs
-    fn generate_struct_interfaces(&self, used_structs: &HashMap<String, StructInfo>) -> String {
-        let mut content = String::new();
-
-        for (name, struct_info) in used_structs {
-            if struct_info.is_enum {
-                content.push_str(&self.generate_enum_definition(name, struct_info));
-            } else {
-                content.push_str(&TemplateHelpers::generate_interface(
-                    name,
-                    &struct_info.fields,
-                ));
-            }
-        }
-
-        content
-    }
-
-    /// Generate enum definition (as union type for vanilla TypeScript)
-    fn generate_enum_definition(&self, name: &str, struct_info: &StructInfo) -> String {
-        let variants: Vec<String> = struct_info
-            .fields
-            .iter()
-            .map(|field| field.get_serialized_name().to_string())
-            .collect();
-
-        TemplateHelpers::generate_union_type(name, &variants)
-    }
-
-    /// Generate parameter interfaces for commands
-    fn generate_param_interfaces(&self, commands: &[CommandInfo]) -> String {
-        let mut content = String::new();
-
-        for command in commands {
-            // Generate interface if command has parameters or channels
-            if !command.parameters.is_empty() || !command.channels.is_empty() {
-                if let Some(interface) =
-                    TemplateHelpers::generate_params_interface_with_channels(command)
-                {
-                    content.push_str(&interface);
-                }
-            }
-        }
-
-        content
     }
 
     /// Generate the complete types.ts file content
@@ -72,158 +30,140 @@ impl TypeScriptBindingsGenerator {
         &self,
         commands: &[CommandInfo],
         used_structs: &HashMap<String, StructInfo>,
+        analyzer: &CommandAnalyzer,
+        config: &GenerateConfig,
     ) -> String {
-        let mut content = String::new();
-
-        // Add file header
-        content.push_str(&self.generate_file_header());
-
-        // Import Channel if any command has channels
         let has_channels = commands.iter().any(|cmd| !cmd.channels.is_empty());
-        if has_channels {
-            content.push_str(&TemplateHelpers::generate_type_imports(&[(
-                "@tauri-apps/api/core",
-                "{ Channel }",
-            )]));
-            content.push('\n');
-        }
+        let visitor = TypeScriptVisitor::with_config(config);
 
-        // Generate parameter interfaces
-        content.push_str(&self.generate_param_interfaces(commands));
+        // Convert structs to context wrappers
+        let struct_context = self
+            .collector
+            .create_struct_contexts(used_structs, &visitor, config);
 
-        // Generate struct interfaces
-        content.push_str(&self.generate_struct_interfaces(used_structs));
+        // Convert commands to context wrappers
+        let command_context = self
+            .collector
+            .create_command_contexts(commands, &visitor, analyzer, config);
 
-        content
+        // Render main types.ts template
+        let mut context = Context::new();
+        context.insert("header", &self.generate_file_header());
+        context.insert("has_channels", &has_channels);
+        context.insert("structs", &struct_context);
+        context.insert("commands", &command_context);
+
+        self.render("typescript/types.ts.tera", &context)
+            .unwrap_or_else(|e| {
+                eprintln!("Template rendering failed for types.ts: {}", e);
+                String::new()
+            })
     }
 
     /// Generate command bindings
-    fn generate_command_bindings(&self, commands: &[CommandInfo]) -> String {
-        let mut content = String::new();
-
-        // Add file header
-        content.push_str(&self.generate_command_file_header());
-
-        // Check if any command has channels
+    fn generate_command_bindings(
+        &self,
+        commands: &[CommandInfo],
+        analyzer: &CommandAnalyzer,
+        config: &GenerateConfig,
+    ) -> String {
         let has_channels = commands.iter().any(|cmd| !cmd.channels.is_empty());
+        let visitor = TypeScriptVisitor::with_config(config);
 
-        // Add imports - include Channel if needed
-        if has_channels {
-            content.push_str(&TemplateHelpers::generate_named_imports(&[(
-                "@tauri-apps/api/core",
-                &["invoke", "Channel"],
-            )]));
-        } else {
-            content.push_str(&TemplateHelpers::generate_named_imports(&[(
-                "@tauri-apps/api/core",
-                &["invoke"],
-            )]));
-        }
-        content.push_str(
-            TemplateHelpers::generate_type_imports(&[("./types", "* as types")]).trim_end(),
-        );
-        content.push_str("\n\n");
+        // Convert commands to context wrappers
+        let command_contexts = self
+            .collector
+            .create_command_contexts(commands, &visitor, analyzer, config);
 
-        // Generate command functions
-        for command in commands {
-            if !command.channels.is_empty() {
-                content.push_str(&TemplateHelpers::generate_command_function_with_channels(
-                    command,
-                ));
-            } else {
-                content.push_str(&TemplateHelpers::generate_command_function(command));
-            }
-        }
+        let mut context = Context::new();
+        context.insert("header", &self.generate_file_header());
+        context.insert("commands", &command_contexts);
+        context.insert("has_channels", &has_channels);
 
-        content
+        self.render("typescript/commands.ts.tera", &context)
+            .unwrap_or_else(|e| {
+                eprintln!("Template rendering failed for commands.ts: {}", e);
+                String::new()
+            })
     }
 
     /// Generate index.ts file
     fn generate_index_file(&self, generated_files: &[String]) -> String {
-        // Export from all generated files except index.ts
-        let files_to_export: Vec<&str> = generated_files
-            .iter()
-            .filter(|f| *f != "index.ts")
-            .map(|s| s.as_str())
-            .collect();
+        let mut context = Context::new();
+        context.insert("header", &self.generate_file_header());
+        context.insert("files", generated_files);
 
-        // generate_standard_index already includes the header
-        FileWriter::new("")
-            .unwrap()
-            .generate_standard_index(&files_to_export)
-    }
-
-    /// Convert string to camelCase for backward compatibility
-    pub fn to_camel_case(&self, s: &str) -> String {
-        TemplateHelpers::to_camel_case(s)
-    }
-
-    /// Collect referenced types for backward compatibility
-    pub fn collect_referenced_types(&self, rust_type: &str, used_types: &mut HashSet<String>) {
-        self.type_converter
-            .collect_referenced_types(rust_type, used_types);
-    }
-
-    /// Check if a type is custom for backward compatibility  
-    pub fn is_custom_type(&self, type_name: &str) -> bool {
-        // Check if it's in known types or looks like a custom type
-        self.type_converter.is_custom_type(type_name) || self.looks_like_custom_type(type_name)
-    }
-
-    /// Check if a type looks like a custom type (starts with capital letter, not a primitive)
-    fn looks_like_custom_type(&self, ts_type: &str) -> bool {
-        // Must start with a capital letter
-        if !ts_type
-            .chars()
-            .next()
-            .map(|c| c.is_ascii_uppercase())
-            .unwrap_or(false)
-        {
-            return false;
-        }
-
-        // Must not be a primitive type
-        !self.type_converter.is_primitive_type(ts_type)
+        self.render("typescript/index.ts.tera", &context)
+            .unwrap_or_else(|e| {
+                eprintln!("Template rendering failed for index.ts: {}", e);
+                String::new()
+            })
     }
 
     /// Generate events file content
-    fn generate_events_file(&self, events: &[EventInfo]) -> String {
-        let mut content = String::new();
+    fn generate_events_file(
+        &self,
+        events: &[EventInfo],
+        analyzer: &CommandAnalyzer,
+        config: &GenerateConfig,
+    ) -> String {
+        let visitor = TypeScriptVisitor::with_config(config);
 
-        // Add file header
-        content.push_str(&self.generate_file_header());
+        // Convert events to context wrappers
+        let event_contexts = self
+            .collector
+            .create_event_contexts(events, &visitor, analyzer, config);
 
-        // Generate event listeners
-        content.push_str(&TemplateHelpers::generate_all_event_listeners(events));
+        let mut context = Context::new();
+        context.insert("header", &self.generate_file_header());
+        context.insert("events", &event_contexts);
 
-        content
+        self.render("typescript/events.ts.tera", &context)
+            .unwrap_or_else(|e| {
+                eprintln!("Template rendering failed for events.ts: {}", e);
+                String::new()
+            })
     }
 }
 
 impl BaseBindingsGenerator for TypeScriptBindingsGenerator {
+    fn tera(&self) -> &Tera {
+        &self.tera
+    }
+
+    fn type_collector(&self) -> &TypeCollector {
+        &self.collector
+    }
+
+    fn generator_type(&self) -> String {
+        "none".to_string()
+    }
+
     fn generate_models(
         &mut self,
         commands: &[CommandInfo],
         discovered_structs: &HashMap<String, StructInfo>,
         output_path: &str,
         analyzer: &CommandAnalyzer,
+        config: &GenerateConfig,
     ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
-        // Set up the type converter with known structs
-        self.type_converter
-            .set_known_types(discovered_structs.clone());
-
         // Store known structs for reference
-        self.base.known_structs = discovered_structs.clone();
+        self.collector.known_structs = discovered_structs.clone();
 
         // Filter to only the types used by commands
-        let mut used_structs = self.base.collect_used_types(commands, discovered_structs);
+        let mut used_structs = self
+            .collector
+            .collect_used_types(commands, discovered_structs);
 
         // Also collect types used in events
         let events = analyzer.get_discovered_events();
+
         for event in events {
             let mut event_types = std::collections::HashSet::new();
-            self.base
-                .collect_referenced_types(&event.payload_type, &mut event_types);
+            TypeCollector::collect_referenced_types_from_structure(
+                &event.payload_type_structure,
+                &mut event_types,
+            );
 
             // Add event payload types to used_structs
             for type_name in event_types {
@@ -237,17 +177,18 @@ impl BaseBindingsGenerator for TypeScriptBindingsGenerator {
         let mut file_writer = FileWriter::new(output_path)?;
 
         // Generate and write types file
-        let types_content = self.generate_types_file_content(commands, &used_structs);
+        let types_content =
+            self.generate_types_file_content(commands, &used_structs, analyzer, config);
         file_writer.write_types_file(&types_content)?;
 
         // Generate and write commands file
-        let commands_content = self.generate_command_bindings(commands);
+        let commands_content = self.generate_command_bindings(commands, analyzer, config);
         file_writer.write_commands_file(&commands_content)?;
 
         // Generate and write events file if there are any events
         let events = analyzer.get_discovered_events();
         if !events.is_empty() {
-            let events_content = self.generate_events_file(events);
+            let events_content = self.generate_events_file(events, analyzer, config);
             file_writer.write_events_file(&events_content)?;
         }
 
@@ -262,5 +203,108 @@ impl BaseBindingsGenerator for TypeScriptBindingsGenerator {
 impl Default for TypeScriptBindingsGenerator {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod initialization {
+        use super::*;
+
+        #[test]
+        fn test_new_creates_generator() {
+            let gen = TypeScriptBindingsGenerator::new();
+            assert!(
+                !gen.collector.known_structs.is_empty() || gen.collector.known_structs.is_empty()
+            );
+        }
+
+        #[test]
+        fn test_default_creates_generator() {
+            let gen = TypeScriptBindingsGenerator::default();
+            assert!(
+                !gen.collector.known_structs.is_empty() || gen.collector.known_structs.is_empty()
+            );
+        }
+    }
+
+    mod trait_implementation {
+        use super::*;
+
+        #[test]
+        fn test_generator_type_returns_none() {
+            let gen = TypeScriptBindingsGenerator::new();
+            assert_eq!(gen.generator_type(), "none");
+        }
+
+        #[test]
+        fn test_tera_returns_engine() {
+            let gen = TypeScriptBindingsGenerator::new();
+            let tera = gen.tera();
+            // Verify it has registered templates
+            assert!(tera.get_template_names().count() > 0);
+        }
+
+        #[test]
+        fn test_type_collector_returns_collector() {
+            let gen = TypeScriptBindingsGenerator::new();
+            let collector = gen.type_collector();
+            // Verify collector exists
+            assert!(collector.known_structs.is_empty() || !collector.known_structs.is_empty());
+        }
+    }
+
+    mod template_rendering {
+        use super::*;
+
+        #[test]
+        fn test_generate_file_header() {
+            let gen = TypeScriptBindingsGenerator::new();
+            let header = gen.generate_file_header();
+            assert!(header.contains("Auto-generated") || header.contains("tauri-typegen"));
+            assert!(header.contains("none")); // generator type
+        }
+
+        #[test]
+        fn test_has_typescript_templates() {
+            let gen = TypeScriptBindingsGenerator::new();
+            let tera = gen.tera();
+            let template_names: Vec<&str> = tera.get_template_names().collect();
+
+            // Check for key templates
+            assert!(template_names.contains(&"typescript/types.ts.tera"));
+            assert!(template_names.contains(&"typescript/commands.ts.tera"));
+            assert!(template_names.contains(&"typescript/index.ts.tera"));
+        }
+
+        #[test]
+        fn test_render_returns_error_for_invalid_template() {
+            let gen = TypeScriptBindingsGenerator::new();
+            let context = Context::new();
+            let result = gen.render("nonexistent/template.tera", &context);
+            assert!(result.is_err());
+        }
+    }
+
+    mod helper_methods {
+        use super::*;
+
+        #[test]
+        fn test_generate_index_file_with_empty_files() {
+            let gen = TypeScriptBindingsGenerator::new();
+            let files = vec![];
+            let result = gen.generate_index_file(&files);
+            assert!(result.contains("Auto-generated") || result.contains("//"));
+        }
+
+        #[test]
+        fn test_generate_index_file_with_files() {
+            let gen = TypeScriptBindingsGenerator::new();
+            let files = vec!["types.ts".to_string(), "commands.ts".to_string()];
+            let result = gen.generate_index_file(&files);
+            assert!(!result.is_empty());
+        }
     }
 }

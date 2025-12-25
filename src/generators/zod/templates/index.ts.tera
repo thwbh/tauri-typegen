@@ -1,0 +1,6 @@
+{{ header}}
+{% for file in files -%}
+{%- if file != "index.ts" -%}
+export * from './{{ file | replace(from=".ts", to="") }}';
+{% endif -%}
+{%- endfor -%}

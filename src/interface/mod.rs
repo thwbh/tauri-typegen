@@ -3,7 +3,7 @@ pub mod config;
 pub mod output;
 
 use crate::analysis::CommandAnalyzer;
-use crate::generators::generator::BindingsGenerator;
+use crate::generators::create_generator;
 
 pub use cli::*;
 pub use config::*;
@@ -74,7 +74,7 @@ pub fn generate_from_config(
                 let optional = if field.is_optional { "?" } else { "" };
                 logger.verbose(&format!(
                     "    • {}{}: {} ({})",
-                    field.name, optional, field.typescript_type, visibility
+                    field.name, optional, field.rust_type, visibility
                 ));
             }
         }
@@ -107,12 +107,13 @@ pub fn generate_from_config(
     }
 
     // Generate TypeScript models with discovered structs
-    let mut generator = BindingsGenerator::new(validation);
+    let mut generator = create_generator(validation);
     let generated_files = generator.generate_models(
         &commands,
         analyzer.get_discovered_structs(),
         &config.output_path,
         &analyzer,
+        config,
     )?;
 
     if config.is_verbose() {

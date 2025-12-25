@@ -1,0 +1,26 @@
+{{ header }}
+{% if has_channels -%}
+import { invoke, Channel } from '@tauri-apps/api/core';
+{% else -%}
+import { invoke } from '@tauri-apps/api/core';
+{% endif -%}
+import { ZodError } from 'zod';
+import * as types from './types';
+
+export interface CommandHooks<T> {
+  /** Called when Zod schema validation fails */
+  onValidationError?: (error: ZodError) => void;
+
+  /** Called when Tauri invoke fails (Rust error, serialization, etc.) */
+  onInvokeError?: (error: unknown) => void;
+
+  /** Called when command succeeds */
+  onSuccess?: (result: T) => void;
+
+  /** Called after command settles (success or error) */
+  onSettled?: () => void;
+}
+
+{% for command in commands -%}
+{% include "zod/partials/command_function.ts.tera" %}
+{% endfor -%}

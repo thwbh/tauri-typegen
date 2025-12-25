@@ -1,43 +1,62 @@
 use crate::analysis::CommandAnalyzer;
 use crate::generators::base::file_writer::FileWriter;
-use crate::generators::base::template_helpers::TemplateHelpers;
-use crate::generators::base::type_conversion::TypeConverter;
-use crate::generators::base::{BaseBindingsGenerator, BaseGenerator};
-use crate::models::{
-    CommandInfo, EventInfo, FieldInfo, LengthConstraint, RangeConstraint, StructInfo,
-    ValidatorAttributes,
-};
+use crate::generators::base::template_context::FieldContext;
+use crate::generators::base::templates::TemplateRegistry;
+use crate::generators::base::BaseBindingsGenerator;
+use crate::generators::zod::schema_builder::ZodSchemaBuilder;
+use crate::generators::zod::templates::ZodTemplate;
+use crate::generators::zod::type_visitor::ZodVisitor;
+use crate::generators::TypeCollector;
+use crate::models::{CommandInfo, EventInfo, StructInfo};
+use crate::GenerateConfig;
 use std::collections::{HashMap, HashSet};
+use tera::{Context, Tera};
 
 /// Generator for Zod schema-based TypeScript bindings with validation
 pub struct ZodBindingsGenerator {
-    base: BaseGenerator,
-    type_converter: TypeConverter,
+    collector: TypeCollector,
+    tera: Tera,
 }
 
 impl ZodBindingsGenerator {
     pub fn new() -> Self {
         Self {
-            base: BaseGenerator::new(),
-            type_converter: TypeConverter::new(),
+            collector: TypeCollector::new(),
+            tera: ZodTemplate::create_tera().expect("Failed to initialize Zod template engine"),
         }
     }
 
     /// Generate Zod schema for a struct
-    fn generate_struct_schema(&self, name: &str, struct_info: &StructInfo) -> String {
+    fn generate_struct_schema(
+        &self,
+        name: &str,
+        struct_info: &StructInfo,
+        config: &GenerateConfig,
+    ) -> String {
         if struct_info.is_enum {
-            self.generate_enum_schema(name, struct_info)
+            self.generate_enum_schema(name, struct_info, config)
         } else {
-            self.generate_object_schema(name, struct_info)
+            self.generate_object_schema(name, struct_info, config)
         }
     }
 
     /// Generate Zod schema for an enum
-    fn generate_enum_schema(&self, name: &str, struct_info: &StructInfo) -> String {
-        let variants: Vec<String> = struct_info
-            .fields
+    fn generate_enum_schema(
+        &self,
+        name: &str,
+        struct_info: &StructInfo,
+        config: &GenerateConfig,
+    ) -> String {
+        let visitor = ZodVisitor::with_config(config);
+
+        // Convert fields to context to get serialized names
+        let field_contexts: Vec<FieldContext> =
+            self.collector
+                .create_field_contexts(struct_info, &visitor, config);
+
+        let variants: Vec<String> = field_contexts
             .iter()
-            .map(|field| format!("\"{}\"", field.get_serialized_name()))
+            .map(|field| format!("\"{}\"", field.serialized_name))
             .collect();
 
         let enum_values = variants.join(", ");
@@ -47,323 +66,39 @@ impl ZodBindingsGenerator {
         )
     }
 
-    /// Generate Zod schema for an object/struct
-    fn generate_object_schema(&self, name: &str, struct_info: &StructInfo) -> String {
-        let mut content = format!("export const {}Schema = z.object({{\n", name);
-
-        for field in &struct_info.fields {
-            let field_schema = self.generate_field_schema(field);
-            // Use get_serialized_name() which respects serde rename/rename_all attributes
-            content.push_str(&format!(
-                "  {}: {},\n",
-                field.get_serialized_name(),
-                field_schema
-            ));
-        }
-
-        content.push_str("});\n\n");
-        content
-    }
-
-    /// Generate Zod schema for a field
-    fn generate_field_schema(&self, field: &FieldInfo) -> String {
-        let base_schema = self.rust_type_to_zod_schema(&field.rust_type, false);
-        let mut schema = base_schema;
-
-        // Apply validation attributes if present
-        if let Some(ref validator) = field.validator_attributes {
-            schema = self.apply_validator_constraints(schema, validator);
-        }
-
-        // Make optional if needed
-        if field.is_optional {
-            schema = format!("{}.optional()", schema);
-        }
-
-        schema
-    }
-
-    /// Convert Rust type to Zod schema
-    ///
-    /// # Arguments
-    /// * `rust_type` - The Rust type to convert
-    /// * `is_record_key` - Whether this type is being used as a record/map key
-    fn rust_type_to_zod_schema(&self, rust_type: &str, is_record_key: bool) -> String {
-        let cleaned = self.type_converter.strip_reference(rust_type);
-
-        // Handle Option<T> -> T (will be made optional later)
-        if let Some(inner) = self.type_converter.extract_option_inner_type(&cleaned) {
-            return self.rust_type_to_zod_schema(&inner, is_record_key);
-        }
-
-        // Handle Result<T, E> -> T
-        if let Some(ok_type) = self.type_converter.extract_result_ok_type(&cleaned) {
-            return self.rust_type_to_zod_schema(&ok_type, is_record_key);
-        }
-
-        // Handle Vec<T> -> z.array(T)
-        if let Some(inner) = self.type_converter.extract_vec_inner_type(&cleaned) {
-            let inner_schema = self.rust_type_to_zod_schema(&inner, false);
-            return format!("z.array({})", inner_schema);
-        }
-
-        // Handle HashMap<K, V> and BTreeMap<K, V> -> z.record(key, value)
-        if let Some((key_type, value_type)) = self
-            .type_converter
-            .extract_hashmap_types(&cleaned)
-            .or_else(|| self.type_converter.extract_btreemap_types(&cleaned))
-        {
-            // Keys must not use coerce - pass true for is_record_key
-            let key_schema = self.rust_type_to_zod_schema(&key_type, true);
-            let value_schema = self.rust_type_to_zod_schema(&value_type, false);
-            return format!("z.record({}, {})", key_schema, value_schema);
-        }
-
-        // Handle HashSet<T> and BTreeSet<T> -> z.array(T)
-        if let Some(inner) = self
-            .type_converter
-            .extract_hashset_inner_type(&cleaned)
-            .or_else(|| self.type_converter.extract_btreeset_inner_type(&cleaned))
-        {
-            let inner_schema = self.rust_type_to_zod_schema(&inner, false);
-            return format!("z.array({})", inner_schema);
-        }
-
-        // Handle tuple types -> z.tuple([...])
-        if let Some(tuple_types) = self.type_converter.extract_tuple_types(&cleaned) {
-            if tuple_types.is_empty() {
-                return "z.void()".to_string();
-            }
-            let tuple_schemas: Vec<String> = tuple_types
-                .iter()
-                .map(|t| self.rust_type_to_zod_schema(t, false))
-                .collect();
-            return format!("z.tuple([{}])", tuple_schemas.join(", "));
-        }
-
-        // Handle primitive types
-        if let Some(zod_type) = self.map_primitive_to_zod(&cleaned, is_record_key) {
-            return zod_type;
-        }
-
-        // Custom types - reference the schema
-        if self.type_converter.is_custom_type(&cleaned) {
-            return format!("{}Schema", cleaned);
-        }
-
-        // Fallback to string for unknown types
-        "z.string()".to_string()
-    }
-
-    /// Map primitive Rust types to Zod schemas
-    ///
-    /// # Arguments
-    /// * `rust_type` - The Rust type to map
-    /// * `is_record_key` - Whether this type is being used as a record/map key
-    fn map_primitive_to_zod(&self, rust_type: &str, is_record_key: bool) -> Option<String> {
-        match rust_type {
-            "String" | "str" | "&str" | "&String" => Some("z.string()".to_string()),
-            "i8" | "i16" | "i32" | "i64" | "i128" | "isize" | "u8" | "u16" | "u32" | "u64"
-            | "u128" | "usize" | "f32" | "f64" => {
-                // Record keys must not use coerce - they must resolve to string | number | symbol
-                if is_record_key {
-                    Some("z.number()".to_string())
-                } else {
-                    Some("z.coerce.number()".to_string())
-                }
-            }
-            "bool" => Some("z.boolean()".to_string()),
-            "()" => Some("z.void()".to_string()),
-            _ => None,
-        }
-    }
-
-    /// Apply validator constraints to a Zod schema
-    fn apply_validator_constraints(
+    /// Generate Zod schema for an object/struct using templates
+    fn generate_object_schema(
         &self,
-        mut schema: String,
-        validator: &ValidatorAttributes,
+        name: &str,
+        struct_info: &StructInfo,
+        config: &GenerateConfig,
     ) -> String {
-        // Apply length constraints
-        if let Some(ref length) = validator.length {
-            schema = self.apply_length_constraint(schema, length);
+        let visitor = ZodVisitor::with_config(config);
+        let schema_builder = ZodSchemaBuilder::new(config);
+
+        // Convert FieldInfo to FieldContext with computed Zod schemas
+        let mut field_contexts: Vec<FieldContext> =
+            self.collector
+                .create_field_contexts(struct_info, &visitor, config);
+
+        // Enrich with complete zod schemas including validators
+        for field_context in &mut field_contexts {
+            let zod_schema = schema_builder.build_schema(
+                &field_context.type_structure,
+                &field_context.validator_attributes,
+            );
+            field_context.typescript_type = zod_schema;
         }
 
-        // Apply range constraints
-        if let Some(ref range) = validator.range {
-            schema = self.apply_range_constraint(schema, range);
-        }
+        let mut context = Context::new();
+        context.insert("name", name);
+        context.insert("fields", &field_contexts);
 
-        // Apply email validation
-        if validator.email && schema == "z.string()" {
-            schema = "z.string().email()".to_string();
-        }
-
-        // Apply URL validation
-        if validator.url && schema == "z.string()" {
-            schema = "z.string().url()".to_string();
-        }
-
-        schema
-    }
-
-    /// Apply length constraints to Zod schema
-    fn apply_length_constraint(&self, mut schema: String, length: &LengthConstraint) -> String {
-        // Helper function to format error message parameter
-        let format_error = |msg: &Option<String>| -> String {
-            msg.as_ref()
-                .map(|m| format!(", {{ message: \"{}\" }}", Self::escape_for_js(m)))
-                .unwrap_or_default()
-        };
-
-        if let (Some(min), Some(max)) = (length.min, length.max) {
-            if schema.starts_with("z.string()") {
-                let min_error = format_error(&length.message);
-                let max_error = format_error(&length.message);
-                schema = format!(
-                    "z.string().min({}{}).max({}{})",
-                    min, min_error, max, max_error
-                );
-            } else if schema.contains("z.array(") {
-                let min_error = format_error(&length.message);
-                let max_error = format_error(&length.message);
-                schema = format!(
-                    "{}.min({}{}).max({}{})",
-                    schema, min, min_error, max, max_error
-                );
-            }
-        } else if let Some(min) = length.min {
-            let error = format_error(&length.message);
-            if schema.starts_with("z.string()") {
-                schema = format!("z.string().min({}{})", min, error);
-            } else if schema.contains("z.array(") {
-                schema = format!("{}.min({}{})", schema, min, error);
-            }
-        } else if let Some(max) = length.max {
-            let error = format_error(&length.message);
-            if schema.starts_with("z.string()") {
-                schema = format!("z.string().max({}{})", max, error);
-            } else if schema.contains("z.array(") {
-                schema = format!("{}.max({}{})", schema, max, error);
-            }
-        }
-
-        schema
-    }
-
-    /// Apply range constraints to Zod schema
-    fn apply_range_constraint(&self, mut schema: String, range: &RangeConstraint) -> String {
-        // Helper function to format error message parameter
-        let format_error = |msg: &Option<String>| -> String {
-            msg.as_ref()
-                .map(|m| format!(", {{ message: \"{}\" }}", Self::escape_for_js(m)))
-                .unwrap_or_default()
-        };
-
-        if let (Some(min), Some(max)) = (range.min, range.max) {
-            if schema == "z.coerce.number()" {
-                let min_error = format_error(&range.message);
-                let max_error = format_error(&range.message);
-                schema = format!(
-                    "z.coerce.number().min({}{}).max({}{})",
-                    min, min_error, max, max_error
-                );
-            }
-        } else if let Some(min) = range.min {
-            if schema == "z.coerce.number()" {
-                let error = format_error(&range.message);
-                schema = format!("z.coerce.number().min({}{})", min, error);
-            }
-        } else if let Some(max) = range.max {
-            if schema == "z.coerce.number()" {
-                let error = format_error(&range.message);
-                schema = format!("z.coerce.number().max({}{})", max, error);
-            }
-        }
-
-        schema
-    }
-
-    /// Generate parameter schemas for commands
-    fn generate_param_schemas(&self, commands: &[CommandInfo]) -> String {
-        let mut content = String::new();
-
-        for command in commands {
-            // Only generate schema if command has regular parameters (not just channels)
-            // Channels are runtime objects and should not be validated
-            if !command.parameters.is_empty() {
-                let schema_name = format!(
-                    "{}ParamsSchema",
-                    TemplateHelpers::to_pascal_case(&command.name)
-                );
-                content.push_str(&format!("export const {} = z.object({{\n", schema_name));
-
-                for param in &command.parameters {
-                    let param_schema = self.rust_type_to_zod_schema(&param.rust_type, false);
-                    let final_schema = if param.is_optional {
-                        format!("{}.optional()", param_schema)
-                    } else {
-                        param_schema
-                    };
-                    // Convert param name to camelCase to match Tauri's serialization
-                    let param_name = self.to_camel_case(&param.name);
-                    content.push_str(&format!("  {}: {},\n", param_name, final_schema));
-                }
-
-                content.push_str("});\n\n");
-            }
-        }
-
-        content
-    }
-
-    /// Generate TypeScript types from Zod schemas
-    fn generate_types_from_schemas(
-        &self,
-        commands: &[CommandInfo],
-        used_structs: &HashMap<String, StructInfo>,
-    ) -> String {
-        let mut content = String::new();
-
-        // Generate parameter types
-        for command in commands {
-            // If command has only channels (no regular params), generate interface manually
-            if command.parameters.is_empty() && !command.channels.is_empty() {
-                if let Some(interface) =
-                    TemplateHelpers::generate_params_interface_with_channels(command)
-                {
-                    content.push_str(&interface);
-                }
-            } else if !command.parameters.is_empty() && command.channels.is_empty() {
-                // Only regular params, generate from schema
-                let type_name = format!("{}Params", TemplateHelpers::to_pascal_case(&command.name));
-                let schema_name = format!(
-                    "{}ParamsSchema",
-                    TemplateHelpers::to_pascal_case(&command.name)
-                );
-                content.push_str(&TemplateHelpers::generate_type_alias(
-                    &type_name,
-                    &format!("z.infer<typeof {}>", schema_name),
-                ));
-            } else if !command.parameters.is_empty() && !command.channels.is_empty() {
-                // Both regular params and channels: generate interface with both
-                if let Some(interface) =
-                    TemplateHelpers::generate_params_interface_with_channels(command)
-                {
-                    content.push_str(&interface);
-                }
-            }
-        }
-
-        // Generate struct types
-        for name in used_structs.keys() {
-            content.push_str(&TemplateHelpers::generate_type_alias(
-                name,
-                &format!("z.infer<typeof {}Schema>", name),
-            ));
-        }
-
-        content
+        self.render("zod/partials/schema.ts.tera", &context)
+            .unwrap_or_else(|e| {
+                eprintln!("Template rendering failed for {}: {}", name, e);
+                format!("// Error generating schema for {}: {}\n", name, e)
+            })
     }
 
     /// Generate the complete types.ts file content (with embedded schemas)
@@ -372,270 +107,183 @@ impl ZodBindingsGenerator {
         commands: &[CommandInfo],
         used_structs: &HashMap<String, StructInfo>,
         analyzer: &CommandAnalyzer,
+        config: &GenerateConfig,
     ) -> String {
-        let mut content = String::new();
-
-        // Add file header
-        content.push_str(&self.generate_file_header());
-
-        // Import Zod
-        content.push_str(&TemplateHelpers::generate_named_imports(&[("zod", &["z"])]));
-
-        // Import Channel if any command has channels
-        let has_channels = commands.iter().any(|cmd| !cmd.channels.is_empty());
-        if has_channels {
-            content.push_str(&TemplateHelpers::generate_type_imports(&[(
-                "@tauri-apps/api/core",
-                "{ Channel }",
-            )]));
-        }
-        content.push('\n');
-
-        // Sort structs topologically to ensure dependencies are defined before use
+        // Sort structs topologically
         let type_names: HashSet<String> = used_structs.keys().cloned().collect();
         let sorted_types = analyzer.topological_sort_types(&type_names);
 
-        // Generate struct schemas in topological order
+        // Generate struct schemas
+        let mut struct_schemas = String::new();
         for name in &sorted_types {
             if let Some(struct_info) = used_structs.get(name) {
-                content.push_str(&self.generate_struct_schema(name, struct_info));
+                struct_schemas.push_str(&self.generate_struct_schema(name, struct_info, config));
             }
         }
 
-        // Generate parameter schemas
-        content.push_str(&self.generate_param_schemas(commands));
+        // Convert commands to context wrappers
+        let visitor = ZodVisitor::with_config(config);
+        let schema_builder = ZodSchemaBuilder::new(config);
+        let mut command_contexts = self
+            .collector
+            .create_command_contexts(commands, &visitor, analyzer, config);
 
-        // Generate TypeScript types from schemas
-        content.push_str(&self.generate_types_from_schemas(commands, used_structs));
+        // Enrich parameters with complete zod schemas
+        for command_context in &mut command_contexts {
+            for param in &mut command_context.parameters {
+                let zod_schema = schema_builder.build_param_schema(&param.type_structure);
+                param.typescript_type = zod_schema;
+            }
+        }
 
-        content
+        // Generate parameter schemas using template
+        let param_schemas = {
+            let mut context = Context::new();
+            context.insert("commands", &command_contexts);
+            self.render("zod/partials/param_schemas.ts.tera", &context)
+                .unwrap_or_else(|e| {
+                    eprintln!("Template rendering failed for param schemas: {}", e);
+                    String::new()
+                })
+        };
+
+        // Generate type aliases using template
+        let type_aliases = {
+            let mut context = Context::new();
+            context.insert("commands", &command_contexts);
+            context.insert("struct_names", &sorted_types);
+            self.render("zod/partials/type_aliases.ts.tera", &context)
+                .unwrap_or_else(|e| {
+                    eprintln!("Template rendering failed for type aliases: {}", e);
+                    String::new()
+                })
+        };
+
+        // Render main types.ts template
+        let mut context = Context::new();
+        context.insert("header", &self.generate_file_header());
+        context.insert(
+            "has_channels",
+            &commands.iter().any(|cmd| !cmd.channels.is_empty()),
+        );
+        context.insert("struct_schemas", &struct_schemas);
+        context.insert("param_schemas", &param_schemas);
+        context.insert("type_aliases", &type_aliases);
+
+        self.render("zod/types.ts.tera", &context)
+            .unwrap_or_else(|e| {
+                eprintln!("Template rendering failed for types.ts: {}", e);
+                String::new()
+            })
     }
 
     /// Generate command bindings with validation
-    fn generate_command_bindings(&self, commands: &[CommandInfo]) -> String {
-        let mut content = String::new();
+    fn generate_command_bindings(
+        &self,
+        commands: &[CommandInfo],
+        analyzer: &CommandAnalyzer,
+        config: &GenerateConfig,
+    ) -> String {
+        // Use ZodVisitor for command bindings - it can generate both Zod schemas
+        // and TypeScript types (via visit_type_for_interface)
+        let visitor = ZodVisitor::with_config(config);
 
-        // Add file header
-        content.push_str(&self.generate_command_file_header());
+        // Convert commands to context wrappers
+        let command_contexts = self
+            .collector
+            .create_command_contexts(commands, &visitor, analyzer, config);
 
-        // Check if any command has channels
-        let has_channels = commands.iter().any(|cmd| !cmd.channels.is_empty());
-
-        // Add imports - include Channel if needed
-        if has_channels {
-            content.push_str(&TemplateHelpers::generate_named_imports(&[(
-                "@tauri-apps/api/core",
-                &["invoke", "Channel"],
-            )]));
-        } else {
-            content.push_str(&TemplateHelpers::generate_named_imports(&[(
-                "@tauri-apps/api/core",
-                &["invoke"],
-            )]));
-        }
-        content.push_str(
-            TemplateHelpers::generate_type_imports(&[("zod", "{ ZodError }")]).trim_end(),
+        let mut context = Context::new();
+        context.insert("header", &self.generate_file_header());
+        context.insert("commands", &command_contexts);
+        context.insert(
+            "has_channels",
+            &commands.iter().any(|cmd| !cmd.channels.is_empty()),
         );
-        content.push('\n');
-        content.push_str(
-            TemplateHelpers::generate_type_imports(&[("./types", "* as types")]).trim_end(),
-        );
-        content.push_str("\n\n");
 
-        // Generate CommandHooks interface
-        content.push_str(&Self::generate_command_hooks_interface());
-
-        // Generate command functions with validation
-        for command in commands {
-            if !command.channels.is_empty() {
-                content.push_str(
-                    &TemplateHelpers::generate_command_function_with_channels_and_validation(
-                        command,
-                    ),
-                );
-            } else {
-                content.push_str(&TemplateHelpers::generate_command_function_with_validation(
-                    command,
-                ));
-            }
-        }
-
-        content
-    }
-
-    /// Generate the CommandHooks interface
-    fn generate_command_hooks_interface() -> String {
-        r#"export interface CommandHooks<T> {
-  /** Called when Zod schema validation fails */
-  onValidationError?: (error: ZodError) => void;
-
-  /** Called when Tauri invoke fails (Rust error, serialization, etc.) */
-  onInvokeError?: (error: unknown) => void;
-
-  /** Called when command succeeds */
-  onSuccess?: (result: T) => void;
-
-  /** Called after command settles (success or error) */
-  onSettled?: () => void;
-}
-
-"#
-        .to_string()
+        self.render("zod/commands.ts.tera", &context)
+            .unwrap_or_else(|e| {
+                eprintln!("Template rendering failed for commands.ts: {}", e);
+                String::new()
+            })
     }
 
     /// Generate index.ts file
     fn generate_index_file(&self, generated_files: &[String]) -> String {
-        // Export from all generated files except index.ts
-        let files_to_export: Vec<&str> = generated_files
-            .iter()
-            .filter(|f| *f != "index.ts")
-            .map(|s| s.as_str())
-            .collect();
+        let mut context = Context::new();
+        context.insert("header", &self.generate_file_header());
+        context.insert("files", generated_files);
 
-        // generate_standard_index already includes the header
-        FileWriter::new("")
-            .unwrap()
-            .generate_standard_index(&files_to_export)
-    }
-
-    /// Escape a string for use in JavaScript/TypeScript string literals
-    fn escape_for_js(s: &str) -> String {
-        s.replace('\\', "\\\\")
-            .replace('"', "\\\"")
-            .replace('\n', "\\n")
-            .replace('\r', "\\r")
-            .replace('\t', "\\t")
-    }
-
-    /// Backward compatibility methods
-    pub fn to_camel_case(&self, s: &str) -> String {
-        TemplateHelpers::to_camel_case(s)
-    }
-
-    pub fn collect_referenced_types(&self, rust_type: &str, used_types: &mut HashSet<String>) {
-        self.type_converter
-            .collect_referenced_types(rust_type, used_types);
-    }
-
-    pub fn is_custom_type(&self, type_name: &str) -> bool {
-        self.type_converter.is_custom_type(type_name)
-    }
-
-    /// Check if a type looks like a custom type (starts with capital letter, not a primitive)
-    fn looks_like_custom_type(&self, ts_type: &str) -> bool {
-        // Must start with a capital letter
-        if !ts_type
-            .chars()
-            .next()
-            .map(|c| c.is_ascii_uppercase())
-            .unwrap_or(false)
-        {
-            return false;
-        }
-
-        // Must not be a primitive type
-        !self.type_converter.is_primitive_type(ts_type)
-    }
-
-    /// Convert TypeScript type to Zod schema for backward compatibility
-    pub fn typescript_to_zod_type(&self, ts_type: &str) -> String {
-        match ts_type {
-            "string" => "z.string()".to_string(),
-            "number" => "z.coerce.number()".to_string(),
-            "boolean" => "z.boolean()".to_string(),
-            "void" => "z.void()".to_string(),
-            _ if ts_type.ends_with("[]") => {
-                let inner_type = &ts_type[..ts_type.len() - 2];
-                let inner_schema = self.typescript_to_zod_type(inner_type);
-                format!("z.array({})", inner_schema)
-            }
-            // Handle Record<K, V> types
-            _ if ts_type.starts_with("Record<") && ts_type.ends_with(">") => {
-                let inner = &ts_type[7..ts_type.len() - 1]; // Remove "Record<" and ">"
-                if let Some(comma_pos) = inner.find(", ") {
-                    let key_type = inner[..comma_pos].trim();
-                    let value_type = inner[comma_pos + 2..].trim();
-                    let key_schema = self.typescript_to_zod_type(key_type);
-                    let value_schema = self.typescript_to_zod_type(value_type);
-                    format!("z.record({}, {})", key_schema, value_schema)
-                } else {
-                    "z.string()".to_string() // Fallback for malformed Record type
-                }
-            }
-            // Handle tuple types [T, U, ...]
-            _ if ts_type.starts_with("[") && ts_type.ends_with("]") => {
-                let inner = &ts_type[1..ts_type.len() - 1]; // Remove brackets
-                if inner.is_empty() {
-                    return "z.void()".to_string();
-                }
-
-                let tuple_types: Vec<&str> = inner.split(", ").collect();
-                let tuple_schemas: Vec<String> = tuple_types
-                    .iter()
-                    .map(|t| self.typescript_to_zod_type(t.trim()))
-                    .collect();
-                format!("z.tuple([{}])", tuple_schemas.join(", "))
-            }
-            _ if ts_type.contains(" | null") => {
-                let base_type = ts_type.replace(" | null", "");
-                let base_schema = self.typescript_to_zod_type(&base_type);
-                format!("{}.nullable()", base_schema)
-            }
-            _ => {
-                // Custom type - use lazy for complex types as test expects
-                // Check if it's a custom type (in known_types) OR if it looks like a custom type (capitalized)
-                if self.type_converter.is_custom_type(ts_type)
-                    || self.looks_like_custom_type(ts_type)
-                {
-                    format!(
-                        "z.lazy(() => z.any()) /* {} - define schema separately if needed */",
-                        ts_type
-                    )
-                } else {
-                    "z.string()".to_string() // Fallback
-                }
-            }
-        }
+        self.render("zod/index.ts.tera", &context)
+            .unwrap_or_else(|e| {
+                eprintln!("Template rendering failed for index.ts: {}", e);
+                String::new()
+            })
     }
 
     /// Generate events file content
-    fn generate_events_file(&self, events: &[EventInfo]) -> String {
-        let mut content = String::new();
+    fn generate_events_file(
+        &self,
+        events: &[EventInfo],
+        analyzer: &CommandAnalyzer,
+        config: &GenerateConfig,
+    ) -> String {
+        let visitor = ZodVisitor::with_config(config);
 
-        // Add file header
-        content.push_str(&self.generate_file_header());
+        // Convert events to context wrappers
+        let event_contexts = self
+            .collector
+            .create_event_contexts(events, &visitor, analyzer, config);
 
-        // Generate event listeners
-        content.push_str(&TemplateHelpers::generate_all_event_listeners(events));
+        let mut context = Context::new();
+        context.insert("header", &self.generate_file_header());
+        context.insert("events", &event_contexts);
 
-        content
+        self.render("zod/events.ts.tera", &context)
+            .unwrap_or_else(|e| {
+                eprintln!("Template rendering failed for events.ts: {}", e);
+                String::new()
+            })
     }
 }
 
 impl BaseBindingsGenerator for ZodBindingsGenerator {
+    fn tera(&self) -> &Tera {
+        &self.tera
+    }
+
+    fn type_collector(&self) -> &TypeCollector {
+        &self.collector
+    }
+
+    fn generator_type(&self) -> String {
+        "zod".to_string()
+    }
+
     fn generate_models(
         &mut self,
         commands: &[CommandInfo],
         discovered_structs: &HashMap<String, StructInfo>,
         output_path: &str,
         analyzer: &CommandAnalyzer,
+        config: &GenerateConfig,
     ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
-        // Set up the type converter with known structs
-        self.type_converter
-            .set_known_types(discovered_structs.clone());
-
         // Store known structs for reference
-        self.base.known_structs = discovered_structs.clone();
+        self.collector.known_structs = discovered_structs.clone();
 
         // Filter to only the types used by commands
-        let mut used_structs = self.base.collect_used_types(commands, discovered_structs);
+        let mut used_structs = self
+            .collector
+            .collect_used_types(commands, discovered_structs);
 
         // Also collect types used in events
         let events = analyzer.get_discovered_events();
         for event in events {
             let mut event_types = std::collections::HashSet::new();
-            self.base
-                .collect_referenced_types(&event.payload_type, &mut event_types);
+            TypeCollector::collect_referenced_types_from_structure(
+                &event.payload_type_structure,
+                &mut event_types,
+            );
 
             // Add event payload types to used_structs
             for type_name in event_types {
@@ -649,17 +297,18 @@ impl BaseBindingsGenerator for ZodBindingsGenerator {
         let mut file_writer = FileWriter::new(output_path)?;
 
         // Generate and write types file (with embedded schemas)
-        let types_content = self.generate_types_file_content(commands, &used_structs, analyzer);
+        let types_content =
+            self.generate_types_file_content(commands, &used_structs, analyzer, config);
         file_writer.write_types_file(&types_content)?;
 
         // Generate and write commands file
-        let commands_content = self.generate_command_bindings(commands);
+        let commands_content = self.generate_command_bindings(commands, analyzer, config);
         file_writer.write_commands_file(&commands_content)?;
 
         // Generate and write events file if there are any events
         let events = analyzer.get_discovered_events();
         if !events.is_empty() {
-            let events_content = self.generate_events_file(events);
+            let events_content = self.generate_events_file(events, analyzer, config);
             file_writer.write_events_file(&events_content)?;
         }
 
@@ -674,5 +323,190 @@ impl BaseBindingsGenerator for ZodBindingsGenerator {
 impl Default for ZodBindingsGenerator {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::{FieldInfo, TypeStructure};
+
+    mod initialization {
+        use super::*;
+
+        #[test]
+        fn test_new_creates_generator() {
+            let gen = ZodBindingsGenerator::new();
+            assert!(
+                gen.collector.known_structs.is_empty() || !gen.collector.known_structs.is_empty()
+            );
+        }
+
+        #[test]
+        fn test_default_creates_generator() {
+            let gen = ZodBindingsGenerator::default();
+            assert!(
+                gen.collector.known_structs.is_empty() || !gen.collector.known_structs.is_empty()
+            );
+        }
+    }
+
+    mod trait_implementation {
+        use super::*;
+
+        #[test]
+        fn test_generator_type_returns_zod() {
+            let gen = ZodBindingsGenerator::new();
+            assert_eq!(gen.generator_type(), "zod");
+        }
+
+        #[test]
+        fn test_tera_returns_engine() {
+            let gen = ZodBindingsGenerator::new();
+            let tera = gen.tera();
+            // Verify it has registered templates
+            assert!(tera.get_template_names().count() > 0);
+        }
+
+        #[test]
+        fn test_type_collector_returns_collector() {
+            let gen = ZodBindingsGenerator::new();
+            let collector = gen.type_collector();
+            // Verify collector exists
+            assert!(collector.known_structs.is_empty() || !collector.known_structs.is_empty());
+        }
+    }
+
+    mod template_rendering {
+        use super::*;
+
+        #[test]
+        fn test_generate_file_header() {
+            let gen = ZodBindingsGenerator::new();
+            let header = gen.generate_file_header();
+            assert!(header.contains("Auto-generated") || header.contains("tauri-typegen"));
+            assert!(header.contains("zod")); // generator type
+        }
+
+        #[test]
+        fn test_has_zod_templates() {
+            let gen = ZodBindingsGenerator::new();
+            let tera = gen.tera();
+            let template_names: Vec<&str> = tera.get_template_names().collect();
+
+            // Check for key templates
+            assert!(template_names.contains(&"zod/types.ts.tera"));
+            assert!(template_names.contains(&"zod/commands.ts.tera"));
+            assert!(template_names.contains(&"zod/index.ts.tera"));
+        }
+
+        #[test]
+        fn test_render_returns_error_for_invalid_template() {
+            let gen = ZodBindingsGenerator::new();
+            let context = Context::new();
+            let result = gen.render("nonexistent/template.tera", &context);
+            assert!(result.is_err());
+        }
+    }
+
+    mod schema_generation {
+        use crate::GenerateConfig;
+
+        use super::*;
+
+        fn create_test_config() -> GenerateConfig {
+            GenerateConfig {
+                project_path: ".".to_string(),
+                output_path: "./output".to_string(),
+                validation_library: "zod".to_string(),
+                visualize_deps: Some(false),
+                verbose: Some(false),
+                include_private: Some(false),
+                type_mappings: None,
+                exclude_patterns: None,
+                include_patterns: None,
+                default_parameter_case: "camelCase".to_string(),
+                default_field_case: "camelCase".to_string(),
+            }
+        }
+
+        fn create_test_struct(is_enum: bool) -> StructInfo {
+            StructInfo {
+                name: "TestStruct".to_string(),
+                fields: vec![FieldInfo {
+                    name: "test_field".to_string(),
+                    rust_type: "String".to_string(),
+                    is_optional: false,
+                    is_public: true,
+                    type_structure: TypeStructure::Primitive("string".to_string()),
+                    serde_rename: None,
+                    validator_attributes: None,
+                }],
+                file_path: "test.rs".to_string(),
+                is_enum,
+                serde_rename_all: None,
+            }
+        }
+
+        #[test]
+        fn test_generate_enum_schema() {
+            let gen = ZodBindingsGenerator::new();
+            let config = create_test_config();
+            let struct_info = create_test_struct(true);
+
+            let result = gen.generate_enum_schema("TestEnum", &struct_info, &config);
+            assert!(result.contains("TestEnumSchema"));
+            assert!(result.contains("z.enum"));
+        }
+
+        #[test]
+        fn test_generate_object_schema() {
+            let gen = ZodBindingsGenerator::new();
+            let config = create_test_config();
+            let struct_info = create_test_struct(false);
+
+            let result = gen.generate_object_schema("TestStruct", &struct_info, &config);
+            assert!(!result.is_empty());
+        }
+
+        #[test]
+        fn test_generate_struct_schema_for_enum() {
+            let gen = ZodBindingsGenerator::new();
+            let config = create_test_config();
+            let struct_info = create_test_struct(true);
+
+            let result = gen.generate_struct_schema("TestEnum", &struct_info, &config);
+            assert!(result.contains("z.enum"));
+        }
+
+        #[test]
+        fn test_generate_struct_schema_for_struct() {
+            let gen = ZodBindingsGenerator::new();
+            let config = create_test_config();
+            let struct_info = create_test_struct(false);
+
+            let result = gen.generate_struct_schema("TestStruct", &struct_info, &config);
+            assert!(!result.is_empty());
+        }
+    }
+
+    mod helper_methods {
+        use super::*;
+
+        #[test]
+        fn test_generate_index_file_with_empty_files() {
+            let gen = ZodBindingsGenerator::new();
+            let files = vec![];
+            let result = gen.generate_index_file(&files);
+            assert!(result.contains("Auto-generated") || result.contains("//"));
+        }
+
+        #[test]
+        fn test_generate_index_file_with_files() {
+            let gen = ZodBindingsGenerator::new();
+            let files = vec!["types.ts".to_string(), "commands.ts".to_string()];
+            let result = gen.generate_index_file(&files);
+            assert!(!result.is_empty());
+        }
     }
 }

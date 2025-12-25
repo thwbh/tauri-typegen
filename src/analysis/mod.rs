@@ -20,7 +20,7 @@ use event_parser::EventParser;
 use struct_parser::StructParser;
 use type_resolver::TypeResolver;
 
-/// Comprehensive analyzer that orchestrates all analysis sub-modules
+/// Analyzer that orchestrates all analysis sub-modules
 pub struct CommandAnalyzer {
     /// AST cache for parsed files
     ast_cache: AstCache,
@@ -223,6 +223,7 @@ impl CommandAnalyzer {
                                 path_buf.as_path(),
                                 &mut self.type_resolver,
                             )?;
+
                             command.channels = channels;
                         }
                     }
@@ -347,11 +348,7 @@ impl CommandAnalyzer {
                     if item_enum.ident == type_name
                         && self.struct_parser.should_include_enum(item_enum)
                     {
-                        return self.struct_parser.parse_enum(
-                            item_enum,
-                            file_path,
-                            &mut self.type_resolver,
-                        );
+                        return self.struct_parser.parse_enum(item_enum, file_path);
                     }
                 }
                 _ => {}
@@ -462,7 +459,7 @@ impl CommandAnalyzer {
 
         // Check if this is a custom type name
         if !rust_type.is_empty()
-            && !self.type_resolver.get_type_mappings().contains_key(rust_type)
+            && !self.type_resolver.get_type_set().contains(rust_type)
             && !rust_type.starts_with(char::is_lowercase) // Skip built-in types
             && rust_type.chars().next().is_some_and(char::is_alphabetic)
             && !rust_type.contains('<')
@@ -480,6 +477,11 @@ impl CommandAnalyzer {
     /// Get discovered events
     pub fn get_discovered_events(&self) -> &[EventInfo] {
         &self.discovered_events
+    }
+
+    /// Get reference to the type resolver
+    pub fn get_type_resolver(&self) -> std::cell::RefCell<&TypeResolver> {
+        std::cell::RefCell::new(&self.type_resolver)
     }
 
     /// Get all discovered channels from all commands
@@ -525,15 +527,488 @@ impl CommandAnalyzer {
     pub fn generate_dot_graph(&self, commands: &[CommandInfo]) -> String {
         self.dependency_graph.generate_dot_graph(commands)
     }
-
-    /// Map a Rust type to its TypeScript equivalent
-    pub fn map_rust_type_to_typescript(&mut self, rust_type: &str) -> String {
-        self.type_resolver.map_rust_type_to_typescript(rust_type)
-    }
 }
 
 impl Default for CommandAnalyzer {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    fn analyzer() -> CommandAnalyzer {
+        CommandAnalyzer::new()
+    }
+
+    mod initialization {
+        use super::*;
+
+        #[test]
+        fn test_new_creates_analyzer() {
+            let analyzer = CommandAnalyzer::new();
+            assert!(analyzer.get_discovered_structs().is_empty());
+            assert!(analyzer.get_discovered_events().is_empty());
+        }
+
+        #[test]
+        fn test_default_creates_analyzer() {
+            let analyzer = CommandAnalyzer::default();
+            assert!(analyzer.get_discovered_structs().is_empty());
+            assert!(analyzer.get_discovered_events().is_empty());
+        }
+    }
+
+    mod type_name_extraction {
+        use super::*;
+
+        #[test]
+        fn test_extract_simple_type() {
+            let analyzer = analyzer();
+            let mut types = HashSet::new();
+            analyzer.extract_type_names("User", &mut types);
+            assert_eq!(types.len(), 1);
+            assert!(types.contains("User"));
+        }
+
+        #[test]
+        fn test_extract_option_type() {
+            let analyzer = analyzer();
+            let mut types = HashSet::new();
+            analyzer.extract_type_names("Option<User>", &mut types);
+            assert_eq!(types.len(), 1);
+            assert!(types.contains("User"));
+        }
+
+        #[test]
+        fn test_extract_vec_type() {
+            let analyzer = analyzer();
+            let mut types = HashSet::new();
+            analyzer.extract_type_names("Vec<Product>", &mut types);
+            assert_eq!(types.len(), 1);
+            assert!(types.contains("Product"));
+        }
+
+        #[test]
+        fn test_extract_result_type() {
+            let analyzer = analyzer();
+            let mut types = HashSet::new();
+            analyzer.extract_type_names("Result<User, AppError>", &mut types);
+            assert_eq!(types.len(), 2);
+            assert!(types.contains("User"));
+            assert!(types.contains("AppError"));
+        }
+
+        #[test]
+        fn test_extract_hashmap_type() {
+            let analyzer = analyzer();
+            let mut types = HashSet::new();
+            analyzer.extract_type_names("HashMap<String, User>", &mut types);
+            // String is a primitive, should only extract User
+            assert_eq!(types.len(), 1);
+            assert!(types.contains("User"));
+        }
+
+        #[test]
+        fn test_extract_btreemap_type() {
+            let analyzer = analyzer();
+            let mut types = HashSet::new();
+            analyzer.extract_type_names("BTreeMap<UserId, Profile>", &mut types);
+            assert_eq!(types.len(), 2);
+            assert!(types.contains("UserId"));
+            assert!(types.contains("Profile"));
+        }
+
+        #[test]
+        fn test_extract_hashset_type() {
+            let analyzer = analyzer();
+            let mut types = HashSet::new();
+            analyzer.extract_type_names("HashSet<User>", &mut types);
+            assert_eq!(types.len(), 1);
+            assert!(types.contains("User"));
+        }
+
+        #[test]
+        fn test_extract_btreeset_type() {
+            let analyzer = analyzer();
+            let mut types = HashSet::new();
+            analyzer.extract_type_names("BTreeSet<Tag>", &mut types);
+            assert_eq!(types.len(), 1);
+            assert!(types.contains("Tag"));
+        }
+
+        #[test]
+        fn test_extract_tuple_type() {
+            let analyzer = analyzer();
+            let mut types = HashSet::new();
+            analyzer.extract_type_names("(User, Product, Order)", &mut types);
+            assert_eq!(types.len(), 3);
+            assert!(types.contains("User"));
+            assert!(types.contains("Product"));
+            assert!(types.contains("Order"));
+        }
+
+        #[test]
+        fn test_extract_reference_type() {
+            let analyzer = analyzer();
+            let mut types = HashSet::new();
+            analyzer.extract_type_names("&User", &mut types);
+            assert_eq!(types.len(), 1);
+            assert!(types.contains("User"));
+        }
+
+        #[test]
+        fn test_extract_nested_types() {
+            let analyzer = analyzer();
+            let mut types = HashSet::new();
+            analyzer.extract_type_names("Vec<Option<User>>", &mut types);
+            assert_eq!(types.len(), 1);
+            assert!(types.contains("User"));
+        }
+
+        #[test]
+        fn test_extract_deeply_nested_types() {
+            let analyzer = analyzer();
+            let mut types = HashSet::new();
+            analyzer.extract_type_names("HashMap<String, Vec<Option<Product>>>", &mut types);
+            assert_eq!(types.len(), 1);
+            assert!(types.contains("Product"));
+        }
+
+        #[test]
+        fn test_skips_primitive_types() {
+            let analyzer = analyzer();
+            let mut types = HashSet::new();
+            analyzer.extract_type_names("String", &mut types);
+            assert_eq!(types.len(), 0);
+        }
+
+        #[test]
+        fn test_skips_built_in_types() {
+            let analyzer = analyzer();
+            let mut types = HashSet::new();
+            analyzer.extract_type_names("i32", &mut types);
+            assert_eq!(types.len(), 0);
+        }
+
+        #[test]
+        fn test_skips_empty_type() {
+            let analyzer = analyzer();
+            let mut types = HashSet::new();
+            analyzer.extract_type_names("", &mut types);
+            assert_eq!(types.len(), 0);
+        }
+
+        #[test]
+        fn test_skips_unit_type() {
+            let analyzer = analyzer();
+            let mut types = HashSet::new();
+            analyzer.extract_type_names("()", &mut types);
+            assert_eq!(types.len(), 0);
+        }
+
+        #[test]
+        fn test_multiple_calls_accumulate() {
+            let analyzer = analyzer();
+            let mut types = HashSet::new();
+            analyzer.extract_type_names("User", &mut types);
+            analyzer.extract_type_names("Product", &mut types);
+            assert_eq!(types.len(), 2);
+            assert!(types.contains("User"));
+            assert!(types.contains("Product"));
+        }
+
+        #[test]
+        fn test_duplicate_types_deduped() {
+            let analyzer = analyzer();
+            let mut types = HashSet::new();
+            analyzer.extract_type_names("User", &mut types);
+            analyzer.extract_type_names("User", &mut types);
+            assert_eq!(types.len(), 1);
+        }
+    }
+
+    mod getters {
+        use super::*;
+
+        #[test]
+        fn test_get_discovered_structs_empty() {
+            let analyzer = analyzer();
+            let structs = analyzer.get_discovered_structs();
+            assert!(structs.is_empty());
+        }
+
+        #[test]
+        fn test_get_discovered_events_empty() {
+            let analyzer = analyzer();
+            let events = analyzer.get_discovered_events();
+            assert!(events.is_empty());
+        }
+
+        #[test]
+        fn test_get_type_resolver() {
+            let analyzer = analyzer();
+            let resolver = analyzer.get_type_resolver();
+            // Just verify it returns a RefCell
+            assert!(!resolver.borrow().get_type_set().is_empty());
+        }
+
+        #[test]
+        fn test_get_dependency_graph() {
+            let analyzer = analyzer();
+            let graph = analyzer.get_dependency_graph();
+            // Verify graph exists (check resolved types)
+            assert!(graph.get_resolved_types().is_empty());
+        }
+
+        #[test]
+        fn test_get_all_discovered_channels_empty() {
+            let analyzer = analyzer();
+            let commands = vec![];
+            let channels = analyzer.get_all_discovered_channels(&commands);
+            assert!(channels.is_empty());
+        }
+
+        #[test]
+        fn test_get_all_discovered_channels_with_commands() {
+            let analyzer = analyzer();
+            let command = CommandInfo::new_for_test(
+                "test_cmd",
+                "test.rs",
+                1,
+                vec![],
+                "void",
+                false,
+                vec![
+                    ChannelInfo::new_for_test("ch1", "Message1", "test_cmd", "test.rs", 10),
+                    ChannelInfo::new_for_test("ch2", "Message2", "test_cmd", "test.rs", 20),
+                ],
+            );
+
+            let commands = vec![command];
+            let channels = analyzer.get_all_discovered_channels(&commands);
+            assert_eq!(channels.len(), 2);
+        }
+    }
+
+    mod topological_sort {
+        use super::*;
+
+        #[test]
+        fn test_topological_sort_empty() {
+            let analyzer = analyzer();
+            let types = HashSet::new();
+            let sorted = analyzer.topological_sort_types(&types);
+            assert!(sorted.is_empty());
+        }
+
+        #[test]
+        fn test_topological_sort_single_type() {
+            let mut analyzer = analyzer();
+            let path = PathBuf::from("test.rs");
+            analyzer
+                .dependency_graph
+                .add_type_definition("User".to_string(), path);
+
+            let mut types = HashSet::new();
+            types.insert("User".to_string());
+
+            let sorted = analyzer.topological_sort_types(&types);
+            assert_eq!(sorted.len(), 1);
+            assert_eq!(sorted[0], "User");
+        }
+    }
+
+    mod ast_helpers {
+        use super::*;
+        use syn::{parse_quote, File as SynFile};
+
+        #[test]
+        fn test_find_function_in_ast() {
+            let analyzer = analyzer();
+            let ast: SynFile = parse_quote! {
+                #[tauri::command]
+                fn my_command() -> String {
+                    "test".to_string()
+                }
+
+                fn other_function() {}
+            };
+
+            let result = analyzer.find_function_in_ast(&ast, "my_command");
+            assert!(result.is_some());
+            assert_eq!(result.unwrap().sig.ident, "my_command");
+        }
+
+        #[test]
+        fn test_find_function_in_ast_not_found() {
+            let analyzer = analyzer();
+            let ast: SynFile = parse_quote! {
+                fn my_command() {}
+            };
+
+            let result = analyzer.find_function_in_ast(&ast, "non_existent");
+            assert!(result.is_none());
+        }
+
+        #[test]
+        fn test_find_function_in_ast_empty() {
+            let analyzer = analyzer();
+            let ast: SynFile = parse_quote! {};
+
+            let result = analyzer.find_function_in_ast(&ast, "any_function");
+            assert!(result.is_none());
+        }
+    }
+
+    mod index_type_definitions {
+        use super::*;
+        use syn::{parse_quote, File as SynFile};
+
+        #[test]
+        fn test_index_struct() {
+            let mut analyzer = analyzer();
+            let ast: SynFile = parse_quote! {
+                #[derive(Serialize)]
+                pub struct User {
+                    name: String,
+                }
+            };
+            let path = Path::new("test.rs");
+
+            analyzer.index_type_definitions(&ast, path);
+
+            assert!(analyzer.dependency_graph.has_type_definition("User"));
+        }
+
+        #[test]
+        fn test_index_enum() {
+            let mut analyzer = analyzer();
+            let ast: SynFile = parse_quote! {
+                #[derive(Serialize)]
+                pub enum Status {
+                    Active,
+                    Inactive,
+                }
+            };
+            let path = Path::new("test.rs");
+
+            analyzer.index_type_definitions(&ast, path);
+
+            assert!(analyzer.dependency_graph.has_type_definition("Status"));
+        }
+
+        #[test]
+        fn test_skips_non_serde_types() {
+            let mut analyzer = analyzer();
+            let ast: SynFile = parse_quote! {
+                #[derive(Debug, Clone)]
+                pub struct User {
+                    name: String,
+                }
+            };
+            let path = Path::new("test.rs");
+
+            analyzer.index_type_definitions(&ast, path);
+
+            assert!(!analyzer.dependency_graph.has_type_definition("User"));
+        }
+    }
+
+    mod extract_type_from_ast {
+        use super::*;
+        use syn::{parse_quote, File as SynFile};
+
+        #[test]
+        fn test_extract_struct_from_ast() {
+            let mut analyzer = analyzer();
+            let ast: SynFile = parse_quote! {
+                #[derive(Serialize)]
+                pub struct User {
+                    pub name: String,
+                }
+            };
+            let path = Path::new("test.rs");
+
+            let result = analyzer.extract_type_from_ast(&ast, "User", path);
+            assert!(result.is_some());
+            let struct_info = result.unwrap();
+            assert_eq!(struct_info.name, "User");
+            assert_eq!(struct_info.fields.len(), 1);
+        }
+
+        #[test]
+        fn test_extract_enum_from_ast() {
+            let mut analyzer = analyzer();
+            let ast: SynFile = parse_quote! {
+                #[derive(Serialize)]
+                pub enum Status {
+                    Active,
+                    Inactive,
+                }
+            };
+            let path = Path::new("test.rs");
+
+            let result = analyzer.extract_type_from_ast(&ast, "Status", path);
+            assert!(result.is_some());
+            let enum_info = result.unwrap();
+            assert_eq!(enum_info.name, "Status");
+            assert!(enum_info.is_enum);
+        }
+
+        #[test]
+        fn test_extract_type_not_found() {
+            let mut analyzer = analyzer();
+            let ast: SynFile = parse_quote! {
+                #[derive(Serialize)]
+                pub struct User {
+                    name: String,
+                }
+            };
+            let path = Path::new("test.rs");
+
+            let result = analyzer.extract_type_from_ast(&ast, "Product", path);
+            assert!(result.is_none());
+        }
+
+        #[test]
+        fn test_extract_type_without_serde() {
+            let mut analyzer = analyzer();
+            let ast: SynFile = parse_quote! {
+                #[derive(Debug)]
+                pub struct User {
+                    name: String,
+                }
+            };
+            let path = Path::new("test.rs");
+
+            let result = analyzer.extract_type_from_ast(&ast, "User", path);
+            assert!(result.is_none());
+        }
+    }
+
+    mod visualization {
+        use super::*;
+
+        #[test]
+        fn test_visualize_dependencies() {
+            let analyzer = analyzer();
+            let commands = vec![];
+            let viz = analyzer.visualize_dependencies(&commands);
+            // Just verify it returns a string
+            assert!(viz.contains("Dependency Graph"));
+        }
+
+        #[test]
+        fn test_generate_dot_graph() {
+            let analyzer = analyzer();
+            let commands = vec![];
+            let dot = analyzer.generate_dot_graph(&commands);
+            // Verify basic DOT format
+            assert!(dot.contains("digraph"));
+        }
     }
 }

@@ -3,7 +3,7 @@ pub mod output_manager;
 pub mod project_scanner;
 
 use crate::analysis::CommandAnalyzer;
-use crate::generators::generator::BindingsGenerator;
+use crate::generators::create_generator;
 use crate::interface::config::{ConfigError, GenerateConfig};
 use crate::interface::output::{Logger, ProgressReporter};
 use std::path::Path;
@@ -165,12 +165,13 @@ impl BuildSystem {
             _ => return Err("Invalid validation library. Use 'zod' or 'none'".into()),
         };
 
-        let mut generator = BindingsGenerator::new(validation);
+        let mut generator = create_generator(validation);
         let generated_files = generator.generate_models(
             &commands,
             analyzer.get_discovered_structs(),
             &config.output_path,
             &analyzer,
+            config,
         )?;
 
         // Generate dependency visualization if requested

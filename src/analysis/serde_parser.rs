@@ -1,4 +1,5 @@
 use quote::ToTokens;
+use serde_rename_rule::RenameRule;
 use syn::Attribute;
 
 /// Parser for serde attributes from Rust struct/enum definitions and fields
@@ -58,8 +59,9 @@ impl SerdeParser {
         result
     }
 
-    /// Parse rename_all value like "camelCase", "snake_case", "PascalCase", etc.
-    fn parse_rename_all(&self, tokens: &str) -> Option<String> {
+    /// Parse rename_all value like "camelCase", "snake_case", "PascalCase", etc. to
+    /// find a matching `serde_rename_rule::RenameRule`.
+    fn parse_rename_all(&self, tokens: &str) -> Option<RenameRule> {
         if let Some(start) = tokens.find("rename_all") {
             if let Some(eq_pos) = tokens[start..].find('=') {
                 let after_eq = &tokens[start + eq_pos + 1..].trim_start();
@@ -68,7 +70,8 @@ impl SerdeParser {
                 if let Some(quote_start) = after_eq.find('"') {
                     if let Some(quote_end) = after_eq[quote_start + 1..].find('"') {
                         let value = &after_eq[quote_start + 1..quote_start + 1 + quote_end];
-                        return Some(value.to_string());
+
+                        return RenameRule::from_rename_all_str(value).ok();
                     }
                 }
             }
@@ -119,7 +122,7 @@ impl Default for SerdeParser {
 /// Struct-level serde attributes
 #[derive(Debug, Default, Clone)]
 pub struct SerdeStructAttributes {
-    pub rename_all: Option<String>,
+    pub rename_all: Option<RenameRule>,
 }
 
 /// Field-level serde attributes
@@ -128,182 +131,168 @@ pub struct SerdeFieldAttributes {
     pub rename: Option<String>,
     pub skip: bool,
 }
-
-/// Apply serde naming convention transformations
-pub fn apply_naming_convention(field_name: &str, convention: &str) -> String {
-    match convention {
-        "camelCase" => to_camel_case(field_name),
-        "PascalCase" => to_pascal_case(field_name),
-        "snake_case" => to_snake_case(field_name),
-        "SCREAMING_SNAKE_CASE" => to_screaming_snake_case(field_name),
-        "kebab-case" => to_kebab_case(field_name),
-        "SCREAMING-KEBAB-CASE" => to_screaming_kebab_case(field_name),
-        _ => field_name.to_string(), // Unknown convention, return as-is
-    }
-}
-
-/// Convert to camelCase (first letter lowercase, subsequent words capitalized)
-fn to_camel_case(s: &str) -> String {
-    let words = split_into_words(s);
-    if words.is_empty() {
-        return String::new();
-    }
-
-    let mut result = words[0].to_lowercase();
-    for word in &words[1..] {
-        result.push_str(&capitalize_first(word));
-    }
-    result
-}
-
-/// Convert to PascalCase (all words capitalized, no separators)
-fn to_pascal_case(s: &str) -> String {
-    split_into_words(s)
-        .iter()
-        .map(|word| capitalize_first(word))
-        .collect::<String>()
-}
-
-/// Convert to snake_case (lowercase with underscores)
-fn to_snake_case(s: &str) -> String {
-    split_into_words(s)
-        .iter()
-        .map(|word| word.to_lowercase())
-        .collect::<Vec<_>>()
-        .join("_")
-}
-
-/// Convert to SCREAMING_SNAKE_CASE (uppercase with underscores)
-fn to_screaming_snake_case(s: &str) -> String {
-    split_into_words(s)
-        .iter()
-        .map(|word| word.to_uppercase())
-        .collect::<Vec<_>>()
-        .join("_")
-}
-
-/// Convert to kebab-case (lowercase with hyphens)
-fn to_kebab_case(s: &str) -> String {
-    split_into_words(s)
-        .iter()
-        .map(|word| word.to_lowercase())
-        .collect::<Vec<_>>()
-        .join("-")
-}
-
-/// Convert to SCREAMING-KEBAB-CASE (uppercase with hyphens)
-fn to_screaming_kebab_case(s: &str) -> String {
-    split_into_words(s)
-        .iter()
-        .map(|word| word.to_uppercase())
-        .collect::<Vec<_>>()
-        .join("-")
-}
-
-/// Split a string into words, handling snake_case, camelCase, and PascalCase
-fn split_into_words(s: &str) -> Vec<String> {
-    let mut words = Vec::new();
-    let mut current_word = String::new();
-    let mut prev_was_lowercase = false;
-
-    for ch in s.chars() {
-        if ch == '_' || ch == '-' {
-            if !current_word.is_empty() {
-                words.push(current_word.clone());
-                current_word.clear();
-            }
-            prev_was_lowercase = false;
-        } else if ch.is_uppercase() {
-            // New word starts if previous was lowercase
-            if prev_was_lowercase && !current_word.is_empty() {
-                words.push(current_word.clone());
-                current_word.clear();
-            }
-            current_word.push(ch);
-            prev_was_lowercase = false;
-        } else {
-            current_word.push(ch);
-            prev_was_lowercase = true;
-        }
-    }
-
-    if !current_word.is_empty() {
-        words.push(current_word);
-    }
-
-    words
-}
-
-/// Capitalize the first character of a string
-fn capitalize_first(s: &str) -> String {
-    let mut chars = s.chars();
-    match chars.next() {
-        None => String::new(),
-        Some(first) => {
-            let mut result = first.to_uppercase().to_string();
-            result.push_str(&chars.as_str().to_lowercase());
-            result
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use syn::parse_quote;
 
     #[test]
-    fn test_camel_case() {
-        assert_eq!(to_camel_case("user_id"), "userId");
-        assert_eq!(to_camel_case("user_name"), "userName");
-        assert_eq!(to_camel_case("is_active"), "isActive");
-        assert_eq!(to_camel_case("UserName"), "userName");
+    fn test_parse_rename_all_camel_case() {
+        let parser = SerdeParser::new();
+        let result = parser.parse_rename_all(r#"rename_all = "camelCase""#);
+
+        assert!(result.is_some());
+        assert!(matches!(result.unwrap(), RenameRule::CamelCase));
     }
 
     #[test]
-    fn test_pascal_case() {
-        assert_eq!(to_pascal_case("user_id"), "UserId");
-        assert_eq!(to_pascal_case("user_name"), "UserName");
-        assert_eq!(to_pascal_case("userName"), "UserName");
+    fn test_parse_rename_all_snake_case() {
+        let parser = SerdeParser::new();
+        let result = parser.parse_rename_all(r#"rename_all = "snake_case""#);
+
+        assert!(result.is_some());
+        assert!(matches!(result.unwrap(), RenameRule::SnakeCase));
     }
 
     #[test]
-    fn test_snake_case() {
-        assert_eq!(to_snake_case("userId"), "user_id");
-        assert_eq!(to_snake_case("UserName"), "user_name");
-        assert_eq!(to_snake_case("user_name"), "user_name");
+    fn test_parse_rename_all_pascal_case() {
+        let parser = SerdeParser::new();
+        let result = parser.parse_rename_all(r#"rename_all = "PascalCase""#);
+
+        assert!(result.is_some());
+        assert!(matches!(result.unwrap(), RenameRule::PascalCase));
     }
 
     #[test]
-    fn test_screaming_snake_case() {
-        assert_eq!(to_screaming_snake_case("user_id"), "USER_ID");
-        assert_eq!(to_screaming_snake_case("userName"), "USER_NAME");
+    fn test_parse_rename_all_screaming_snake_case() {
+        let parser = SerdeParser::new();
+        let result = parser.parse_rename_all(r#"rename_all = "SCREAMING_SNAKE_CASE""#);
+
+        assert!(result.is_some());
+        assert!(matches!(result.unwrap(), RenameRule::ScreamingSnakeCase));
     }
 
     #[test]
-    fn test_kebab_case() {
-        assert_eq!(to_kebab_case("user_id"), "user-id");
-        assert_eq!(to_kebab_case("userName"), "user-name");
+    fn test_parse_rename_all_kebab_case() {
+        let parser = SerdeParser::new();
+        let result = parser.parse_rename_all(r#"rename_all = "kebab-case""#);
+
+        assert!(result.is_some());
+        assert!(matches!(result.unwrap(), RenameRule::KebabCase));
     }
 
     #[test]
-    fn test_screaming_kebab_case() {
-        assert_eq!(to_screaming_kebab_case("user_id"), "USER-ID");
-        assert_eq!(to_screaming_kebab_case("userName"), "USER-NAME");
+    fn test_parse_rename_all_not_present() {
+        let parser = SerdeParser::new();
+        let result = parser.parse_rename_all(r#"skip_serializing_if = "Option::is_none""#);
+
+        assert!(result.is_none());
     }
 
     #[test]
-    fn test_apply_naming_convention() {
-        assert_eq!(
-            apply_naming_convention("user_name", "camelCase"),
-            "userName"
-        );
-        assert_eq!(
-            apply_naming_convention("user_name", "PascalCase"),
-            "UserName"
-        );
-        assert_eq!(
-            apply_naming_convention("userName", "snake_case"),
-            "user_name"
-        );
+    fn test_parse_rename() {
+        let parser = SerdeParser::new();
+
+        let result = parser.parse_rename(r#"rename = "customName""#);
+        assert_eq!(result, Some("customName".to_string()));
+
+        let result = parser.parse_rename(r#"rename = "id""#);
+        assert_eq!(result, Some("id".to_string()));
+    }
+
+    #[test]
+    fn test_parse_rename_not_rename_all() {
+        let parser = SerdeParser::new();
+
+        // Should not match rename_all
+        let result = parser.parse_rename(r#"rename_all = "camelCase""#);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_parse_rename_with_rename_all_present() {
+        let parser = SerdeParser::new();
+
+        // Should find "rename" even if rename_all is also present
+        let result = parser.parse_rename(r#"rename_all = "camelCase", rename = "id""#);
+        assert_eq!(result, Some("id".to_string()));
+    }
+
+    #[test]
+    fn test_parse_struct_serde_attrs_with_rename_all() {
+        let parser = SerdeParser::new();
+        let attrs: Vec<Attribute> = vec![parse_quote!(#[serde(rename_all = "camelCase")])];
+
+        let result = parser.parse_struct_serde_attrs(&attrs);
+        assert!(result.rename_all.is_some());
+        assert!(matches!(result.rename_all.unwrap(), RenameRule::CamelCase));
+    }
+
+    #[test]
+    fn test_parse_struct_serde_attrs_no_serde() {
+        let parser = SerdeParser::new();
+        let attrs: Vec<Attribute> = vec![parse_quote!(#[derive(Debug)])];
+
+        let result = parser.parse_struct_serde_attrs(&attrs);
+        assert!(result.rename_all.is_none());
+    }
+
+    #[test]
+    fn test_parse_field_serde_attrs_with_rename() {
+        let parser = SerdeParser::new();
+        let attrs: Vec<Attribute> = vec![parse_quote!(#[serde(rename = "customName")])];
+
+        let result = parser.parse_field_serde_attrs(&attrs);
+        assert_eq!(result.rename, Some("customName".to_string()));
+        assert!(!result.skip);
+    }
+
+    #[test]
+    fn test_parse_field_serde_attrs_with_skip() {
+        let parser = SerdeParser::new();
+        let attrs: Vec<Attribute> = vec![parse_quote!(#[serde(skip)])];
+
+        let result = parser.parse_field_serde_attrs(&attrs);
+        assert!(result.skip);
+        assert!(result.rename.is_none());
+    }
+
+    #[test]
+    fn test_parse_field_serde_attrs_skip_serializing_not_skip() {
+        let parser = SerdeParser::new();
+        let attrs: Vec<Attribute> = vec![parse_quote!(#[serde(skip_serializing)])];
+
+        let result = parser.parse_field_serde_attrs(&attrs);
+        // skip_serializing should not set skip flag
+        assert!(!result.skip);
+    }
+
+    #[test]
+    fn test_parse_field_serde_attrs_multiple() {
+        let parser = SerdeParser::new();
+        let attrs: Vec<Attribute> = vec![
+            parse_quote!(#[serde(rename = "id")]),
+            parse_quote!(#[derive(Debug)]),
+        ];
+
+        let result = parser.parse_field_serde_attrs(&attrs);
+        assert_eq!(result.rename, Some("id".to_string()));
+    }
+
+    #[test]
+    fn test_parse_field_serde_attrs_no_serde() {
+        let parser = SerdeParser::new();
+        let attrs: Vec<Attribute> = vec![parse_quote!(#[derive(Debug)])];
+
+        let result = parser.parse_field_serde_attrs(&attrs);
+        assert!(result.rename.is_none());
+        assert!(!result.skip);
+    }
+
+    #[test]
+    fn test_default_impl() {
+        let parser = SerdeParser;
+        let result = parser.parse_rename(r#"rename = "test""#);
+        assert_eq!(result, Some("test".to_string()));
     }
 }

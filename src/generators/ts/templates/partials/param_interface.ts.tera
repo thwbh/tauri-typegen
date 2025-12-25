@@ -1,0 +1,12 @@
+{%- if command.parameters | length > 0 or command.channels | length > 0 -%}
+export interface {{ command.tsTypeName }}Params {
+  {%- for param in command.parameters %}
+  {{ param.serializedName }}{% if param.isOptional %}?{% endif %}: {{ param.typescriptType }};
+  {%- endfor %}
+  {%- for channel in command.channels %}
+  {{ channel.serializedParameterName }}: Channel<{{ channel.typescriptMessageType }}>;
+  {%- endfor %}
+  [key: string]: unknown;
+}
+
+{% endif -%}
