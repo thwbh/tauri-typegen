@@ -1,13 +1,13 @@
 [package]
 name = "tauri-typegen"
-version = "0.3.4"
+version = "0.4.0"
 authors = [ "Stefan Poindl" ]
 description = "A rust crate that automatically generates TypeScript models and bindings from your Tauri commands"
 edition = "2021"
 rust-version = "1.77.2"
-exclude = ["/examples", "/dist-js", "/guest-js", "/node_modules"]
 links = "tauri-typegen"
 license = "MIT"
+repository = "https://github.com/thwbh/tauri-typegen"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }

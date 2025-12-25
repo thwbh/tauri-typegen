@@ -590,8 +590,8 @@ fn main() {
 use tauri_typegen::{GenerateConfig, generate_from_config};
 
 let config = GenerateConfig {
-    project_path: "./src-tauri".to_string(),
-    output_path: "./src/generated".to_string(),
+    project_path: ".".to_string(),
+    output_path: "../src/generated".to_string(),
     validation_library: "none".to_string(),
     verbose: Some(true),
 };
@@ -605,8 +605,8 @@ let files = generate_from_config(&config)?;
 
 ```json
 {
-  "project_path": "./src-tauri",
-  "output_path": "./src/generated",
+  "project_path": ".",
+  "output_path": "../src/generated",
   "validation_library": "none",
   "verbose": false
 }
@@ -620,8 +620,8 @@ In `tauri.conf.json`:
 {
   "plugins": {
     "tauri-typegen": {
-      "project_path": "./src-tauri",
-      "output_path": "./src/generated",
+      "project_path": ".",
+      "output_path": "../src/generated",
       "validation_library": "zod",
       "verbose": true
     }
@@ -633,6 +633,64 @@ In `tauri.conf.json`:
 
 - **`none`** (default): TypeScript types only, no runtime validation
 - **`zod`**: Generate Zod schemas with runtime validation and hooks
+
+### Custom Type Mappings
+
+Map external Rust types to TypeScript types for libraries like `chrono`, `uuid`, or custom types:
+
+```json
+{
+  "plugins": {
+    "tauri-typegen": {
+      "project_path": ".",
+      "output_path": "../src/generated",
+      "validation_library": "zod",
+      "type_mappings": {
+        "DateTime<Utc>": "string",
+        "PathBuf": "string",
+        "Uuid": "string"
+      }
+    }
+  }
+}
+```
+
+**Use cases:**
+- External crate types: `chrono::DateTime<Utc>` → `string`
+- Standard library types: `std::path::PathBuf` → `string`
+- Third-party types: `uuid::Uuid` → `string`
+- Custom wrapper types: `UserId` → `number`
+
+**Example:**
+
+Rust code:
+```rust
+use chrono::{DateTime, Utc};
+use std::path::PathBuf;
+
+#[derive(Serialize)]
+pub struct FileMetadata {
+    pub path: PathBuf,
+    pub created_at: DateTime<Utc>,
+}
+
+#[tauri::command]
+pub fn get_file_info() -> FileMetadata {
+    // ...
+}
+```
+
+Generated TypeScript (with mappings):
+```typescript
+export interface FileMetadata {
+  path: string;        // PathBuf → string
+  createdAt: string;   // DateTime<Utc> → string
+}
+
+export async function getFileInfo(): Promise<FileMetadata> {
+  return invoke('get_file_info');
+}
+```
 
 ## Usage in CI
 
