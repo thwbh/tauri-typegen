@@ -3,13 +3,51 @@ pub mod config;
 pub mod output;
 
 use crate::analysis::CommandAnalyzer;
-use crate::generators::generator::BindingsGenerator;
+use crate::generators::create_generator;
 
 pub use cli::*;
 pub use config::*;
 pub use output::*;
 
-/// Generate TypeScript bindings from configuration (backward compatibility function)
+/// Generate TypeScript bindings from a Tauri project.
+///
+/// This is the main entry point for programmatic generation of TypeScript bindings.
+/// It analyzes Rust source code in the specified project, discovers Tauri commands,
+/// and generates TypeScript interfaces and command functions.
+///
+/// # Arguments
+///
+/// * `config` - Configuration specifying project paths, output location, and validation options
+///
+/// # Returns
+///
+/// Returns a list of generated file paths on success.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Configuration is invalid
+/// - Project directory cannot be read
+/// - Rust code has syntax errors
+/// - Output directory cannot be written to
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use tauri_typegen::{GenerateConfig, generate_from_config};
+///
+/// let config = GenerateConfig {
+///     project_path: "./src-tauri".to_string(),
+///     output_path: "./src/generated".to_string(),
+///     validation_library: "zod".to_string(),
+///     verbose: Some(true),
+///     ..Default::default()
+/// };
+///
+/// let files = generate_from_config(&config)?;
+/// println!("Generated {} files", files.len());
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 pub fn generate_from_config(
     config: &config::GenerateConfig,
 ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
@@ -29,6 +67,21 @@ pub fn generate_from_config(
 
     // Analyze commands with struct discovery
     let mut analyzer = CommandAnalyzer::new();
+
+    // Apply custom type mappings from configuration
+    if let Some(ref mappings) = config.type_mappings {
+        analyzer.add_type_mappings(mappings);
+        if config.is_verbose() {
+            logger.info(&format!(
+                "📝 Applied {} custom type mappings",
+                mappings.len()
+            ));
+            for (rust_type, ts_type) in mappings {
+                logger.verbose(&format!("  {} → {}", rust_type, ts_type));
+            }
+        }
+    }
+
     let commands = analyzer.analyze_project(&config.project_path)?;
 
     if config.is_verbose() {
@@ -59,7 +112,7 @@ pub fn generate_from_config(
                 let optional = if field.is_optional { "?" } else { "" };
                 logger.verbose(&format!(
                     "    • {}{}: {} ({})",
-                    field.name, optional, field.typescript_type, visibility
+                    field.name, optional, field.rust_type, visibility
                 ));
             }
         }
@@ -92,12 +145,13 @@ pub fn generate_from_config(
     }
 
     // Generate TypeScript models with discovered structs
-    let mut generator = BindingsGenerator::new(validation);
+    let mut generator = create_generator(validation);
     let generated_files = generator.generate_models(
         &commands,
         analyzer.get_discovered_structs(),
         &config.output_path,
         &analyzer,
+        config,
     )?;
 
     if config.is_verbose() {

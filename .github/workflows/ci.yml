@@ -2,7 +2,7 @@ name: Test
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, develop]
   push:
     branches: [main]
 
@@ -62,20 +62,82 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
 
-      - name: Install cargo-tarpaulin
+      - name: Install cargo-llvm-cov and nextest
         uses: taiki-e/install-action@v2
         with:
-          tool: cargo-tarpaulin
+          tool: cargo-llvm-cov,nextest
 
       - name: Generate code coverage
-        run: cargo tarpaulin --verbose --all-features --timeout 120 --out xml
+        run: cargo llvm-cov nextest --all-features --lcov --output-path lcov.info
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
-          files: ./cobertura.xml
+          files: ./lcov.info
           fail_ci_if_error: false
           verbose: true
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  validate-examples:
+    name: Validate Examples
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-build-
+
+      - name: Build tauri-typegen
+        run: cargo build --release
+
+      - name: Checkout examples repository
+        uses: actions/checkout@v4
+        with:
+          repository: thwbh/tauri-typegen-examples
+          path: examples-repo
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Generate bindings for ts example
+        run: |
+          ./target/release/cargo-tauri-typegen tauri-typegen generate \
+            --project-path ./examples-repo/ts/src-tauri \
+            --output-path ./examples-repo/ts/src/generated \
+            --validation none \
+            --verbose
+
+      - name: Generate bindings for zod example
+        run: |
+          ./target/release/cargo-tauri-typegen tauri-typegen generate \
+            --project-path ./examples-repo/zod/src-tauri \
+            --output-path ./examples-repo/zod/src/generated \
+            --validation zod \
+            --verbose
+
+      - name: Validate ts example
+        working-directory: ./examples-repo/ts
+        run: |
+          npm install
+          npm run check
+
+      - name: Validate zod example
+        working-directory: ./examples-repo/zod
+        run: |
+          npm install
+          npm run check

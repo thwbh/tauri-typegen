@@ -17,7 +17,7 @@ impl ChannelParser {
     }
 
     /// Extract channel parameters from a command function signature
-    /// Looks for parameters with type Channel<T>, tauri::ipc::Channel<T>, etc.
+    /// Looks for parameters with type `Channel<T>`, `tauri::ipc::Channel<T>`, etc.
     pub fn extract_channels_from_command(
         &self,
         func: &ItemFn,
@@ -39,20 +39,20 @@ impl ChannelParser {
 
                 // Check if this parameter is a Channel type
                 if let Some(message_type) = self.extract_channel_message_type(&pat_type.ty) {
-                    // Map Rust type to TypeScript
-                    let typescript_message_type =
-                        type_resolver.map_rust_type_to_typescript(&message_type);
-
                     // Get line number from parameter span
                     let line_number = pat_type.ty.span().start().line;
+
+                    // Parse message type into TypeStructure
+                    let message_type_structure = type_resolver.parse_type_structure(&message_type);
 
                     channels.push(ChannelInfo {
                         parameter_name: param_name,
                         message_type: message_type.clone(),
-                        typescript_message_type,
                         command_name: command_name.to_string(),
                         file_path: file_path.to_string_lossy().to_string(),
                         line_number,
+                        serde_rename: None,
+                        message_type_structure,
                     });
                 }
             }
@@ -180,59 +180,377 @@ impl Default for ChannelParser {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use syn::parse_quote;
+    use std::path::Path;
+    use syn::{parse_quote, ItemFn};
 
-    #[test]
-    fn test_detect_simple_channel() {
-        let parser = ChannelParser::new();
-        let ty: Type = parse_quote!(Channel<ProgressUpdate>);
-        let result = parser.extract_channel_message_type(&ty);
-        assert_eq!(result, Some("ProgressUpdate".to_string()));
+    fn parser() -> ChannelParser {
+        ChannelParser::new()
     }
 
-    #[test]
-    fn test_detect_qualified_channel() {
-        let parser = ChannelParser::new();
-        let ty: Type = parse_quote!(tauri::ipc::Channel<DownloadEvent>);
-        let result = parser.extract_channel_message_type(&ty);
-        assert_eq!(result, Some("DownloadEvent".to_string()));
+    fn type_resolver() -> TypeResolver {
+        TypeResolver::new()
     }
 
-    #[test]
-    fn test_detect_channel_with_primitive() {
-        let parser = ChannelParser::new();
-        let ty: Type = parse_quote!(Channel<i32>);
-        let result = parser.extract_channel_message_type(&ty);
-        assert_eq!(result, Some("i32".to_string()));
+    mod channel_detection {
+        use super::*;
+
+        #[test]
+        fn test_detect_simple_channel() {
+            let parser = parser();
+            let ty: Type = parse_quote!(Channel<ProgressUpdate>);
+            let result = parser.extract_channel_message_type(&ty);
+            assert_eq!(result, Some("ProgressUpdate".to_string()));
+        }
+
+        #[test]
+        fn test_detect_qualified_channel() {
+            let parser = parser();
+            let ty: Type = parse_quote!(tauri::ipc::Channel<DownloadEvent>);
+            let result = parser.extract_channel_message_type(&ty);
+            assert_eq!(result, Some("DownloadEvent".to_string()));
+        }
+
+        #[test]
+        fn test_detect_tauri_channel() {
+            let parser = parser();
+            let ty: Type = parse_quote!(tauri::Channel<Message>);
+            let result = parser.extract_channel_message_type(&ty);
+            assert_eq!(result, Some("Message".to_string()));
+        }
+
+        #[test]
+        fn test_detect_channel_with_primitive() {
+            let parser = parser();
+            let ty: Type = parse_quote!(Channel<i32>);
+            let result = parser.extract_channel_message_type(&ty);
+            assert_eq!(result, Some("i32".to_string()));
+        }
+
+        #[test]
+        fn test_non_channel_type() {
+            let parser = parser();
+            let ty: Type = parse_quote!(String);
+            let result = parser.extract_channel_message_type(&ty);
+            assert_eq!(result, None);
+        }
+
+        #[test]
+        fn test_channel_with_complex_type() {
+            let parser = parser();
+            let ty: Type = parse_quote!(Channel<Vec<String>>);
+            let result = parser.extract_channel_message_type(&ty);
+            assert_eq!(result, Some("Vec<String>".to_string()));
+        }
+
+        #[test]
+        fn test_non_tauri_qualified_channel() {
+            let parser = parser();
+            let ty: Type = parse_quote!(my_lib::Channel<String>);
+            let result = parser.extract_channel_message_type(&ty);
+            // Should not match - not tauri namespace
+            assert_eq!(result, None);
+        }
+
+        #[test]
+        fn test_channel_without_generic() {
+            let parser = parser();
+            let ty: Type = parse_quote!(Channel);
+            let result = parser.extract_channel_message_type(&ty);
+            assert_eq!(result, None);
+        }
+
+        #[test]
+        fn test_other_generic_type() {
+            let parser = parser();
+            let ty: Type = parse_quote!(Handler<String>);
+            let result = parser.extract_channel_message_type(&ty);
+            assert_eq!(result, None);
+        }
     }
 
-    #[test]
-    fn test_non_channel_type() {
-        let parser = ChannelParser::new();
-        let ty: Type = parse_quote!(String);
-        let result = parser.extract_channel_message_type(&ty);
-        assert_eq!(result, None);
+    mod type_to_string_conversion {
+        use super::*;
+
+        #[test]
+        fn test_simple_type() {
+            let ty: Type = parse_quote!(String);
+            assert_eq!(ChannelParser::type_to_string(&ty), "String");
+        }
+
+        #[test]
+        fn test_generic_type() {
+            let ty: Type = parse_quote!(Vec<i32>);
+            assert_eq!(ChannelParser::type_to_string(&ty), "Vec<i32>");
+        }
+
+        #[test]
+        fn test_option_type() {
+            let ty: Type = parse_quote!(Option<User>);
+            assert_eq!(ChannelParser::type_to_string(&ty), "Option<User>");
+        }
+
+        #[test]
+        fn test_nested_generic() {
+            let ty: Type = parse_quote!(Vec<Option<String>>);
+            assert_eq!(ChannelParser::type_to_string(&ty), "Vec<Option<String>>");
+        }
+
+        #[test]
+        fn test_multiple_generics() {
+            let ty: Type = parse_quote!(HashMap<String, i32>);
+            assert_eq!(ChannelParser::type_to_string(&ty), "HashMap<String, i32>");
+        }
+
+        #[test]
+        fn test_reference_type() {
+            let ty: Type = parse_quote!(&String);
+            assert_eq!(ChannelParser::type_to_string(&ty), "&String");
+        }
+
+        #[test]
+        fn test_reference_with_generic() {
+            let ty: Type = parse_quote!(&Vec<i32>);
+            assert_eq!(ChannelParser::type_to_string(&ty), "&Vec<i32>");
+        }
+
+        #[test]
+        fn test_tuple_type() {
+            let ty: Type = parse_quote!((String, i32));
+            assert_eq!(ChannelParser::type_to_string(&ty), "(String, i32)");
+        }
+
+        #[test]
+        fn test_empty_tuple() {
+            let ty: Type = parse_quote!(());
+            assert_eq!(ChannelParser::type_to_string(&ty), "()");
+        }
+
+        #[test]
+        fn test_slice_type() {
+            let ty: Type = parse_quote!(&[i32]);
+            // Slice types are references to arrays
+            assert_eq!(ChannelParser::type_to_string(&ty), "&unknown");
+        }
+
+        #[test]
+        fn test_tuple_with_multiple_elements() {
+            let ty: Type = parse_quote!((String, i32, bool));
+            assert_eq!(ChannelParser::type_to_string(&ty), "(String, i32, bool)");
+        }
+
+        #[test]
+        fn test_qualified_path() {
+            let ty: Type = parse_quote!(std::string::String);
+            assert_eq!(ChannelParser::type_to_string(&ty), "std::string::String");
+        }
     }
 
-    #[test]
-    fn test_channel_with_complex_type() {
-        let parser = ChannelParser::new();
-        let ty: Type = parse_quote!(Channel<Vec<String>>);
-        let result = parser.extract_channel_message_type(&ty);
-        assert_eq!(result, Some("Vec<String>".to_string()));
+    mod extract_channels_from_command {
+        use super::*;
+
+        #[test]
+        fn test_extract_no_channels() {
+            let parser = parser();
+            let mut resolver = type_resolver();
+            let func: ItemFn = parse_quote! {
+                #[tauri::command]
+                fn greet(name: String) -> String {
+                    format!("Hello {}", name)
+                }
+            };
+
+            let result = parser.extract_channels_from_command(
+                &func,
+                "greet",
+                Path::new("test.rs"),
+                &mut resolver,
+            );
+
+            assert!(result.is_ok());
+            assert_eq!(result.unwrap().len(), 0);
+        }
+
+        #[test]
+        fn test_extract_single_channel() {
+            let parser = parser();
+            let mut resolver = type_resolver();
+            let func: ItemFn = parse_quote! {
+                #[tauri::command]
+                fn download(progress: Channel<ProgressUpdate>) {
+                    // implementation
+                }
+            };
+
+            let result = parser.extract_channels_from_command(
+                &func,
+                "download",
+                Path::new("test.rs"),
+                &mut resolver,
+            );
+
+            assert!(result.is_ok());
+            let channels = result.unwrap();
+            assert_eq!(channels.len(), 1);
+            assert_eq!(channels[0].parameter_name, "progress");
+            assert_eq!(channels[0].message_type, "ProgressUpdate");
+            assert_eq!(channels[0].command_name, "download");
+        }
+
+        #[test]
+        fn test_extract_multiple_channels() {
+            let parser = parser();
+            let mut resolver = type_resolver();
+            let func: ItemFn = parse_quote! {
+                #[tauri::command]
+                fn process(
+                    progress: Channel<Progress>,
+                    logs: Channel<LogEntry>,
+                ) {
+                    // implementation
+                }
+            };
+
+            let result = parser.extract_channels_from_command(
+                &func,
+                "process",
+                Path::new("test.rs"),
+                &mut resolver,
+            );
+
+            assert!(result.is_ok());
+            let channels = result.unwrap();
+            assert_eq!(channels.len(), 2);
+            assert_eq!(channels[0].parameter_name, "progress");
+            assert_eq!(channels[0].message_type, "Progress");
+            assert_eq!(channels[1].parameter_name, "logs");
+            assert_eq!(channels[1].message_type, "LogEntry");
+        }
+
+        #[test]
+        fn test_extract_channel_with_qualified_path() {
+            let parser = parser();
+            let mut resolver = type_resolver();
+            let func: ItemFn = parse_quote! {
+                #[tauri::command]
+                fn monitor(events: tauri::ipc::Channel<Event>) {
+                    // implementation
+                }
+            };
+
+            let result = parser.extract_channels_from_command(
+                &func,
+                "monitor",
+                Path::new("test.rs"),
+                &mut resolver,
+            );
+
+            assert!(result.is_ok());
+            let channels = result.unwrap();
+            assert_eq!(channels.len(), 1);
+            assert_eq!(channels[0].message_type, "Event");
+        }
+
+        #[test]
+        fn test_extract_mixed_parameters() {
+            let parser = parser();
+            let mut resolver = type_resolver();
+            let func: ItemFn = parse_quote! {
+                #[tauri::command]
+                fn process(
+                    name: String,
+                    progress: Channel<Progress>,
+                    count: i32,
+                ) {
+                    // implementation
+                }
+            };
+
+            let result = parser.extract_channels_from_command(
+                &func,
+                "process",
+                Path::new("test.rs"),
+                &mut resolver,
+            );
+
+            assert!(result.is_ok());
+            let channels = result.unwrap();
+            // Should only extract the channel, not other parameters
+            assert_eq!(channels.len(), 1);
+            assert_eq!(channels[0].parameter_name, "progress");
+        }
+
+        #[test]
+        fn test_channel_with_complex_message_type() {
+            let parser = parser();
+            let mut resolver = type_resolver();
+            let func: ItemFn = parse_quote! {
+                #[tauri::command]
+                fn stream(data: Channel<Vec<Option<String>>>) {
+                    // implementation
+                }
+            };
+
+            let result = parser.extract_channels_from_command(
+                &func,
+                "stream",
+                Path::new("test.rs"),
+                &mut resolver,
+            );
+
+            assert!(result.is_ok());
+            let channels = result.unwrap();
+            assert_eq!(channels.len(), 1);
+            assert_eq!(channels[0].message_type, "Vec<Option<String>>");
+        }
     }
 
-    #[test]
-    fn test_type_to_string() {
-        let _parser = ChannelParser::new();
+    mod edge_cases {
+        use super::*;
 
-        let ty: Type = parse_quote!(String);
-        assert_eq!(ChannelParser::type_to_string(&ty), "String");
+        #[test]
+        fn test_function_with_no_parameters() {
+            let parser = parser();
+            let mut resolver = type_resolver();
+            let func: ItemFn = parse_quote! {
+                #[tauri::command]
+                fn simple() -> String {
+                    "test".to_string()
+                }
+            };
 
-        let ty: Type = parse_quote!(Vec<i32>);
-        assert_eq!(ChannelParser::type_to_string(&ty), "Vec<i32>");
+            let result = parser.extract_channels_from_command(
+                &func,
+                "simple",
+                Path::new("test.rs"),
+                &mut resolver,
+            );
 
-        let ty: Type = parse_quote!(Option<User>);
-        assert_eq!(ChannelParser::type_to_string(&ty), "Option<User>");
+            assert!(result.is_ok());
+            assert_eq!(result.unwrap().len(), 0);
+        }
+
+        #[test]
+        fn test_self_parameter_ignored() {
+            let parser = parser();
+            let mut resolver = type_resolver();
+            let func: ItemFn = parse_quote! {
+                #[tauri::command]
+                fn method(&self, ch: Channel<Event>) {
+                    // implementation
+                }
+            };
+
+            let result = parser.extract_channels_from_command(
+                &func,
+                "method",
+                Path::new("test.rs"),
+                &mut resolver,
+            );
+
+            assert!(result.is_ok());
+            let channels = result.unwrap();
+            assert_eq!(channels.len(), 1);
+            assert_eq!(channels[0].parameter_name, "ch");
+        }
     }
 }

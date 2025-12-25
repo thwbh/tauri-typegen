@@ -3,10 +3,17 @@
 # Automatically format Rust code and stage changes
 
 echo "🦀 Formatting Rust code..."
-cargo fmt
 
-# Stage all formatted files
-git add -u
+# Get list of staged Rust files
+STAGED_RS_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.rs$')
+
+if [ -n "$STAGED_RS_FILES" ]; then
+    # Format only the staged files
+    cargo fmt
+
+    # Re-add only the files that were originally staged
+    echo "$STAGED_RS_FILES" | xargs git add
+fi
 
 echo "✅ Code formatted and staged!"
 exit 0

@@ -3,7 +3,7 @@ pub mod output_manager;
 pub mod project_scanner;
 
 use crate::analysis::CommandAnalyzer;
-use crate::generators::generator::BindingsGenerator;
+use crate::generators::create_generator;
 use crate::interface::config::{ConfigError, GenerateConfig};
 use crate::interface::output::{Logger, ProgressReporter};
 use std::path::Path;
@@ -12,19 +12,55 @@ pub use dependency_resolver::*;
 pub use output_manager::*;
 pub use project_scanner::*;
 
-/// Build-time code generation orchestrator
+/// Build-time code generation orchestrator.
+///
+/// Integrates TypeScript binding generation into Rust build scripts.
+/// This allows automatic regeneration of bindings whenever the Rust code changes.
 pub struct BuildSystem {
     logger: Logger,
 }
 
 impl BuildSystem {
+    /// Create a new build system instance.
+    ///
+    /// # Arguments
+    ///
+    /// * `verbose` - Enable verbose output
+    /// * `debug` - Enable debug logging
     pub fn new(verbose: bool, debug: bool) -> Self {
         Self {
             logger: Logger::new(verbose, debug),
         }
     }
 
-    /// Generate TypeScript bindings at build time
+    /// Generate TypeScript bindings at build time.
+    ///
+    /// This is the recommended way to integrate tauri-typegen into your build process.
+    /// Call this from your `src-tauri/build.rs` file to automatically generate bindings
+    /// whenever you run `cargo build` or `cargo tauri dev`.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` on success, or an error if generation fails.
+    ///
+    /// # Example
+    ///
+    /// In `src-tauri/build.rs`:
+    ///
+    /// ```rust,ignore
+    /// fn main() {
+    ///     // Generate TypeScript bindings before build
+    ///     tauri_typegen::BuildSystem::generate_at_build_time()
+    ///         .expect("Failed to generate TypeScript bindings");
+    ///
+    ///     tauri_build::build()
+    /// }
+    /// ```
+    ///
+    /// # Configuration
+    ///
+    /// Reads configuration from `tauri.conf.json` in the project root.
+    /// If no configuration is found, uses default settings with vanilla TypeScript output.
     pub fn generate_at_build_time() -> Result<(), Box<dyn std::error::Error>> {
         let build_system = Self::new(false, false);
         build_system.run_generation()
@@ -165,12 +201,13 @@ impl BuildSystem {
             _ => return Err("Invalid validation library. Use 'zod' or 'none'".into()),
         };
 
-        let mut generator = BindingsGenerator::new(validation);
+        let mut generator = create_generator(validation);
         let generated_files = generator.generate_models(
             &commands,
             analyzer.get_discovered_structs(),
             &config.output_path,
             &analyzer,
+            config,
         )?;
 
         // Generate dependency visualization if requested

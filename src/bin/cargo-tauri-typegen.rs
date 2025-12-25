@@ -2,7 +2,7 @@ use clap::Parser;
 use std::fs;
 use std::path::PathBuf;
 use tauri_typegen::analysis::CommandAnalyzer;
-use tauri_typegen::generators::generator::BindingsGenerator;
+use tauri_typegen::generators::create_generator;
 use tauri_typegen::interface::{
     print_dependency_visualization_info, print_usage_info, CargoCli, CargoSubcommands,
     GenerateConfig, Logger, ProgressReporter, TypegenCommands,
@@ -158,6 +158,18 @@ fn run_generate(
     // Analyze and generate
     reporter.start_step("Analyzing Tauri commands");
     let mut analyzer = CommandAnalyzer::new();
+
+    // Apply custom type mappings from configuration
+    if let Some(ref mappings) = config.type_mappings {
+        analyzer.add_type_mappings(mappings);
+        if config.is_verbose() {
+            reporter.update_progress(&format!("Applied {} custom type mappings", mappings.len()));
+            for (rust_type, ts_type) in mappings {
+                reporter.update_progress(&format!("  {} → {}", rust_type, ts_type));
+            }
+        }
+    }
+
     let commands =
         analyzer.analyze_project_with_verbose(&config.project_path, config.is_verbose())?;
 
@@ -200,12 +212,13 @@ fn run_generate(
         _ => return Err("Invalid validation library. Use 'zod' or 'none'".into()),
     };
 
-    let mut generator = BindingsGenerator::new(validation);
+    let mut generator = create_generator(validation);
     let generated_files = generator.generate_models(
         &commands,
         analyzer.get_discovered_structs(),
         &config.output_path,
         &analyzer,
+        &config,
     )?;
     reporter.complete_step(Some(&format!("Generated {} files", generated_files.len())));
 

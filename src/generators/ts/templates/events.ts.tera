@@ -1,0 +1,11 @@
+{{ header }}
+/**
+ * Event Listeners
+ * Type-safe event listener helpers for Tauri events
+ */
+import { listen, type UnlistenFn, type Event } from '@tauri-apps/api/event';
+import * as types from './types';
+
+{% for event in events -%}
+{% include "typescript/partials/event_listener.ts.tera" %}
+{% endfor -%}

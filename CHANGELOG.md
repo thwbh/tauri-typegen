@@ -6,9 +6,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.4] - 2025-12-09  
+## [0.4.0] - 2025-12-26
+
+### Added
+- **Custom Type Mappings**: Added support for mapping external Rust types to TypeScript types via configuration
+  - Configure in `tauri.conf.json` under `plugins.typegen.typeMappings`
+  - Useful for external crate types like `DateTime<Utc>` → `string` or `PathBuf` → `string`
+  - Example:
+    ```json
+    {
+      "plugins": {
+        "typegen": {
+          "typeMappings": {
+            "DateTime<Utc>": "string",
+            "PathBuf": "string"
+          }
+        }
+      }
+    }
+    ```
+
+- **CI Validation**: Added GitHub Actions workflow to validate generated code compiles
+  - Automatically tests against examples repository on every commit
+  - Ensures generated TypeScript/Zod code has no compilation errors
+
 ### Fixed
-- **Zod**: Fixed bug where `z.coerce.number()` was used for record/map declaraion
+- Updated outdated setup instructions 
+
+### Changed
+- **BREAKING - TypeScript Type Mappings**: Changed HashMap/BTreeMap generation from `Map<K,V>` to `Record<K,V>`
+  - `HashMap<String, number>` now generates `Record<string, number>` instead of `Map<string, number>`
+  - More idiomatic TypeScript that matches JSON serialization behavior
+
+## [0.3.4] - 2025-12-09
+### Fixed
+- **Zod**: Fixed bug where `z.coerce.number()` was used for record/map declaration
 
 ## [0.3.3] - 2025-12-04
 

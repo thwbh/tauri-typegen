@@ -52,6 +52,19 @@ pub struct GenerateConfig {
     /// File patterns to include in analysis (overrides excludes)
     #[serde(default)]
     pub include_patterns: Option<Vec<String>>,
+
+    /// Default naming convention for command parameters when no serde attribute is present
+    /// Options: "camelCase", "snake_case", "PascalCase", "SCREAMING_SNAKE_CASE", "kebab-case", "SCREAMING-KEBAB-CASE"
+    /// Default: "camelCase" (matches Tauri's default behavior - Tauri converts camelCase from JS to snake_case in Rust)
+    #[serde(default = "default_parameter_case")]
+    pub default_parameter_case: String,
+
+    /// Default naming convention for struct fields when no serde attribute is present
+    /// Options: same as default_parameter_case
+    /// Default: "snake_case" (matches serde's default serialization behavior)
+    /// Note: Use #[serde(rename_all = "camelCase")] on your structs if you want camelCase in TypeScript
+    #[serde(default = "default_field_case")]
+    pub default_field_case: String,
 }
 
 fn default_project_path() -> String {
@@ -66,6 +79,16 @@ fn default_validation_library() -> String {
     "none".to_string()
 }
 
+fn default_parameter_case() -> String {
+    "camelCase".to_string()
+}
+
+fn default_field_case() -> String {
+    // Default to snake_case to match serde's default serialization behavior
+    // Users should add #[serde(rename_all = "camelCase")] if they want camelCase
+    "snake_case".to_string()
+}
+
 impl Default for GenerateConfig {
     fn default() -> Self {
         Self {
@@ -78,6 +101,8 @@ impl Default for GenerateConfig {
             type_mappings: None,
             exclude_patterns: None,
             include_patterns: None,
+            default_parameter_case: default_parameter_case(),
+            default_field_case: default_field_case(),
         }
     }
 }
