@@ -85,8 +85,8 @@ This creates a configuration block in your `tauri.conf.json`:
 {
   "plugins": {
     "tauri-typegen": {
-      "project_path": "./src-tauri",
-      "output_path": "./src/generated",
+      "project_path": ".",
+      "output_path": "../src/generated",
       "validation_library": "none",
       "verbose": false
     }
@@ -406,14 +406,18 @@ await createUser(
 | Rust Type | TypeScript |
 |-----------|-----------|
 | `String`, `&str` | `string` |
-| `i32`, `f64`, etc. | `number` |
+| `i8`, `i16`, `i32`, `i64`, `i128`, `isize` | `number` |
+| `u8`, `u16`, `u32`, `u64`, `u128`, `usize` | `number` |
+| `f32`, `f64` | `number` |
 | `bool` | `boolean` |
+| `()` | `void` |
 | `Option<T>` | `T \| null` |
 | `Vec<T>` | `T[]` |
-| `HashMap<K,V>` | `Map<K,V>` |
-| `(T,U)` | `[T,U]` |
+| `HashMap<K,V>`, `BTreeMap<K,V>` | `Record<K, V>` |
+| `HashSet<T>`, `BTreeSet<T>` | `T[]` |
+| `(T, U, V)` | `[T, U, V]` |
 | `Channel<T>` | `Channel<T>` |
-| `Result<T,E>` | `T` (errors via Promise rejection) |
+| `Result<T, E>` | `T` (errors via Promise rejection) |
 
 ### Serde Attribute Support
 
