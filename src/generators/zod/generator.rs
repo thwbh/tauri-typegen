@@ -2,10 +2,10 @@ use crate::analysis::CommandAnalyzer;
 use crate::generators::base::file_writer::FileWriter;
 use crate::generators::base::template_context::FieldContext;
 use crate::generators::base::templates::TemplateRegistry;
-use crate::generators::base::type_visitor::{TypeScriptVisitor, ZodVisitor};
 use crate::generators::base::BaseBindingsGenerator;
 use crate::generators::zod::schema_builder::ZodSchemaBuilder;
 use crate::generators::zod::templates::ZodTemplate;
+use crate::generators::zod::type_visitor::ZodVisitor;
 use crate::generators::TypeCollector;
 use crate::models::{CommandInfo, EventInfo, StructInfo};
 use crate::GenerateConfig;
@@ -184,9 +184,9 @@ impl ZodBindingsGenerator {
         analyzer: &CommandAnalyzer,
         config: &GenerateConfig,
     ) -> String {
-        // Use TypeScriptVisitor for command bindings to get proper TS types
-        // (not Zod schemas) in function signatures
-        let visitor = TypeScriptVisitor::with_config(config);
+        // Use ZodVisitor for command bindings - it can generate both Zod schemas
+        // and TypeScript types (via visit_type_for_interface)
+        let visitor = ZodVisitor::with_config(config);
 
         // Convert commands to context wrappers
         let command_contexts = self

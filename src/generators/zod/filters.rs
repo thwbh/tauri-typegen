@@ -238,6 +238,7 @@ pub fn escape_for_js(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::{LengthConstraint, RangeConstraint};
 
     #[test]
     fn test_type_structure_to_zod_schema() {
@@ -282,5 +283,151 @@ mod tests {
         // Test custom type
         let ts = TypeStructure::Custom("User".to_string());
         assert_eq!(type_structure_to_zod_schema(&ts, false), "UserSchema");
+
+        // Test Set type
+        let ts = TypeStructure::Set(Box::new(TypeStructure::Primitive("string".to_string())));
+        assert_eq!(
+            type_structure_to_zod_schema(&ts, false),
+            "z.set(z.string())"
+        );
+
+        // Test Result type
+        let ts = TypeStructure::Result(Box::new(TypeStructure::Primitive("string".to_string())));
+        assert_eq!(
+            type_structure_to_zod_schema(&ts, false),
+            "z.union([z.string(), z.object({ error: z.string() })])"
+        );
+    }
+
+    #[test]
+    fn test_to_zod_schema_filter() {
+        let ts = TypeStructure::Primitive("string".to_string());
+        let value = serde_json::to_value(&ts).unwrap();
+        let args = HashMap::new();
+
+        let result = to_zod_schema_filter(&value, &args).unwrap();
+        assert_eq!(result.as_str().unwrap(), "z.string()");
+    }
+
+    #[test]
+    fn test_to_zod_schema_filter_with_validator() {
+        let ts = TypeStructure::Primitive("string".to_string());
+        let validator = ValidatorAttributes {
+            email: false,
+            url: false,
+            length: Some(LengthConstraint {
+                min: Some(5),
+                max: Some(10),
+                message: None,
+            }),
+            range: None,
+            custom_message: None,
+        };
+
+        let value = serde_json::to_value(&ts).unwrap();
+        let mut args = HashMap::new();
+        args.insert(
+            "validator".to_string(),
+            serde_json::to_value(&validator).unwrap(),
+        );
+
+        let result = to_zod_schema_filter(&value, &args).unwrap();
+        assert!(result.as_str().unwrap().contains(".min(5)"));
+        assert!(result.as_str().unwrap().contains(".max(10)"));
+    }
+
+    #[test]
+    fn test_escape_for_js() {
+        assert_eq!(escape_for_js("hello"), "hello");
+        assert_eq!(escape_for_js("hello\\world"), "hello\\\\world");
+        assert_eq!(escape_for_js("hello\"world"), "hello\\\"world");
+        assert_eq!(escape_for_js("hello\nworld"), "hello\\nworld");
+        assert_eq!(escape_for_js("hello\rworld"), "hello\\rworld");
+        assert_eq!(escape_for_js("hello\tworld"), "hello\\tworld");
+        assert_eq!(
+            escape_for_js("test\\\"line\nbreak\ttab"),
+            "test\\\\\\\"line\\nbreak\\ttab"
+        );
+    }
+
+    #[test]
+    fn test_apply_validators_string() {
+        let validator = ValidatorAttributes {
+            email: true,
+            url: false,
+            length: Some(LengthConstraint {
+                min: Some(3),
+                max: Some(50),
+                message: Some("Invalid length".to_string()),
+            }),
+            range: None,
+            custom_message: None,
+        };
+
+        let ts = TypeStructure::Primitive("string".to_string());
+        let value = serde_json::to_value(&ts).unwrap();
+        let mut args = HashMap::new();
+        args.insert(
+            "validator".to_string(),
+            serde_json::to_value(&validator).unwrap(),
+        );
+
+        let result = to_zod_schema_filter(&value, &args).unwrap();
+        let schema = result.as_str().unwrap();
+        assert!(schema.contains(".email()"));
+        assert!(schema.contains(".min(3"));
+        assert!(schema.contains(".max(50"));
+        assert!(schema.contains("Invalid length"));
+    }
+
+    #[test]
+    fn test_apply_validators_number() {
+        let validator = ValidatorAttributes {
+            email: false,
+            url: false,
+            length: None,
+            range: Some(RangeConstraint {
+                min: Some(1.0),
+                max: Some(100.0),
+                message: Some("Out of range".to_string()),
+            }),
+            custom_message: None,
+        };
+
+        let ts = TypeStructure::Primitive("number".to_string());
+        let value = serde_json::to_value(&ts).unwrap();
+        let mut args = HashMap::new();
+        args.insert(
+            "validator".to_string(),
+            serde_json::to_value(&validator).unwrap(),
+        );
+
+        let result = to_zod_schema_filter(&value, &args).unwrap();
+        let schema = result.as_str().unwrap();
+        assert!(schema.contains("z.coerce.number()"));
+        assert!(schema.contains(".min(1"));
+        assert!(schema.contains(".max(100"));
+        assert!(schema.contains("Out of range"));
+    }
+
+    #[test]
+    fn test_filter_with_is_record_key() {
+        let ts = TypeStructure::Primitive("number".to_string());
+        let value = serde_json::to_value(&ts).unwrap();
+        let mut args = HashMap::new();
+        args.insert("is_record_key".to_string(), Value::Bool(true));
+
+        let result = to_zod_schema_filter(&value, &args).unwrap();
+        // Record keys should not use coerce
+        assert_eq!(result.as_str().unwrap(), "z.number()");
+    }
+
+    #[test]
+    fn test_filter_error_handling() {
+        // Test with invalid value
+        let value = Value::String("invalid".to_string());
+        let args = HashMap::new();
+        let result = to_zod_schema_filter(&value, &args);
+        assert!(result.is_err());
     }
 }

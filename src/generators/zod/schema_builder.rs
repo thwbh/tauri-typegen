@@ -1,4 +1,5 @@
-use crate::generators::base::type_visitor::{TypeVisitor, ZodVisitor};
+use crate::generators::base::type_visitor::TypeVisitor;
+use crate::generators::zod::type_visitor::ZodVisitor;
 use crate::models::{TypeStructure, ValidatorAttributes};
 use crate::GenerateConfig;
 
@@ -259,4 +260,276 @@ fn escape_js_string(s: &str) -> String {
         .replace('\n', "\\n")
         .replace('\r', "\\r")
         .replace('\t', "\\t")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::{LengthConstraint, RangeConstraint};
+
+    fn test_config() -> GenerateConfig {
+        GenerateConfig::default()
+    }
+
+    #[test]
+    fn test_build_schema_primitives() {
+        let config = test_config();
+        let builder = ZodSchemaBuilder::new(&config);
+
+        let ts = TypeStructure::Primitive("string".to_string());
+        assert_eq!(builder.build_schema(&ts, &None), "z.string()");
+
+        let ts = TypeStructure::Primitive("number".to_string());
+        assert_eq!(builder.build_schema(&ts, &None), "z.coerce.number()");
+
+        let ts = TypeStructure::Primitive("boolean".to_string());
+        assert_eq!(builder.build_schema(&ts, &None), "z.coerce.boolean()");
+
+        let ts = TypeStructure::Primitive("void".to_string());
+        assert_eq!(builder.build_schema(&ts, &None), "z.void()");
+    }
+
+    #[test]
+    fn test_build_schema_optional() {
+        let config = test_config();
+        let builder = ZodSchemaBuilder::new(&config);
+
+        let ts = TypeStructure::Optional(Box::new(TypeStructure::Primitive("string".to_string())));
+        assert_eq!(builder.build_schema(&ts, &None), "z.string().optional()");
+    }
+
+    #[test]
+    fn test_build_schema_array() {
+        let config = test_config();
+        let builder = ZodSchemaBuilder::new(&config);
+
+        let ts = TypeStructure::Array(Box::new(TypeStructure::Primitive("string".to_string())));
+        assert_eq!(builder.build_schema(&ts, &None), "z.array(z.string())");
+    }
+
+    #[test]
+    fn test_build_schema_with_length_validator() {
+        let config = test_config();
+        let builder = ZodSchemaBuilder::new(&config);
+
+        let validator = ValidatorAttributes {
+            email: false,
+            url: false,
+            length: Some(LengthConstraint {
+                min: Some(5),
+                max: Some(10),
+                message: None,
+            }),
+            range: None,
+            custom_message: None,
+        };
+
+        let ts = TypeStructure::Primitive("string".to_string());
+        let result = builder.build_schema(&ts, &Some(validator));
+        assert!(result.contains(".min(5)"));
+        assert!(result.contains(".max(10)"));
+    }
+
+    #[test]
+    fn test_build_schema_with_email_validator() {
+        let config = test_config();
+        let builder = ZodSchemaBuilder::new(&config);
+
+        let validator = ValidatorAttributes {
+            email: true,
+            url: false,
+            length: None,
+            range: None,
+            custom_message: None,
+        };
+
+        let ts = TypeStructure::Primitive("string".to_string());
+        let result = builder.build_schema(&ts, &Some(validator));
+        assert!(result.contains(".email()"));
+    }
+
+    #[test]
+    fn test_build_schema_with_url_validator() {
+        let config = test_config();
+        let builder = ZodSchemaBuilder::new(&config);
+
+        let validator = ValidatorAttributes {
+            email: false,
+            url: true,
+            length: None,
+            range: None,
+            custom_message: None,
+        };
+
+        let ts = TypeStructure::Primitive("string".to_string());
+        let result = builder.build_schema(&ts, &Some(validator));
+        assert!(result.contains(".url()"));
+    }
+
+    #[test]
+    fn test_build_schema_with_range_validator() {
+        let config = test_config();
+        let builder = ZodSchemaBuilder::new(&config);
+
+        let validator = ValidatorAttributes {
+            email: false,
+            url: false,
+            length: None,
+            range: Some(RangeConstraint {
+                min: Some(1.0),
+                max: Some(100.0),
+                message: None,
+            }),
+            custom_message: None,
+        };
+
+        let ts = TypeStructure::Primitive("number".to_string());
+        let result = builder.build_schema(&ts, &Some(validator));
+        assert!(result.contains(".min(1)"));
+        assert!(result.contains(".max(100)"));
+    }
+
+    #[test]
+    fn test_build_schema_with_validator_message() {
+        let config = test_config();
+        let builder = ZodSchemaBuilder::new(&config);
+
+        let validator = ValidatorAttributes {
+            email: false,
+            url: false,
+            length: Some(LengthConstraint {
+                min: Some(3),
+                max: None,
+                message: Some("Too short".to_string()),
+            }),
+            range: None,
+            custom_message: None,
+        };
+
+        let ts = TypeStructure::Primitive("string".to_string());
+        let result = builder.build_schema(&ts, &Some(validator));
+        assert!(result.contains("Too short"));
+    }
+
+    #[test]
+    fn test_build_schema_map() {
+        let config = test_config();
+        let builder = ZodSchemaBuilder::new(&config);
+
+        let ts = TypeStructure::Map {
+            key: Box::new(TypeStructure::Primitive("string".to_string())),
+            value: Box::new(TypeStructure::Primitive("number".to_string())),
+        };
+        assert_eq!(
+            builder.build_schema(&ts, &None),
+            "z.record(z.string(), z.coerce.number())"
+        );
+    }
+
+    #[test]
+    fn test_build_schema_set() {
+        let config = test_config();
+        let builder = ZodSchemaBuilder::new(&config);
+
+        let ts = TypeStructure::Set(Box::new(TypeStructure::Primitive("string".to_string())));
+        assert_eq!(builder.build_schema(&ts, &None), "z.set(z.string())");
+    }
+
+    #[test]
+    fn test_build_schema_tuple() {
+        let config = test_config();
+        let builder = ZodSchemaBuilder::new(&config);
+
+        let ts = TypeStructure::Tuple(vec![
+            TypeStructure::Primitive("string".to_string()),
+            TypeStructure::Primitive("number".to_string()),
+        ]);
+        assert_eq!(
+            builder.build_schema(&ts, &None),
+            "z.tuple([z.string(), z.coerce.number()])"
+        );
+    }
+
+    #[test]
+    fn test_build_schema_empty_tuple() {
+        let config = test_config();
+        let builder = ZodSchemaBuilder::new(&config);
+
+        let ts = TypeStructure::Tuple(vec![]);
+        assert_eq!(builder.build_schema(&ts, &None), "z.void()");
+    }
+
+    #[test]
+    fn test_build_schema_result() {
+        let config = test_config();
+        let builder = ZodSchemaBuilder::new(&config);
+
+        let ts = TypeStructure::Result(Box::new(TypeStructure::Primitive("string".to_string())));
+        assert_eq!(
+            builder.build_schema(&ts, &None),
+            "z.union([z.string(), z.object({ error: z.string() })])"
+        );
+    }
+
+    #[test]
+    fn test_build_schema_custom() {
+        let config = test_config();
+        let builder = ZodSchemaBuilder::new(&config);
+
+        let ts = TypeStructure::Custom("User".to_string());
+        assert_eq!(builder.build_schema(&ts, &None), "UserSchema");
+    }
+
+    #[test]
+    fn test_build_param_schema() {
+        let config = test_config();
+        let builder = ZodSchemaBuilder::new(&config);
+
+        let ts = TypeStructure::Primitive("string".to_string());
+        assert_eq!(builder.build_param_schema(&ts), "z.string()");
+    }
+
+    #[test]
+    fn test_build_param_schema_no_validation() {
+        let config = test_config();
+        let builder = ZodSchemaBuilder::new(&config);
+
+        // Even with validator, param schema should not apply validation
+        let ts = TypeStructure::Array(Box::new(TypeStructure::Primitive("string".to_string())));
+        assert_eq!(builder.build_param_schema(&ts), "z.array(z.string())");
+    }
+
+    #[test]
+    fn test_escape_js_string() {
+        assert_eq!(escape_js_string("hello"), "hello");
+        assert_eq!(escape_js_string("hello\\world"), "hello\\\\world");
+        assert_eq!(escape_js_string("hello\"world"), "hello\\\"world");
+        assert_eq!(escape_js_string("hello\nworld"), "hello\\nworld");
+        assert_eq!(escape_js_string("hello\rworld"), "hello\\rworld");
+        assert_eq!(escape_js_string("hello\tworld"), "hello\\tworld");
+    }
+
+    #[test]
+    fn test_array_length_validator() {
+        let config = test_config();
+        let builder = ZodSchemaBuilder::new(&config);
+
+        let validator = ValidatorAttributes {
+            email: false,
+            url: false,
+            length: Some(LengthConstraint {
+                min: Some(2),
+                max: Some(5),
+                message: None,
+            }),
+            range: None,
+            custom_message: None,
+        };
+
+        let ts = TypeStructure::Array(Box::new(TypeStructure::Primitive("string".to_string())));
+        let result = builder.build_schema(&ts, &Some(validator));
+        assert!(result.contains("z.array"));
+        assert!(result.contains(".min(2)"));
+        assert!(result.contains(".max(5)"));
+    }
 }

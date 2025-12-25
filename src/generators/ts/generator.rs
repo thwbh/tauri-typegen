@@ -1,9 +1,9 @@
 use crate::analysis::CommandAnalyzer;
 use crate::generators::base::file_writer::FileWriter;
 use crate::generators::base::templates::TemplateRegistry;
-use crate::generators::base::type_visitor::TypeScriptVisitor;
 use crate::generators::base::BaseBindingsGenerator;
 use crate::generators::ts::templates::TypeScriptTemplate;
+use crate::generators::ts::type_visitor::TypeScriptVisitor;
 use crate::generators::TypeCollector;
 use crate::models::{CommandInfo, EventInfo, StructInfo};
 use crate::GenerateConfig;
