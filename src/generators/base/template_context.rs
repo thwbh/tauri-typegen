@@ -149,7 +149,8 @@ impl CommandContext {
         type_resolver: &dyn Fn(&str) -> TypeStructure,
     ) -> Self {
         // Use pre-parsed type structure from CommandInfo
-        let return_type_ts = visitor.visit_type(&cmd.return_type_structure);
+        // Use visit_type_for_interface to get TypeScript types (not Zod schemas)
+        let return_type_ts = visitor.visit_type_for_interface(&cmd.return_type_structure);
 
         // Compute TypeScript names using NamingContext trait methods
         let ts_function_name = self.compute_function_name(&cmd.name, &cmd.serde_rename_all);

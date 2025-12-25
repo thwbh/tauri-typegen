@@ -409,6 +409,76 @@ mod tests {
             let result = visitor.visit_type(&primitive("unknown_type"));
             assert!(result.contains("z.unknown()"));
         }
+
+        #[test]
+        fn test_visit_type_for_interface_returns_typescript_types() {
+            let visitor = ZodVisitor::new();
+
+            // Regression test: visit_type_for_interface should return TypeScript types,
+            // not Zod schemas. This is used for command return types in function signatures.
+
+            // Primitives
+            assert_eq!(
+                visitor.visit_type_for_interface(&primitive("string")),
+                "string"
+            );
+            assert_eq!(
+                visitor.visit_type_for_interface(&primitive("number")),
+                "number"
+            );
+            assert_eq!(
+                visitor.visit_type_for_interface(&primitive("boolean")),
+                "boolean"
+            );
+            assert_eq!(visitor.visit_type_for_interface(&primitive("void")), "void");
+
+            // Arrays - should be "Type[]" not "z.array(TypeSchema)"
+            assert_eq!(
+                visitor.visit_type_for_interface(&array(primitive("string"))),
+                "string[]"
+            );
+            assert_eq!(
+                visitor.visit_type_for_interface(&array(custom("Banana"))),
+                "Banana[]"
+            );
+
+            // Custom types - should be "User" not "UserSchema"
+            assert_eq!(visitor.visit_type_for_interface(&custom("User")), "User");
+            assert_eq!(
+                visitor.visit_type_for_interface(&custom("CommitInfo")),
+                "CommitInfo"
+            );
+
+            // Optional types - should be "Type | null" not "TypeSchema.nullable()"
+            assert_eq!(
+                visitor.visit_type_for_interface(&optional(primitive("string"))),
+                "string | null"
+            );
+            assert_eq!(
+                visitor.visit_type_for_interface(&optional(custom("User"))),
+                "User | null"
+            );
+
+            // Result types - should unwrap to success type
+            assert_eq!(
+                visitor.visit_type_for_interface(&result(primitive("number"))),
+                "number"
+            );
+            assert_eq!(
+                visitor.visit_type_for_interface(&result(custom("Order"))),
+                "Order"
+            );
+
+            // Complex nested types
+            assert_eq!(
+                visitor.visit_type_for_interface(&array(array(primitive("number")))),
+                "number[][]"
+            );
+            assert_eq!(
+                visitor.visit_type_for_interface(&map(primitive("string"), custom("Product"))),
+                "Record<string, Product>"
+            );
+        }
     }
 
     // Type mappings tests
