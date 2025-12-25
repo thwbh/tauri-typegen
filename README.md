@@ -96,12 +96,20 @@ This creates a configuration block in your `tauri.conf.json`:
 
 ### 2. Add Build Hook
 
-Add to `src-tauri/build.rs`:
+Add `tauri-typegen` as a build dependency from within your Tauri project (in the `src-tauri` directory):
+
+```bash
+cd src-tauri
+cargo add --build tauri-typegen
+cd ..
+```
+
+Then add to `src-tauri/build.rs`:
 
 ```rust
 fn main() {
     // Generate TypeScript bindings before build
-    tauri_typegen::generate_at_build_time()
+    tauri_typegen::BuildSystem::generate_at_build_time()
         .expect("Failed to generate TypeScript bindings");
 
     tauri_build::build()
@@ -553,10 +561,19 @@ Options:
 
 ### Build Script API
 
+Add as a build dependency:
+
+```bash
+cd src-tauri
+cargo add --build tauri-typegen
+```
+
+Then in `src-tauri/build.rs`:
+
 ```rust
-// In src-tauri/build.rs
 fn main() {
-    tauri_typegen::generate_at_build_time()
+    // Generate TypeScript bindings
+    tauri_typegen::BuildSystem::generate_at_build_time()
         .expect("Failed to generate TypeScript bindings");
 
     tauri_build::build()
