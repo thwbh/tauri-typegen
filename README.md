@@ -85,8 +85,8 @@ This creates a configuration block in your `tauri.conf.json`:
 {
   "plugins": {
     "tauri-typegen": {
-      "project_path": "./src-tauri",
-      "output_path": "./src/generated",
+      "project_path": ".",
+      "output_path": "../src/generated",
       "validation_library": "none",
       "verbose": false
     }
@@ -96,12 +96,20 @@ This creates a configuration block in your `tauri.conf.json`:
 
 ### 2. Add Build Hook
 
-Add to `src-tauri/build.rs`:
+Add `tauri-typegen` as a build dependency from within your Tauri project (in the `src-tauri` directory):
+
+```bash
+cd src-tauri
+cargo add --build tauri-typegen
+cd ..
+```
+
+Then add to `src-tauri/build.rs`:
 
 ```rust
 fn main() {
     // Generate TypeScript bindings before build
-    tauri_typegen::generate_at_build_time()
+    tauri_typegen::BuildSystem::generate_at_build_time()
         .expect("Failed to generate TypeScript bindings");
 
     tauri_build::build()
@@ -398,14 +406,18 @@ await createUser(
 | Rust Type | TypeScript |
 |-----------|-----------|
 | `String`, `&str` | `string` |
-| `i32`, `f64`, etc. | `number` |
+| `i8`, `i16`, `i32`, `i64`, `i128`, `isize` | `number` |
+| `u8`, `u16`, `u32`, `u64`, `u128`, `usize` | `number` |
+| `f32`, `f64` | `number` |
 | `bool` | `boolean` |
+| `()` | `void` |
 | `Option<T>` | `T \| null` |
 | `Vec<T>` | `T[]` |
-| `HashMap<K,V>` | `Map<K,V>` |
-| `(T,U)` | `[T,U]` |
+| `HashMap<K,V>`, `BTreeMap<K,V>` | `Record<K, V>` |
+| `HashSet<T>`, `BTreeSet<T>` | `T[]` |
+| `(T, U, V)` | `[T, U, V]` |
 | `Channel<T>` | `Channel<T>` |
-| `Result<T,E>` | `T` (errors via Promise rejection) |
+| `Result<T, E>` | `T` (errors via Promise rejection) |
 
 ### Serde Attribute Support
 
@@ -553,10 +565,19 @@ Options:
 
 ### Build Script API
 
+Add as a build dependency:
+
+```bash
+cd src-tauri
+cargo add --build tauri-typegen
+```
+
+Then in `src-tauri/build.rs`:
+
 ```rust
-// In src-tauri/build.rs
 fn main() {
-    tauri_typegen::generate_at_build_time()
+    // Generate TypeScript bindings
+    tauri_typegen::BuildSystem::generate_at_build_time()
         .expect("Failed to generate TypeScript bindings");
 
     tauri_build::build()
@@ -612,6 +633,61 @@ In `tauri.conf.json`:
 
 - **`none`** (default): TypeScript types only, no runtime validation
 - **`zod`**: Generate Zod schemas with runtime validation and hooks
+
+## Usage in CI
+
+When running builds in CI/CD environments, you need to generate TypeScript bindings before the frontend build step.
+
+### Why CI Needs Special Setup
+
+The `cargo tauri build` command builds the frontend bundle first, before compiling Rust code. This means the build script in `src-tauri/build.rs` hasn't run yet, so bindings aren't generated when the frontend needs them.
+
+### Recommended CI Workflow
+
+Install and run the CLI tool as a separate step before building:
+
+```yaml
+# GitHub Actions example
+- name: Install tauri-typegen
+  run: cargo install tauri-typegen
+
+- name: Generate TypeScript bindings
+  run: cargo tauri-typegen generate
+
+- name: Build Tauri app
+  run: npm run tauri build
+```
+
+```yaml
+# GitLab CI example
+build:
+  script:
+    - cargo install tauri-typegen
+    - cargo tauri-typegen generate
+    - npm run tauri build
+```
+
+### Alternative: Cache the CLI Installation
+
+To speed up CI runs, cache the installed binary:
+
+```yaml
+# GitHub Actions with caching
+- name: Cache tauri-typegen
+  uses: actions/cache@v4
+  with:
+    path: ~/.cargo/bin/cargo-tauri-typegen
+    key: ${{ runner.os }}-tauri-typegen-${{ hashFiles('**/Cargo.lock') }}
+
+- name: Install tauri-typegen
+  run: cargo install tauri-typegen --locked
+
+- name: Generate bindings
+  run: cargo tauri-typegen generate
+
+- name: Build
+  run: npm run tauri build
+```
 
 ## Examples
 

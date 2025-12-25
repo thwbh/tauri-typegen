@@ -28,9 +28,6 @@ serde-rename-rule = "0.2.2"
 name = "cargo-tauri-typegen"
 path = "src/bin/cargo-tauri-typegen.rs"
 
-[features]
-default = []
-build-time-generation = []
 
 [dev-dependencies]
 tokio = { version = "1.0", features = ["macros", "rt"] }
