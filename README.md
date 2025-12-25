@@ -634,6 +634,61 @@ In `tauri.conf.json`:
 - **`none`** (default): TypeScript types only, no runtime validation
 - **`zod`**: Generate Zod schemas with runtime validation and hooks
 
+## Usage in CI
+
+When running builds in CI/CD environments, you need to generate TypeScript bindings before the frontend build step.
+
+### Why CI Needs Special Setup
+
+The `cargo tauri build` command builds the frontend bundle first, before compiling Rust code. This means the build script in `src-tauri/build.rs` hasn't run yet, so bindings aren't generated when the frontend needs them.
+
+### Recommended CI Workflow
+
+Install and run the CLI tool as a separate step before building:
+
+```yaml
+# GitHub Actions example
+- name: Install tauri-typegen
+  run: cargo install tauri-typegen
+
+- name: Generate TypeScript bindings
+  run: cargo tauri-typegen generate
+
+- name: Build Tauri app
+  run: npm run tauri build
+```
+
+```yaml
+# GitLab CI example
+build:
+  script:
+    - cargo install tauri-typegen
+    - cargo tauri-typegen generate
+    - npm run tauri build
+```
+
+### Alternative: Cache the CLI Installation
+
+To speed up CI runs, cache the installed binary:
+
+```yaml
+# GitHub Actions with caching
+- name: Cache tauri-typegen
+  uses: actions/cache@v4
+  with:
+    path: ~/.cargo/bin/cargo-tauri-typegen
+    key: ${{ runner.os }}-tauri-typegen-${{ hashFiles('**/Cargo.lock') }}
+
+- name: Install tauri-typegen
+  run: cargo install tauri-typegen --locked
+
+- name: Generate bindings
+  run: cargo tauri-typegen generate
+
+- name: Build
+  run: npm run tauri build
+```
+
 ## Examples
 
 See the examples repository: https://github.com/thwbh/tauri-typegen-examples
