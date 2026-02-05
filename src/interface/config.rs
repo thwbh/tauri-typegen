@@ -65,6 +65,10 @@ pub struct GenerateConfig {
     /// Note: Use #[serde(rename_all = "camelCase")] on your structs if you want camelCase in TypeScript
     #[serde(default = "default_field_case")]
     pub default_field_case: String,
+
+    /// Force regeneration, ignoring cache
+    #[serde(default)]
+    pub force: Option<bool>,
 }
 
 fn default_project_path() -> String {
@@ -103,6 +107,7 @@ impl Default for GenerateConfig {
             include_patterns: None,
             default_parameter_case: default_parameter_case(),
             default_field_case: default_field_case(),
+            force: Some(false),
         }
     }
 }
@@ -175,6 +180,9 @@ impl GenerateConfig {
                         config.include_patterns = Some(patterns);
                     }
                 }
+                if let Some(force) = typegen.get("force").and_then(|v| v.as_bool()) {
+                    config.force = Some(force);
+                }
 
                 config.validate()?;
                 return Ok(Some(config));
@@ -215,6 +223,7 @@ impl GenerateConfig {
             "typeMappings": self.type_mappings,
             "excludePatterns": self.exclude_patterns,
             "includePatterns": self.include_patterns,
+            "force": self.force.unwrap_or(false),
         });
 
         // Ensure plugins section exists and insert typegen configuration
@@ -294,6 +303,9 @@ impl GenerateConfig {
         if other.include_patterns.is_some() {
             self.include_patterns = other.include_patterns.clone();
         }
+        if other.force.is_some() {
+            self.force = other.force;
+        }
     }
 
     /// Get effective verbose setting
@@ -309,6 +321,11 @@ impl GenerateConfig {
     /// Get effective include_private setting
     pub fn should_include_private(&self) -> bool {
         self.include_private.unwrap_or(false)
+    }
+
+    /// Get effective force setting
+    pub fn should_force(&self) -> bool {
+        self.force.unwrap_or(false)
     }
 }
 
@@ -326,6 +343,7 @@ mod tests {
         assert!(!config.is_verbose());
         assert!(!config.should_visualize_deps());
         assert!(!config.should_include_private());
+        assert!(!config.should_force());
     }
 
     #[test]

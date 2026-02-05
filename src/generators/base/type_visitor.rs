@@ -504,6 +504,7 @@ mod tests {
                 include_patterns: None,
                 default_parameter_case: "camelCase".to_string(),
                 default_field_case: "camelCase".to_string(),
+                force: Some(false),
             }
         }
 

@@ -198,33 +198,37 @@ impl BuildSystem {
             return Ok(vec![]);
         }
 
-        // Check cache to see if regeneration is needed
+        // Check cache to see if regeneration is needed (unless force is set)
         let discovered_structs = analyzer.get_discovered_structs();
-        match GenerationCache::needs_regeneration(
-            &config.output_path,
-            &commands,
-            discovered_structs,
-            config,
-        ) {
-            Ok(false) => {
-                self.logger
-                    .verbose("Cache hit - no changes detected, skipping generation");
-                // Return list of existing files without regenerating
-                let output_manager = OutputManager::new(&config.output_path);
-                if let Ok(metadata) = output_manager.get_generation_metadata() {
-                    return Ok(metadata.files.iter().map(|f| f.name.clone()).collect());
+        if config.should_force() {
+            self.logger.verbose("Force flag set, regenerating bindings");
+        } else {
+            match GenerationCache::needs_regeneration(
+                &config.output_path,
+                &commands,
+                discovered_structs,
+                config,
+            ) {
+                Ok(false) => {
+                    self.logger
+                        .verbose("Cache hit - no changes detected, skipping generation");
+                    // Return list of existing files without regenerating
+                    let output_manager = OutputManager::new(&config.output_path);
+                    if let Ok(metadata) = output_manager.get_generation_metadata() {
+                        return Ok(metadata.files.iter().map(|f| f.name.clone()).collect());
+                    }
+                    // If we can't get existing files, fall through to regenerate
+                    self.logger
+                        .debug("Could not get existing file list, regenerating");
                 }
-                // If we can't get existing files, fall through to regenerate
-                self.logger
-                    .debug("Could not get existing file list, regenerating");
-            }
-            Ok(true) => {
-                self.logger
-                    .verbose("Cache miss - changes detected, regenerating");
-            }
-            Err(e) => {
-                self.logger
-                    .debug(&format!("Cache check failed: {}, regenerating", e));
+                Ok(true) => {
+                    self.logger
+                        .verbose("Cache miss - changes detected, regenerating");
+                }
+                Err(e) => {
+                    self.logger
+                        .debug(&format!("Cache check failed: {}, regenerating", e));
+                }
             }
         }
 
