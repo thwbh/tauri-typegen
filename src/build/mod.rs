@@ -1,4 +1,5 @@
 pub mod dependency_resolver;
+pub mod generation_cache;
 pub mod output_manager;
 pub mod project_scanner;
 
@@ -9,6 +10,7 @@ use crate::interface::output::{Logger, ProgressReporter};
 use std::path::Path;
 
 pub use dependency_resolver::*;
+pub use generation_cache::*;
 pub use output_manager::*;
 pub use project_scanner::*;
 
@@ -196,6 +198,36 @@ impl BuildSystem {
             return Ok(vec![]);
         }
 
+        // Check cache to see if regeneration is needed
+        let discovered_structs = analyzer.get_discovered_structs();
+        match GenerationCache::needs_regeneration(
+            &config.output_path,
+            &commands,
+            discovered_structs,
+            config,
+        ) {
+            Ok(false) => {
+                self.logger
+                    .verbose("Cache hit - no changes detected, skipping generation");
+                // Return list of existing files without regenerating
+                let output_manager = OutputManager::new(&config.output_path);
+                if let Ok(metadata) = output_manager.get_generation_metadata() {
+                    return Ok(metadata.files.iter().map(|f| f.name.clone()).collect());
+                }
+                // If we can't get existing files, fall through to regenerate
+                self.logger
+                    .debug("Could not get existing file list, regenerating");
+            }
+            Ok(true) => {
+                self.logger
+                    .verbose("Cache miss - changes detected, regenerating");
+            }
+            Err(e) => {
+                self.logger
+                    .debug(&format!("Cache check failed: {}, regenerating", e));
+            }
+        }
+
         let validation = match config.validation_library.as_str() {
             "zod" | "none" => Some(config.validation_library.clone()),
             _ => return Err("Invalid validation library. Use 'zod' or 'none'".into()),
@@ -204,7 +236,7 @@ impl BuildSystem {
         let mut generator = create_generator(validation);
         let generated_files = generator.generate_models(
             &commands,
-            analyzer.get_discovered_structs(),
+            discovered_structs,
             &config.output_path,
             &analyzer,
             config,
@@ -213,6 +245,13 @@ impl BuildSystem {
         // Generate dependency visualization if requested
         if config.should_visualize_deps() {
             self.generate_dependency_visualization(&analyzer, &commands, &config.output_path)?;
+        }
+
+        // Save cache after successful generation
+        let cache = GenerationCache::new(&commands, discovered_structs, config)?;
+        if let Err(e) = cache.save(&config.output_path) {
+            self.logger
+                .warning(&format!("Failed to save generation cache: {}", e));
         }
 
         Ok(generated_files)
