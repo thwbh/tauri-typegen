@@ -317,4 +317,119 @@ mod tests {
         assert_eq!(config.validation_library, "none");
         assert_eq!(config.project_path, "./src-tauri");
     }
+
+    #[test]
+    fn test_load_configuration_from_tauri_config() {
+        let temp_dir = TempDir::new().unwrap();
+        let tauri_config_path = temp_dir.path().join("tauri.conf.json");
+
+        // Create the project path directory so validation passes
+        let custom_src_path = temp_dir.path().join("custom-src");
+        std::fs::create_dir_all(&custom_src_path).unwrap();
+
+        // Create a tauri.conf.json with typegen plugin configuration
+        let config_content = format!(
+            r#"{{
+            "plugins": {{
+                "typegen": {{
+                    "projectPath": "{}",
+                    "outputPath": "./custom-output",
+                    "validationLibrary": "zod"
+                }}
+            }}
+        }}"#,
+            custom_src_path.to_string_lossy()
+        );
+        std::fs::write(&tauri_config_path, &config_content).unwrap();
+
+        let project_info = ProjectInfo {
+            root_path: temp_dir.path().to_path_buf(),
+            src_tauri_path: temp_dir.path().join("src-tauri"),
+            tauri_config_path: Some(tauri_config_path),
+        };
+
+        let build_system = BuildSystem::new(false, false);
+        let config = build_system.load_configuration(&project_info).unwrap();
+
+        assert_eq!(config.validation_library, "zod");
+        assert_eq!(config.output_path, "./custom-output");
+    }
+
+    #[test]
+    fn test_load_configuration_from_standalone_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let typegen_config_path = temp_dir.path().join("typegen.json");
+
+        // Create a project path that exists for validation
+        let project_path = temp_dir.path().join("src-tauri");
+        std::fs::create_dir_all(&project_path).unwrap();
+
+        // Create a standalone typegen.json configuration
+        let config_content = format!(
+            r#"{{
+            "project_path": "{}",
+            "output_path": "./standalone-output",
+            "validation_library": "zod"
+        }}"#,
+            project_path.to_string_lossy()
+        );
+        std::fs::write(&typegen_config_path, config_content).unwrap();
+
+        let project_info = ProjectInfo {
+            root_path: temp_dir.path().to_path_buf(),
+            src_tauri_path: project_path.clone(),
+            tauri_config_path: None,
+        };
+
+        let build_system = BuildSystem::new(false, false);
+        let config = build_system.load_configuration(&project_info).unwrap();
+
+        assert_eq!(config.validation_library, "zod");
+        assert_eq!(config.output_path, "./standalone-output");
+    }
+
+    #[test]
+    fn test_load_configuration_falls_back_on_invalid_tauri_config() {
+        let temp_dir = TempDir::new().unwrap();
+        let tauri_config_path = temp_dir.path().join("tauri.conf.json");
+
+        // Create an invalid tauri.conf.json (no typegen section)
+        let config_content = r#"{"build": {}}"#;
+        std::fs::write(&tauri_config_path, config_content).unwrap();
+
+        let project_info = ProjectInfo {
+            root_path: temp_dir.path().to_path_buf(),
+            src_tauri_path: temp_dir.path().join("src-tauri"),
+            tauri_config_path: Some(tauri_config_path),
+        };
+
+        let build_system = BuildSystem::new(false, false);
+        let config = build_system.load_configuration(&project_info).unwrap();
+
+        // Should fall back to defaults
+        assert_eq!(config.validation_library, "none");
+        assert_eq!(config.project_path, "./src-tauri");
+    }
+
+    #[test]
+    fn test_build_system_with_verbose_logging() {
+        let build_system = BuildSystem::new(true, true);
+        assert!(build_system
+            .logger
+            .should_log(crate::interface::output::LogLevel::Verbose));
+        assert!(build_system
+            .logger
+            .should_log(crate::interface::output::LogLevel::Debug));
+    }
+
+    #[test]
+    fn test_build_system_without_verbose_logging() {
+        let build_system = BuildSystem::new(false, false);
+        assert!(!build_system
+            .logger
+            .should_log(crate::interface::output::LogLevel::Verbose));
+        assert!(!build_system
+            .logger
+            .should_log(crate::interface::output::LogLevel::Debug));
+    }
 }
