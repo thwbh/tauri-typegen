@@ -17,7 +17,7 @@ pub enum CacheError {
 }
 
 /// Cache file name stored in the output directory
-const CACHE_FILE_NAME: &str = ".tauri-typegen.cache";
+const CACHE_FILE_NAME: &str = ".typecache";
 
 /// Represents the cached state of a generation run
 #[derive(Debug, Serialize, Deserialize)]
