@@ -2,6 +2,7 @@ use clap::Parser;
 use std::fs;
 use std::path::PathBuf;
 use tauri_typegen::analysis::CommandAnalyzer;
+use tauri_typegen::build::GenerationCache;
 use tauri_typegen::generators::create_generator;
 use tauri_typegen::interface::{
     print_dependency_visualization_info, print_usage_info, CargoCli, CargoSubcommands,
@@ -34,6 +35,7 @@ fn main() {
                     verbose,
                     visualize_deps,
                     config_file,
+                    force,
                 } => {
                     if let Err(e) = run_generate(
                         project_path,
@@ -42,6 +44,7 @@ fn main() {
                         verbose,
                         visualize_deps,
                         config_file,
+                        force,
                     ) {
                         eprintln!("Error: {}", e);
                         std::process::exit(1);
@@ -81,6 +84,7 @@ fn run_generate(
     verbose: bool,
     visualize_deps: bool,
     config_file: Option<PathBuf>,
+    force: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let logger = Logger::new(verbose, false);
     let mut reporter = ProgressReporter::new(logger, 4);
@@ -144,6 +148,10 @@ fn run_generate(
     if visualize_deps {
         config.visualize_deps = Some(true);
     }
+    // CLI --force flag overrides config
+    if force {
+        config.force = Some(true);
+    }
 
     reporter.complete_step(Some(&format!(
         "Using {} validation",
@@ -205,6 +213,35 @@ fn run_generate(
         return Ok(());
     }
 
+    // Check cache to see if regeneration is needed (unless force is set)
+    let discovered_structs = analyzer.get_discovered_structs();
+    let needs_regeneration = if config.should_force() {
+        if config.is_verbose() {
+            println!("🔄 Force flag set, regenerating bindings");
+        }
+        true
+    } else {
+        GenerationCache::needs_regeneration(
+            &config.output_path,
+            &commands,
+            discovered_structs,
+            &config,
+        )
+        .unwrap_or(true) // On error, assume regeneration is needed
+    };
+
+    if !needs_regeneration {
+        if config.is_verbose() {
+            println!("✨ Cache hit - no changes detected, skipping generation");
+        }
+        println!("✅ TypeScript bindings are up to date");
+        return Ok(());
+    }
+
+    if config.is_verbose() && !config.should_force() {
+        println!("🔄 Changes detected, regenerating bindings");
+    }
+
     // Generate bindings
     reporter.start_step("Generating TypeScript bindings");
     let validation = match config.validation_library.as_str() {
@@ -215,7 +252,7 @@ fn run_generate(
     let mut generator = create_generator(validation);
     let generated_files = generator.generate_models(
         &commands,
-        analyzer.get_discovered_structs(),
+        discovered_structs,
         &config.output_path,
         &analyzer,
         &config,
@@ -233,6 +270,12 @@ fn run_generate(
         fs::write(&dot_file_path, dot_viz)?;
 
         print_dependency_visualization_info(&config.output_path);
+    }
+
+    // Save cache after successful generation
+    let cache = GenerationCache::new(&commands, discovered_structs, &config)?;
+    if let Err(e) = cache.save(&config.output_path) {
+        eprintln!("Warning: Failed to save generation cache: {}", e);
     }
 
     // Print summary
@@ -344,7 +387,8 @@ fn run_init(
         Some(config.validation_library.clone()),
         verbose,
         visualize_deps,
-        None, // No config file since we just created one
+        None,  // No config file since we just created one
+        false, // Respect cache behavior
     )?;
 
     logger.info("");

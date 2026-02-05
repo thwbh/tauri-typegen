@@ -1,4 +1,5 @@
 pub mod dependency_resolver;
+pub mod generation_cache;
 pub mod output_manager;
 pub mod project_scanner;
 
@@ -9,6 +10,7 @@ use crate::interface::output::{Logger, ProgressReporter};
 use std::path::Path;
 
 pub use dependency_resolver::*;
+pub use generation_cache::*;
 pub use output_manager::*;
 pub use project_scanner::*;
 
@@ -196,6 +198,40 @@ impl BuildSystem {
             return Ok(vec![]);
         }
 
+        // Check cache to see if regeneration is needed (unless force is set)
+        let discovered_structs = analyzer.get_discovered_structs();
+        if config.should_force() {
+            self.logger.verbose("Force flag set, regenerating bindings");
+        } else {
+            match GenerationCache::needs_regeneration(
+                &config.output_path,
+                &commands,
+                discovered_structs,
+                config,
+            ) {
+                Ok(false) => {
+                    self.logger
+                        .verbose("Cache hit - no changes detected, skipping generation");
+                    // Return list of existing files without regenerating
+                    let output_manager = OutputManager::new(&config.output_path);
+                    if let Ok(metadata) = output_manager.get_generation_metadata() {
+                        return Ok(metadata.files.iter().map(|f| f.name.clone()).collect());
+                    }
+                    // If we can't get existing files, fall through to regenerate
+                    self.logger
+                        .debug("Could not get existing file list, regenerating");
+                }
+                Ok(true) => {
+                    self.logger
+                        .verbose("Cache miss - changes detected, regenerating");
+                }
+                Err(e) => {
+                    self.logger
+                        .debug(&format!("Cache check failed: {}, regenerating", e));
+                }
+            }
+        }
+
         let validation = match config.validation_library.as_str() {
             "zod" | "none" => Some(config.validation_library.clone()),
             _ => return Err("Invalid validation library. Use 'zod' or 'none'".into()),
@@ -204,7 +240,7 @@ impl BuildSystem {
         let mut generator = create_generator(validation);
         let generated_files = generator.generate_models(
             &commands,
-            analyzer.get_discovered_structs(),
+            discovered_structs,
             &config.output_path,
             &analyzer,
             config,
@@ -213,6 +249,13 @@ impl BuildSystem {
         // Generate dependency visualization if requested
         if config.should_visualize_deps() {
             self.generate_dependency_visualization(&analyzer, &commands, &config.output_path)?;
+        }
+
+        // Save cache after successful generation
+        let cache = GenerationCache::new(&commands, discovered_structs, config)?;
+        if let Err(e) = cache.save(&config.output_path) {
+            self.logger
+                .warning(&format!("Failed to save generation cache: {}", e));
         }
 
         Ok(generated_files)
@@ -273,5 +316,120 @@ mod tests {
 
         assert_eq!(config.validation_library, "none");
         assert_eq!(config.project_path, "./src-tauri");
+    }
+
+    #[test]
+    fn test_load_configuration_from_tauri_config() {
+        let temp_dir = TempDir::new().unwrap();
+        let tauri_config_path = temp_dir.path().join("tauri.conf.json");
+
+        // Create the project path directory so validation passes
+        let custom_src_path = temp_dir.path().join("custom-src");
+        std::fs::create_dir_all(&custom_src_path).unwrap();
+
+        // Create a tauri.conf.json with typegen plugin configuration
+        let config_content = format!(
+            r#"{{
+            "plugins": {{
+                "typegen": {{
+                    "projectPath": "{}",
+                    "outputPath": "./custom-output",
+                    "validationLibrary": "zod"
+                }}
+            }}
+        }}"#,
+            custom_src_path.to_string_lossy()
+        );
+        std::fs::write(&tauri_config_path, &config_content).unwrap();
+
+        let project_info = ProjectInfo {
+            root_path: temp_dir.path().to_path_buf(),
+            src_tauri_path: temp_dir.path().join("src-tauri"),
+            tauri_config_path: Some(tauri_config_path),
+        };
+
+        let build_system = BuildSystem::new(false, false);
+        let config = build_system.load_configuration(&project_info).unwrap();
+
+        assert_eq!(config.validation_library, "zod");
+        assert_eq!(config.output_path, "./custom-output");
+    }
+
+    #[test]
+    fn test_load_configuration_from_standalone_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let typegen_config_path = temp_dir.path().join("typegen.json");
+
+        // Create a project path that exists for validation
+        let project_path = temp_dir.path().join("src-tauri");
+        std::fs::create_dir_all(&project_path).unwrap();
+
+        // Create a standalone typegen.json configuration
+        let config_content = format!(
+            r#"{{
+            "project_path": "{}",
+            "output_path": "./standalone-output",
+            "validation_library": "zod"
+        }}"#,
+            project_path.to_string_lossy()
+        );
+        std::fs::write(&typegen_config_path, config_content).unwrap();
+
+        let project_info = ProjectInfo {
+            root_path: temp_dir.path().to_path_buf(),
+            src_tauri_path: project_path.clone(),
+            tauri_config_path: None,
+        };
+
+        let build_system = BuildSystem::new(false, false);
+        let config = build_system.load_configuration(&project_info).unwrap();
+
+        assert_eq!(config.validation_library, "zod");
+        assert_eq!(config.output_path, "./standalone-output");
+    }
+
+    #[test]
+    fn test_load_configuration_falls_back_on_invalid_tauri_config() {
+        let temp_dir = TempDir::new().unwrap();
+        let tauri_config_path = temp_dir.path().join("tauri.conf.json");
+
+        // Create an invalid tauri.conf.json (no typegen section)
+        let config_content = r#"{"build": {}}"#;
+        std::fs::write(&tauri_config_path, config_content).unwrap();
+
+        let project_info = ProjectInfo {
+            root_path: temp_dir.path().to_path_buf(),
+            src_tauri_path: temp_dir.path().join("src-tauri"),
+            tauri_config_path: Some(tauri_config_path),
+        };
+
+        let build_system = BuildSystem::new(false, false);
+        let config = build_system.load_configuration(&project_info).unwrap();
+
+        // Should fall back to defaults
+        assert_eq!(config.validation_library, "none");
+        assert_eq!(config.project_path, "./src-tauri");
+    }
+
+    #[test]
+    fn test_build_system_with_verbose_logging() {
+        let build_system = BuildSystem::new(true, true);
+        assert!(build_system
+            .logger
+            .should_log(crate::interface::output::LogLevel::Verbose));
+        assert!(build_system
+            .logger
+            .should_log(crate::interface::output::LogLevel::Debug));
+    }
+
+    #[test]
+    fn test_build_system_without_verbose_logging() {
+        let build_system = BuildSystem::new(false, false);
+        assert!(!build_system
+            .logger
+            .should_log(crate::interface::output::LogLevel::Verbose));
+        assert!(!build_system
+            .logger
+            .should_log(crate::interface::output::LogLevel::Debug));
     }
 }
