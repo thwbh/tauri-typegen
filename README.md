@@ -18,6 +18,7 @@ A command-line tool that automatically generates TypeScript bindings from your T
 - 🏷️ **Serde Support**: Respects `#[serde(rename)]` and `#[serde(rename_all)]` attributes
 - 🎯 **Type Safety**: Keeps frontend and backend types in sync
 - 🛠️ **Build Integration**: Works as standalone CLI or build dependency
+- ⚡ **Smart Caching**: Only regenerates when source files change
 
 ## Table of Contents
 
@@ -29,6 +30,8 @@ A command-line tool that automatically generates TypeScript bindings from your T
 - [TypeScript Compatibility](#typescript-compatibility)
 - [API Reference](#api-reference)
 - [Configuration](#configuration)
+- [Caching](#caching)
+- [Usage in CI](#usage-in-ci)
 - [Examples](#examples)
 - [Contributing](#contributing)
 
@@ -548,7 +551,8 @@ Options:
   -v, --validation <LIBRARY>    Validation library: zod or none [default: none]
       --verbose                 Verbose output
       --visualize-deps          Generate dependency graph
-  -c, --config <FILE>          Config file path
+  -c, --config <FILE>           Config file path
+  -f, --force                   Force regeneration, ignoring cache
 ```
 
 ```bash
@@ -619,11 +623,12 @@ In `tauri.conf.json`:
 ```json
 {
   "plugins": {
-    "tauri-typegen": {
-      "project_path": ".",
-      "output_path": "../src/generated",
-      "validation_library": "zod",
-      "verbose": true
+    "typegen": {
+      "projectPath": ".",
+      "outputPath": "../src/generated",
+      "validationLibrary": "zod",
+      "verbose": true,
+      "force": false
     }
   }
 }
@@ -691,6 +696,60 @@ export async function getFileInfo(): Promise<FileMetadata> {
   return invoke('get_file_info');
 }
 ```
+
+## Caching
+
+Tauri-typegen uses smart caching to skip regeneration when nothing has changed, improving build times.
+
+### How It Works
+
+A `.typecache` file is created in your output directory containing hashes of:
+- All discovered Tauri commands
+- All discovered structs and enums
+- Configuration settings that affect output
+
+On subsequent runs, these hashes are compared. If nothing changed, generation is skipped.
+
+### Force Regeneration
+
+To bypass the cache and force regeneration:
+
+**CLI flag (highest priority):**
+```bash
+cargo tauri-typegen generate --force
+# or
+cargo tauri-typegen generate -f
+```
+
+**Config file (`tauri.conf.json`):**
+```json
+{
+  "plugins": {
+    "typegen": {
+      "force": true
+    }
+  }
+}
+```
+
+**Programmatic:**
+```rust
+let mut config = GenerateConfig::default();
+config.force = Some(true);
+```
+
+The CLI `--force` flag always overrides the config file value.
+
+### Cache File Location
+
+The cache file `.typecache` is stored in your output directory (e.g., `./src/generated/.typecache`). Add it to `.gitignore`:
+
+```gitignore
+# Tauri-typegen cache
+.typecache
+```
+
+Or if your entire output directory is gitignored, the cache file is already excluded.
 
 ## Usage in CI
 

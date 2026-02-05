@@ -6,6 +6,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-02-05
+
+### Added
+- **Smart Caching**: Skip regeneration when source files haven't changed
+  - Creates `.typecache` file in output directory with hashes of discovered commands, types, and configuration
+  - Compares hashes on subsequent runs to determine if regeneration is needed
+  - Significantly improves build times when nothing has changed
+
+- **Force Regeneration Flag**: New option to bypass cache and force regeneration
+  - CLI: `--force` or `-f` flag (e.g., `cargo tauri-typegen generate --force`)
+  - Config: `"force": true` in `tauri.conf.json` under `plugins.typegen`
+  - CLI flag takes priority over config file setting
+
 ## [0.4.0] - 2025-12-26
 
 ### Added

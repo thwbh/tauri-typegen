@@ -53,6 +53,10 @@ pub enum TypegenCommands {
         /// Configuration file path
         #[arg(short = 'c', long = "config")]
         config_file: Option<PathBuf>,
+
+        /// Force regeneration, ignoring cache
+        #[arg(short = 'f', long, action = clap::ArgAction::SetTrue)]
+        force: bool,
     },
     /// Initialize configuration for a Tauri project and run initial generation
     Init {
@@ -161,6 +165,7 @@ mod tests {
             verbose: false,
             visualize_deps: false,
             config_file: None,
+            force: false,
         };
 
         let config = GenerateConfig::from(&cmd);
@@ -180,6 +185,7 @@ mod tests {
             verbose: true,
             visualize_deps: true,
             config_file: None,
+            force: false,
         };
 
         let config = GenerateConfig::from(&cmd);
@@ -200,6 +206,7 @@ mod tests {
             verbose: true,
             visualize_deps: false,
             config_file: None,
+            force: false,
         };
 
         let config = GenerateConfig::from(&cmd);
