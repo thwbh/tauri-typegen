@@ -348,7 +348,11 @@ impl CommandAnalyzer {
                     if item_enum.ident == type_name
                         && self.struct_parser.should_include_enum(item_enum)
                     {
-                        return self.struct_parser.parse_enum(item_enum, file_path);
+                        return self.struct_parser.parse_enum(
+                            item_enum,
+                            file_path,
+                            &mut self.type_resolver,
+                        );
                     }
                 }
                 _ => {}
