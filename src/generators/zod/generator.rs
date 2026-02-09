@@ -1,6 +1,6 @@
 use crate::analysis::CommandAnalyzer;
 use crate::generators::base::file_writer::FileWriter;
-use crate::generators::base::template_context::FieldContext;
+use crate::generators::base::template_context::{FieldContext, StructContext};
 use crate::generators::base::templates::TemplateRegistry;
 use crate::generators::base::BaseBindingsGenerator;
 use crate::generators::zod::schema_builder::ZodSchemaBuilder;
@@ -40,7 +40,7 @@ impl ZodBindingsGenerator {
         }
     }
 
-    /// Generate Zod schema for an enum
+    /// Generate Zod schema for an enum using templates
     fn generate_enum_schema(
         &self,
         name: &str,
@@ -48,22 +48,34 @@ impl ZodBindingsGenerator {
         config: &GenerateConfig,
     ) -> String {
         let visitor = ZodVisitor::with_config(config);
+        let schema_builder = ZodSchemaBuilder::new(config);
 
-        // Convert fields to context to get serialized names
-        let field_contexts: Vec<FieldContext> =
-            self.collector
-                .create_field_contexts(struct_info, &visitor, config);
+        // Create StructContext with all enum information
+        let mut struct_context =
+            StructContext::new(config).from_struct_info(name, struct_info, &visitor);
 
-        let variants: Vec<String> = field_contexts
-            .iter()
-            .map(|field| format!("\"{}\"", field.serialized_name))
-            .collect();
+        // For complex enums, enrich struct variant fields with proper Zod schemas
+        if !struct_info.is_simple_enum() {
+            for variant in &mut struct_context.enum_variants {
+                for field in &mut variant.struct_fields {
+                    let zod_schema = schema_builder
+                        .build_schema(&field.type_structure, &field.validator_attributes);
+                    field.typescript_type = zod_schema;
+                }
+            }
+        }
 
-        let enum_values = variants.join(", ");
-        format!(
-            "export const {}Schema = z.enum([{}]);\n\n",
-            name, enum_values
-        )
+        // Prepare template context
+        let mut context = Context::new();
+        context.insert("name", name);
+        context.insert("struct", &struct_context);
+        context.insert("fields", &struct_context.fields);
+
+        self.render("zod/partials/enum_schema.ts.tera", &context)
+            .unwrap_or_else(|e| {
+                eprintln!("Template rendering failed for enum {}: {}", name, e);
+                format!("// Error generating schema for {}: {}\n", name, e)
+            })
     }
 
     /// Generate Zod schema for an object/struct using templates
@@ -432,9 +444,47 @@ mod tests {
         }
 
         fn create_test_struct(is_enum: bool) -> StructInfo {
-            StructInfo {
-                name: "TestStruct".to_string(),
-                fields: vec![FieldInfo {
+            use crate::models::{EnumVariantInfo, EnumVariantKind};
+
+            let (fields, enum_variants) = if is_enum {
+                // For enums, create proper enum_variants
+                let variants = vec![
+                    EnumVariantInfo {
+                        name: "Variant1".to_string(),
+                        kind: EnumVariantKind::Unit,
+                        serde_rename: None,
+                    },
+                    EnumVariantInfo {
+                        name: "Variant2".to_string(),
+                        kind: EnumVariantKind::Unit,
+                        serde_rename: None,
+                    },
+                ];
+                // Legacy fields for backward compatibility
+                let fields = vec![
+                    FieldInfo {
+                        name: "Variant1".to_string(),
+                        rust_type: "enum_variant".to_string(),
+                        is_optional: false,
+                        is_public: true,
+                        type_structure: TypeStructure::Primitive("string".to_string()),
+                        serde_rename: None,
+                        validator_attributes: None,
+                    },
+                    FieldInfo {
+                        name: "Variant2".to_string(),
+                        rust_type: "enum_variant".to_string(),
+                        is_optional: false,
+                        is_public: true,
+                        type_structure: TypeStructure::Primitive("string".to_string()),
+                        serde_rename: None,
+                        validator_attributes: None,
+                    },
+                ];
+                (fields, Some(variants))
+            } else {
+                // For structs, create normal fields
+                let fields = vec![FieldInfo {
                     name: "test_field".to_string(),
                     rust_type: "String".to_string(),
                     is_optional: false,
@@ -442,10 +492,18 @@ mod tests {
                     type_structure: TypeStructure::Primitive("string".to_string()),
                     serde_rename: None,
                     validator_attributes: None,
-                }],
+                }];
+                (fields, None)
+            };
+
+            StructInfo {
+                name: "TestStruct".to_string(),
+                fields,
                 file_path: "test.rs".to_string(),
                 is_enum,
                 serde_rename_all: None,
+                serde_tag: None,
+                enum_variants,
             }
         }
 
