@@ -1,7 +1,7 @@
 use crate::analysis::serde_parser::SerdeParser;
 use crate::analysis::type_resolver::TypeResolver;
 use crate::analysis::validator_parser::ValidatorParser;
-use crate::models::{FieldInfo, StructInfo};
+use crate::models::{EnumVariantInfo, EnumVariantKind, FieldInfo, StructInfo, TypeStructure};
 use quote::ToTokens;
 use std::path::Path;
 use syn::{Attribute, ItemEnum, ItemStruct, Type, Visibility};
@@ -92,73 +92,103 @@ impl StructParser {
             file_path: file_path.to_string_lossy().to_string(),
             is_enum: false,
             serde_rename_all: struct_serde_attrs.rename_all,
+            serde_tag: None,
+            enum_variants: None,
         })
     }
 
     /// Parse a Rust enum into StructInfo
-    pub fn parse_enum(&self, item_enum: &ItemEnum, file_path: &Path) -> Option<StructInfo> {
+    pub fn parse_enum(
+        &self,
+        item_enum: &ItemEnum,
+        file_path: &Path,
+        type_resolver: &mut TypeResolver,
+    ) -> Option<StructInfo> {
         // Parse enum-level serde attributes
         let enum_serde_attrs = self.serde_parser.parse_struct_serde_attrs(&item_enum.attrs);
 
-        let fields = item_enum
-            .variants
-            .iter()
-            .map(|variant| {
-                let variant_name = variant.ident.to_string();
+        // Parse variants into both legacy fields (for backward compatibility) and new enum_variants
+        let mut fields = Vec::new();
+        let mut enum_variants = Vec::new();
 
-                // Parse variant-level serde attributes
-                let variant_serde_attrs = self.serde_parser.parse_field_serde_attrs(&variant.attrs);
+        for variant in &item_enum.variants {
+            let variant_name = variant.ident.to_string();
 
-                match &variant.fields {
-                    syn::Fields::Unit => {
-                        // Unit variant: Variant
-                        FieldInfo {
-                            name: variant_name,
-                            rust_type: "enum_variant".to_string(),
-                            is_optional: false,
-                            is_public: true,
-                            validator_attributes: None,
-                            serde_rename: variant_serde_attrs.rename,
-                            type_structure: crate::models::TypeStructure::Primitive(
-                                "string".to_string(),
-                            ),
-                        }
-                    }
-                    syn::Fields::Unnamed(_fields_unnamed) => {
-                        // Tuple variant: Variant(T, U)
-                        // Note: Complex enum variants are not fully supported yet
-                        FieldInfo {
-                            name: variant_name,
-                            rust_type: "enum_variant_tuple".to_string(),
-                            is_optional: false,
-                            is_public: true,
-                            validator_attributes: None,
-                            serde_rename: variant_serde_attrs.rename,
-                            // For enum variants, type structure is not used by generators
-                            type_structure: crate::models::TypeStructure::Custom(
-                                "enum_variant".to_string(),
-                            ),
-                        }
-                    }
-                    syn::Fields::Named(_fields_named) => {
-                        // Struct variant: Variant { field: T }
-                        // Note: Complex enum variants are not fully supported yet
-                        FieldInfo {
-                            name: variant_name,
-                            rust_type: "enum_variant_struct".to_string(),
-                            is_optional: false,
-                            is_public: true,
-                            validator_attributes: None,
-                            serde_rename: variant_serde_attrs.rename,
-                            // For enum variants, type structure is not used by generators
-                            type_structure: crate::models::TypeStructure::Custom(
-                                "enum_variant".to_string(),
-                            ),
-                        }
-                    }
+            // Parse variant-level serde attributes
+            let variant_serde_attrs = self.serde_parser.parse_field_serde_attrs(&variant.attrs);
+
+            match &variant.fields {
+                syn::Fields::Unit => {
+                    // Unit variant: Variant
+                    fields.push(FieldInfo {
+                        name: variant_name.clone(),
+                        rust_type: "enum_variant".to_string(),
+                        is_optional: false,
+                        is_public: true,
+                        validator_attributes: None,
+                        serde_rename: variant_serde_attrs.rename.clone(),
+                        type_structure: TypeStructure::Primitive("string".to_string()),
+                    });
+
+                    enum_variants.push(EnumVariantInfo {
+                        name: variant_name,
+                        kind: EnumVariantKind::Unit,
+                        serde_rename: variant_serde_attrs.rename,
+                    });
                 }
-            })
-            .collect();
+                syn::Fields::Unnamed(fields_unnamed) => {
+                    // Tuple variant: Variant(T, U)
+                    let tuple_types: Vec<TypeStructure> = fields_unnamed
+                        .unnamed
+                        .iter()
+                        .map(|field| {
+                            let rust_type = Self::type_to_string(&field.ty);
+                            type_resolver.parse_type_structure(&rust_type)
+                        })
+                        .collect();
+
+                    fields.push(FieldInfo {
+                        name: variant_name.clone(),
+                        rust_type: "enum_variant_tuple".to_string(),
+                        is_optional: false,
+                        is_public: true,
+                        validator_attributes: None,
+                        serde_rename: variant_serde_attrs.rename.clone(),
+                        type_structure: TypeStructure::Custom("enum_variant".to_string()),
+                    });
+
+                    enum_variants.push(EnumVariantInfo {
+                        name: variant_name,
+                        kind: EnumVariantKind::Tuple(tuple_types),
+                        serde_rename: variant_serde_attrs.rename,
+                    });
+                }
+                syn::Fields::Named(fields_named) => {
+                    // Struct variant: Variant { field: T }
+                    let struct_fields: Vec<FieldInfo> = fields_named
+                        .named
+                        .iter()
+                        .filter_map(|field| self.parse_field(field, type_resolver))
+                        .collect();
+
+                    fields.push(FieldInfo {
+                        name: variant_name.clone(),
+                        rust_type: "enum_variant_struct".to_string(),
+                        is_optional: false,
+                        is_public: true,
+                        validator_attributes: None,
+                        serde_rename: variant_serde_attrs.rename.clone(),
+                        type_structure: TypeStructure::Custom("enum_variant".to_string()),
+                    });
+
+                    enum_variants.push(EnumVariantInfo {
+                        name: variant_name,
+                        kind: EnumVariantKind::Struct(struct_fields),
+                        serde_rename: variant_serde_attrs.rename,
+                    });
+                }
+            }
+        }
 
         Some(StructInfo {
             name: item_enum.ident.to_string(),
@@ -166,6 +196,8 @@ impl StructParser {
             file_path: file_path.to_string_lossy().to_string(),
             is_enum: true,
             serde_rename_all: enum_serde_attrs.rename_all,
+            serde_tag: enum_serde_attrs.tag,
+            enum_variants: Some(enum_variants),
         })
     }
 
@@ -519,6 +551,7 @@ mod tests {
         #[test]
         fn test_parse_simple_enum() {
             let parser = parser();
+            let mut resolver = type_resolver();
             let item: ItemEnum = parse_quote! {
                 #[derive(Serialize)]
                 pub enum Status {
@@ -527,7 +560,7 @@ mod tests {
                 }
             };
             let path = Path::new("test.rs");
-            let result = parser.parse_enum(&item, path);
+            let result = parser.parse_enum(&item, path, &mut resolver);
 
             assert!(result.is_some());
             let enum_info = result.unwrap();
@@ -539,6 +572,7 @@ mod tests {
         #[test]
         fn test_parse_enum_unit_variants() {
             let parser = parser();
+            let mut resolver = type_resolver();
             let item: ItemEnum = parse_quote! {
                 #[derive(Serialize)]
                 pub enum Status {
@@ -548,18 +582,26 @@ mod tests {
                 }
             };
             let path = Path::new("test.rs");
-            let result = parser.parse_enum(&item, path).unwrap();
+            let result = parser.parse_enum(&item, path, &mut resolver).unwrap();
 
             assert_eq!(result.fields.len(), 3);
             assert_eq!(result.fields[0].name, "Active");
             assert_eq!(result.fields[0].rust_type, "enum_variant");
             assert_eq!(result.fields[1].name, "Inactive");
             assert_eq!(result.fields[2].name, "Pending");
+
+            // Check enum_variants are populated
+            let variants = result.enum_variants.as_ref().unwrap();
+            assert_eq!(variants.len(), 3);
+            assert!(variants[0].is_unit());
+            assert!(variants[1].is_unit());
+            assert!(variants[2].is_unit());
         }
 
         #[test]
         fn test_parse_enum_tuple_variant() {
             let parser = parser();
+            let mut resolver = type_resolver();
             let item: ItemEnum = parse_quote! {
                 #[derive(Serialize)]
                 pub enum Message {
@@ -568,16 +610,71 @@ mod tests {
                 }
             };
             let path = Path::new("test.rs");
-            let result = parser.parse_enum(&item, path).unwrap();
+            let result = parser.parse_enum(&item, path, &mut resolver).unwrap();
 
             assert_eq!(result.fields.len(), 2);
             assert_eq!(result.fields[0].rust_type, "enum_variant_tuple");
             assert_eq!(result.fields[1].rust_type, "enum_variant_tuple");
+
+            // Check enum_variants with tuple types
+            let variants = result.enum_variants.as_ref().unwrap();
+            assert_eq!(variants.len(), 2);
+            assert!(variants[0].is_tuple());
+            assert!(variants[1].is_tuple());
+
+            // Check tuple field types
+            let text_fields = variants[0].tuple_fields().unwrap();
+            assert_eq!(text_fields.len(), 1);
+            assert_eq!(
+                text_fields[0],
+                crate::models::TypeStructure::Primitive("string".to_string())
+            );
+
+            let number_fields = variants[1].tuple_fields().unwrap();
+            assert_eq!(number_fields.len(), 1);
+            assert_eq!(
+                number_fields[0],
+                crate::models::TypeStructure::Primitive("number".to_string())
+            );
+        }
+
+        #[test]
+        fn test_parse_enum_tuple_variant_multiple_fields() {
+            let parser = parser();
+            let mut resolver = type_resolver();
+            let item: ItemEnum = parse_quote! {
+                #[derive(Serialize)]
+                pub enum Message {
+                    Move(i32, i32),
+                    Point(f64, f64, f64),
+                }
+            };
+            let path = Path::new("test.rs");
+            let result = parser.parse_enum(&item, path, &mut resolver).unwrap();
+
+            let variants = result.enum_variants.as_ref().unwrap();
+
+            // Check Move variant has 2 number fields
+            let move_fields = variants[0].tuple_fields().unwrap();
+            assert_eq!(move_fields.len(), 2);
+            assert_eq!(
+                move_fields[0],
+                crate::models::TypeStructure::Primitive("number".to_string())
+            );
+            assert_eq!(
+                move_fields[1],
+                crate::models::TypeStructure::Primitive("number".to_string())
+            );
+
+            // Check Point variant has 3 number fields
+            let point_fields = variants[1].tuple_fields().unwrap();
+            assert_eq!(point_fields.len(), 3);
         }
 
         #[test]
         fn test_parse_enum_struct_variant() {
             let parser = parser();
+            let mut resolver = type_resolver();
             let item: ItemEnum = parse_quote! {
                 #[derive(Serialize)]
                 pub enum Message {
@@ -585,15 +682,28 @@ mod tests {
                 }
             };
             let path = Path::new("test.rs");
-            let result = parser.parse_enum(&item, path).unwrap();
+            let result = parser.parse_enum(&item, path, &mut resolver).unwrap();
 
             assert_eq!(result.fields.len(), 1);
             assert_eq!(result.fields[0].rust_type, "enum_variant_struct");
+
+            // Check enum_variants with struct fields
+            let variants = result.enum_variants.as_ref().unwrap();
+            assert_eq!(variants.len(), 1);
+            assert!(variants[0].is_struct());
+
+            let struct_fields = variants[0].struct_fields().unwrap();
+            assert_eq!(struct_fields.len(), 2);
+            assert_eq!(struct_fields[0].name, "id");
+            assert_eq!(struct_fields[0].rust_type, "i32");
+            assert_eq!(struct_fields[1].name, "name");
+            assert_eq!(struct_fields[1].rust_type, "String");
         }
 
         #[test]
         fn test_parse_enum_with_serde_rename_variant() {
             let parser = parser();
+            let mut resolver = type_resolver();
             let item: ItemEnum = parse_quote! {
                 #[derive(Serialize)]
                 pub enum Status {
@@ -604,15 +714,21 @@ mod tests {
                 }
             };
             let path = Path::new("test.rs");
-            let result = parser.parse_enum(&item, path).unwrap();
+            let result = parser.parse_enum(&item, path, &mut resolver).unwrap();
 
             assert_eq!(result.fields[0].serde_rename, Some("active".to_string()));
             assert_eq!(result.fields[1].serde_rename, Some("inactive".to_string()));
+
+            // Check enum_variants also have serde_rename
+            let variants = result.enum_variants.as_ref().unwrap();
+            assert_eq!(variants[0].serde_rename, Some("active".to_string()));
+            assert_eq!(variants[1].serde_rename, Some("inactive".to_string()));
         }
 
         #[test]
         fn test_parse_enum_with_rename_all() {
             let parser = parser();
+            let mut resolver = type_resolver();
             let item: ItemEnum = parse_quote! {
                 #[derive(Serialize)]
                 #[serde(rename_all = "snake_case")]
@@ -622,9 +738,162 @@ mod tests {
                 }
             };
             let path = Path::new("test.rs");
-            let result = parser.parse_enum(&item, path).unwrap();
+            let result = parser.parse_enum(&item, path, &mut resolver).unwrap();
 
             assert_eq!(result.serde_rename_all, Some(RenameRule::SnakeCase));
+        }
+
+        #[test]
+        fn test_parse_enum_with_serde_tag() {
+            let parser = parser();
+            let mut resolver = type_resolver();
+            let item: ItemEnum = parse_quote! {
+                #[derive(Serialize)]
+                #[serde(tag = "type")]
+                pub enum Message {
+                    Text(String),
+                    Quit,
+                }
+            };
+            let path = Path::new("test.rs");
+            let result = parser.parse_enum(&item, path, &mut resolver).unwrap();
+
+            assert_eq!(result.serde_tag, Some("type".to_string()));
+        }
+
+        #[test]
+        fn test_parse_enum_with_custom_tag() {
+            let parser = parser();
+            let mut resolver = type_resolver();
+            let item: ItemEnum = parse_quote! {
+                #[derive(Serialize)]
+                #[serde(tag = "kind")]
+                pub enum Action {
+                    Start,
+                    Stop,
+                }
+            };
+            let path = Path::new("test.rs");
+            let result = parser.parse_enum(&item, path, &mut resolver).unwrap();
+
+            assert_eq!(result.serde_tag, Some("kind".to_string()));
+            assert_eq!(result.discriminator_tag(), "kind");
+        }
+
+        #[test]
+        fn test_parse_enum_mixed_variants() {
+            let parser = parser();
+            let mut resolver = type_resolver();
+            let item: ItemEnum = parse_quote! {
+                #[derive(Serialize)]
+                #[serde(tag = "type")]
+                pub enum Message {
+                    Quit,
+                    Move(i32, i32),
+                    Write(String),
+                    ChangeColor { r: u8, g: u8, b: u8 },
+                }
+            };
+            let path = Path::new("test.rs");
+            let result = parser.parse_enum(&item, path, &mut resolver).unwrap();
+
+            assert_eq!(result.serde_tag, Some("type".to_string()));
+
+            let variants = result.enum_variants.as_ref().unwrap();
+            assert_eq!(variants.len(), 4);
+
+            // Quit is unit
+            assert!(variants[0].is_unit());
+            assert_eq!(variants[0].name, "Quit");
+
+            // Move is tuple with 2 fields
+            assert!(variants[1].is_tuple());
+            assert_eq!(variants[1].name, "Move");
+            assert_eq!(variants[1].tuple_fields().unwrap().len(), 2);
+
+            // Write is tuple with 1 field
+            assert!(variants[2].is_tuple());
+            assert_eq!(variants[2].name, "Write");
+            assert_eq!(variants[2].tuple_fields().unwrap().len(), 1);
+
+            // ChangeColor is struct with 3 fields
+            assert!(variants[3].is_struct());
+            assert_eq!(variants[3].name, "ChangeColor");
+            let struct_fields = variants[3].struct_fields().unwrap();
+            assert_eq!(struct_fields.len(), 3);
+            assert_eq!(struct_fields[0].name, "r");
+            assert_eq!(struct_fields[1].name, "g");
+            assert_eq!(struct_fields[2].name, "b");
+        }
+
+        #[test]
+        fn test_parse_enum_is_simple_vs_complex() {
+            let parser = parser();
+            let mut resolver = type_resolver();
+
+            // Simple enum (all unit variants)
+            let simple_item: ItemEnum = parse_quote! {
+                #[derive(Serialize)]
+                pub enum Status {
+                    Active,
+                    Inactive,
+                }
+            };
+            let path = Path::new("test.rs");
+            let simple_result = parser
+                .parse_enum(&simple_item, path, &mut resolver)
+                .unwrap();
+            assert!(simple_result.is_simple_enum());
+            assert!(!simple_result.is_complex_enum());
+
+            // Complex enum (has tuple variant)
+            let complex_item: ItemEnum = parse_quote! {
+                #[derive(Serialize)]
+                pub enum Message {
+                    Quit,
+                    Text(String),
+                }
+            };
+            let complex_result = parser
+                .parse_enum(&complex_item, path, &mut resolver)
+                .unwrap();
+            assert!(!complex_result.is_simple_enum());
+            assert!(complex_result.is_complex_enum());
+        }
+
+        #[test]
+        fn test_parse_enum_with_nested_types() {
+            let parser = parser();
+            let mut resolver = type_resolver();
+            let item: ItemEnum = parse_quote! {
+                #[derive(Serialize)]
+                pub enum Data {
+                    List(Vec<String>),
+                    Map { items: HashMap<String, i32> },
+                }
+            };
+            let path = Path::new("test.rs");
+            let result = parser.parse_enum(&item, path, &mut resolver).unwrap();
+
+            let variants = result.enum_variants.as_ref().unwrap();
+
+            // Check List variant has Vec type
+            let list_fields = variants[0].tuple_fields().unwrap();
+            assert_eq!(list_fields.len(), 1);
+            match &list_fields[0] {
+                crate::models::TypeStructure::Array(inner) => {
+                    assert_eq!(
+                        **inner,
+                        crate::models::TypeStructure::Primitive("string".to_string())
+                    );
+                }
+                _ => panic!("Expected Array type"),
+            }
+
+            // Check Map variant has HashMap field
+            let map_fields = variants[1].struct_fields().unwrap();
+            assert_eq!(map_fields.len(), 1);
+            assert_eq!(map_fields[0].name, "items");
         }
     }
 
@@ -846,9 +1115,10 @@ mod tests {
         #[test]
         fn test_parse_full_enum_with_all_features() {
             let parser = parser();
+            let mut resolver = type_resolver();
             let item: ItemEnum = parse_quote! {
                 #[derive(Serialize, Deserialize)]
-                #[serde(rename_all = "snake_case")]
+                #[serde(rename_all = "snake_case", tag = "type")]
                 pub enum Message {
                     #[serde(rename = "simple")]
                     Simple,
@@ -857,18 +1127,35 @@ mod tests {
                 }
             };
             let path = Path::new("models.rs");
-            let result = parser.parse_enum(&item, path).unwrap();
+            let result = parser.parse_enum(&item, path, &mut resolver).unwrap();
 
             assert_eq!(result.name, "Message");
             assert_eq!(result.fields.len(), 3);
             assert_eq!(result.serde_rename_all, Some(RenameRule::SnakeCase));
             assert!(result.is_enum);
+            assert_eq!(result.serde_tag, Some("type".to_string()));
 
-            // Check variant types
+            // Check variant types (legacy fields)
             assert_eq!(result.fields[0].rust_type, "enum_variant");
             assert_eq!(result.fields[0].serde_rename, Some("simple".to_string()));
             assert_eq!(result.fields[1].rust_type, "enum_variant_tuple");
             assert_eq!(result.fields[2].rust_type, "enum_variant_struct");
+
+            // Check enum_variants (new format)
+            let variants = result.enum_variants.as_ref().unwrap();
+            assert_eq!(variants.len(), 3);
+            assert!(variants[0].is_unit());
+            assert!(variants[1].is_tuple());
+            assert!(variants[2].is_struct());
+
+            // Check Text tuple variant fields
+            let text_fields = variants[1].tuple_fields().unwrap();
+            assert_eq!(text_fields.len(), 1);
+
+            // Check User struct variant fields
+            let user_fields = variants[2].struct_fields().unwrap();
+            assert_eq!(user_fields.len(), 1);
+            assert_eq!(user_fields[0].name, "id");
         }
     }
 }

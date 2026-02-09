@@ -251,6 +251,8 @@ mod tests {
             file_path: file.to_string(),
             is_enum: false,
             serde_rename_all: None,
+            serde_tag: None,
+            enum_variants: None,
         }
     }
 
