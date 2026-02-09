@@ -3,7 +3,7 @@ use serde_rename_rule::RenameRule;
 
 /// Represents the structure of a type for code generation
 /// This allows generators to work with parsed type information instead of string parsing
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub enum TypeStructure {
     /// Primitive types: "string", "number", "boolean", "void"
@@ -38,6 +38,62 @@ impl Default for TypeStructure {
     fn default() -> Self {
         // Default to string for test compatibility
         TypeStructure::Primitive("string".to_string())
+    }
+}
+
+/// Represents the kind of an enum variant for discriminated union generation
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub enum EnumVariantKind {
+    /// Unit variant: `Quit`
+    Unit,
+    /// Tuple variant with unnamed fields: `Move(i32, i32)` or `Write(String)`
+    Tuple(Vec<TypeStructure>),
+    /// Struct variant with named fields: `ChangeColor { r: u8, g: u8, b: u8 }`
+    Struct(Vec<FieldInfo>),
+}
+
+/// Information about an enum variant for discriminated union generation
+#[derive(Debug, Clone)]
+pub struct EnumVariantInfo {
+    /// The variant name (e.g., "Quit", "Move", "ChangeColor")
+    pub name: String,
+    /// The kind of variant and its associated data
+    pub kind: EnumVariantKind,
+    /// Serde rename attribute: #[serde(rename = "...")]
+    pub serde_rename: Option<String>,
+}
+
+impl EnumVariantInfo {
+    /// Returns true if this is a unit variant (no associated data)
+    pub fn is_unit(&self) -> bool {
+        matches!(self.kind, EnumVariantKind::Unit)
+    }
+
+    /// Returns true if this is a tuple variant (unnamed fields)
+    pub fn is_tuple(&self) -> bool {
+        matches!(self.kind, EnumVariantKind::Tuple(_))
+    }
+
+    /// Returns true if this is a struct variant (named fields)
+    pub fn is_struct(&self) -> bool {
+        matches!(self.kind, EnumVariantKind::Struct(_))
+    }
+
+    /// Returns the tuple fields if this is a tuple variant
+    pub fn tuple_fields(&self) -> Option<&Vec<TypeStructure>> {
+        match &self.kind {
+            EnumVariantKind::Tuple(fields) => Some(fields),
+            _ => None,
+        }
+    }
+
+    /// Returns the struct fields if this is a struct variant
+    pub fn struct_fields(&self) -> Option<&Vec<FieldInfo>> {
+        match &self.kind {
+            EnumVariantKind::Struct(fields) => Some(fields),
+            _ => None,
+        }
     }
 }
 
@@ -106,9 +162,44 @@ pub struct StructInfo {
     pub is_enum: bool,
     /// Serde rename_all attribute: #[serde(rename_all = "...")]
     pub serde_rename_all: Option<RenameRule>,
+    /// Serde tag attribute for enums: #[serde(tag = "...")]
+    /// Used for internally-tagged enum representation
+    pub serde_tag: Option<String>,
+    /// Enum variants with full type information (only populated for enums)
+    /// When populated, provides richer variant data than the `fields` vector
+    pub enum_variants: Option<Vec<EnumVariantInfo>>,
 }
 
-#[derive(Clone, Debug)]
+impl StructInfo {
+    /// Returns true if this is a simple enum (all unit variants)
+    /// Simple enums can be represented as TypeScript string literal unions
+    pub fn is_simple_enum(&self) -> bool {
+        if !self.is_enum {
+            return false;
+        }
+
+        match &self.enum_variants {
+            Some(variants) => variants.iter().all(|v| v.is_unit()),
+            // Fallback to checking fields for backward compatibility
+            None => self.fields.iter().all(|f| f.rust_type == "enum_variant"),
+        }
+    }
+
+    /// Returns true if this is a complex enum (has tuple or struct variants)
+    /// Complex enums need discriminated union representation in TypeScript
+    pub fn is_complex_enum(&self) -> bool {
+        self.is_enum && !self.is_simple_enum()
+    }
+
+    /// Returns the discriminator tag name for this enum
+    /// Defaults to "type" if not specified via #[serde(tag = "...")]
+    pub fn discriminator_tag(&self) -> &str {
+        self.serde_tag.as_deref().unwrap_or("type")
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct FieldInfo {
     pub name: String,
     pub rust_type: String,
@@ -121,7 +212,7 @@ pub struct FieldInfo {
     pub type_structure: TypeStructure,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ValidatorAttributes {
     pub length: Option<LengthConstraint>,
@@ -131,7 +222,7 @@ pub struct ValidatorAttributes {
     pub custom_message: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct LengthConstraint {
     pub min: Option<u64>,
@@ -139,7 +230,7 @@ pub struct LengthConstraint {
     pub message: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct RangeConstraint {
     pub min: Option<f64>,
@@ -731,6 +822,8 @@ mod tests {
                 file_path: "src/models.rs".to_string(),
                 is_enum: false,
                 serde_rename_all: None,
+                serde_tag: None,
+                enum_variants: None,
             };
 
             assert_eq!(struct_info.name, "User");
@@ -746,6 +839,8 @@ mod tests {
                 file_path: "src/types.rs".to_string(),
                 is_enum: true,
                 serde_rename_all: Some(RenameRule::CamelCase),
+                serde_tag: None,
+                enum_variants: None,
             };
 
             assert!(struct_info.is_enum);
@@ -760,11 +855,326 @@ mod tests {
                 file_path: "src/product.rs".to_string(),
                 is_enum: false,
                 serde_rename_all: None,
+                serde_tag: None,
+                enum_variants: None,
             };
 
             let cloned = original.clone();
             assert_eq!(cloned.name, "Product");
             assert!(!cloned.is_enum);
+        }
+
+        #[test]
+        fn test_simple_enum_detection() {
+            // Simple enum with unit variants only
+            let simple_enum = StructInfo {
+                name: "Status".to_string(),
+                fields: vec![
+                    FieldInfo {
+                        name: "Active".to_string(),
+                        rust_type: "enum_variant".to_string(),
+                        is_optional: false,
+                        is_public: true,
+                        validator_attributes: None,
+                        serde_rename: None,
+                        type_structure: TypeStructure::Custom("enum_variant".to_string()),
+                    },
+                    FieldInfo {
+                        name: "Inactive".to_string(),
+                        rust_type: "enum_variant".to_string(),
+                        is_optional: false,
+                        is_public: true,
+                        validator_attributes: None,
+                        serde_rename: None,
+                        type_structure: TypeStructure::Custom("enum_variant".to_string()),
+                    },
+                ],
+                file_path: "src/types.rs".to_string(),
+                is_enum: true,
+                serde_rename_all: None,
+                serde_tag: None,
+                enum_variants: None,
+            };
+
+            assert!(simple_enum.is_simple_enum());
+            assert!(!simple_enum.is_complex_enum());
+        }
+
+        #[test]
+        fn test_complex_enum_detection_via_fields() {
+            // Complex enum detected via rust_type field (backward compatibility)
+            let complex_enum = StructInfo {
+                name: "Message".to_string(),
+                fields: vec![
+                    FieldInfo {
+                        name: "Quit".to_string(),
+                        rust_type: "enum_variant".to_string(),
+                        is_optional: false,
+                        is_public: true,
+                        validator_attributes: None,
+                        serde_rename: None,
+                        type_structure: TypeStructure::Custom("enum_variant".to_string()),
+                    },
+                    FieldInfo {
+                        name: "Move".to_string(),
+                        rust_type: "enum_variant_tuple".to_string(),
+                        is_optional: false,
+                        is_public: true,
+                        validator_attributes: None,
+                        serde_rename: None,
+                        type_structure: TypeStructure::Custom("enum_variant".to_string()),
+                    },
+                ],
+                file_path: "src/types.rs".to_string(),
+                is_enum: true,
+                serde_rename_all: None,
+                serde_tag: None,
+                enum_variants: None,
+            };
+
+            assert!(!complex_enum.is_simple_enum());
+            assert!(complex_enum.is_complex_enum());
+        }
+
+        #[test]
+        fn test_complex_enum_detection_via_enum_variants() {
+            // Complex enum with EnumVariantInfo populated
+            let complex_enum = StructInfo {
+                name: "Message".to_string(),
+                fields: vec![],
+                file_path: "src/types.rs".to_string(),
+                is_enum: true,
+                serde_rename_all: None,
+                serde_tag: Some("type".to_string()),
+                enum_variants: Some(vec![
+                    EnumVariantInfo {
+                        name: "Quit".to_string(),
+                        kind: EnumVariantKind::Unit,
+                        serde_rename: None,
+                    },
+                    EnumVariantInfo {
+                        name: "Move".to_string(),
+                        kind: EnumVariantKind::Tuple(vec![
+                            TypeStructure::Primitive("number".to_string()),
+                            TypeStructure::Primitive("number".to_string()),
+                        ]),
+                        serde_rename: None,
+                    },
+                ]),
+            };
+
+            assert!(!complex_enum.is_simple_enum());
+            assert!(complex_enum.is_complex_enum());
+        }
+
+        #[test]
+        fn test_discriminator_tag_default() {
+            let enum_info = StructInfo {
+                name: "Status".to_string(),
+                fields: vec![],
+                file_path: "src/types.rs".to_string(),
+                is_enum: true,
+                serde_rename_all: None,
+                serde_tag: None,
+                enum_variants: None,
+            };
+
+            assert_eq!(enum_info.discriminator_tag(), "type");
+        }
+
+        #[test]
+        fn test_discriminator_tag_custom() {
+            let enum_info = StructInfo {
+                name: "Status".to_string(),
+                fields: vec![],
+                file_path: "src/types.rs".to_string(),
+                is_enum: true,
+                serde_rename_all: None,
+                serde_tag: Some("kind".to_string()),
+                enum_variants: None,
+            };
+
+            assert_eq!(enum_info.discriminator_tag(), "kind");
+        }
+    }
+
+    // EnumVariantKind tests
+    mod enum_variant_kind {
+        use super::*;
+
+        #[test]
+        fn test_unit_variant() {
+            let kind = EnumVariantKind::Unit;
+            assert_eq!(kind, EnumVariantKind::Unit);
+        }
+
+        #[test]
+        fn test_tuple_variant_single_field() {
+            let kind = EnumVariantKind::Tuple(vec![TypeStructure::Primitive("string".to_string())]);
+
+            match kind {
+                EnumVariantKind::Tuple(fields) => {
+                    assert_eq!(fields.len(), 1);
+                    assert_eq!(fields[0], TypeStructure::Primitive("string".to_string()));
+                }
+                _ => panic!("Should be Tuple variant"),
+            }
+        }
+
+        #[test]
+        fn test_tuple_variant_multiple_fields() {
+            let kind = EnumVariantKind::Tuple(vec![
+                TypeStructure::Primitive("number".to_string()),
+                TypeStructure::Primitive("number".to_string()),
+            ]);
+
+            match kind {
+                EnumVariantKind::Tuple(fields) => {
+                    assert_eq!(fields.len(), 2);
+                }
+                _ => panic!("Should be Tuple variant"),
+            }
+        }
+
+        #[test]
+        fn test_struct_variant() {
+            let fields = vec![
+                FieldInfo {
+                    name: "r".to_string(),
+                    rust_type: "u8".to_string(),
+                    is_optional: false,
+                    is_public: true,
+                    validator_attributes: None,
+                    serde_rename: None,
+                    type_structure: TypeStructure::Primitive("number".to_string()),
+                },
+                FieldInfo {
+                    name: "g".to_string(),
+                    rust_type: "u8".to_string(),
+                    is_optional: false,
+                    is_public: true,
+                    validator_attributes: None,
+                    serde_rename: None,
+                    type_structure: TypeStructure::Primitive("number".to_string()),
+                },
+            ];
+            let kind = EnumVariantKind::Struct(fields);
+
+            match kind {
+                EnumVariantKind::Struct(f) => {
+                    assert_eq!(f.len(), 2);
+                    assert_eq!(f[0].name, "r");
+                    assert_eq!(f[1].name, "g");
+                }
+                _ => panic!("Should be Struct variant"),
+            }
+        }
+
+        #[test]
+        fn test_serialize_deserialize() {
+            let unit = EnumVariantKind::Unit;
+            let json = serde_json::to_string(&unit).unwrap();
+            let deserialized: EnumVariantKind = serde_json::from_str(&json).unwrap();
+            assert_eq!(deserialized, EnumVariantKind::Unit);
+
+            let tuple =
+                EnumVariantKind::Tuple(vec![TypeStructure::Primitive("string".to_string())]);
+            let json = serde_json::to_string(&tuple).unwrap();
+            let deserialized: EnumVariantKind = serde_json::from_str(&json).unwrap();
+            match deserialized {
+                EnumVariantKind::Tuple(fields) => assert_eq!(fields.len(), 1),
+                _ => panic!("Should deserialize to Tuple"),
+            }
+        }
+    }
+
+    // EnumVariantInfo tests
+    mod enum_variant_info {
+        use super::*;
+
+        #[test]
+        fn test_unit_variant_helpers() {
+            let variant = EnumVariantInfo {
+                name: "Quit".to_string(),
+                kind: EnumVariantKind::Unit,
+                serde_rename: None,
+            };
+
+            assert!(variant.is_unit());
+            assert!(!variant.is_tuple());
+            assert!(!variant.is_struct());
+            assert!(variant.tuple_fields().is_none());
+            assert!(variant.struct_fields().is_none());
+        }
+
+        #[test]
+        fn test_tuple_variant_helpers() {
+            let variant = EnumVariantInfo {
+                name: "Move".to_string(),
+                kind: EnumVariantKind::Tuple(vec![
+                    TypeStructure::Primitive("number".to_string()),
+                    TypeStructure::Primitive("number".to_string()),
+                ]),
+                serde_rename: None,
+            };
+
+            assert!(!variant.is_unit());
+            assert!(variant.is_tuple());
+            assert!(!variant.is_struct());
+
+            let fields = variant.tuple_fields().unwrap();
+            assert_eq!(fields.len(), 2);
+            assert!(variant.struct_fields().is_none());
+        }
+
+        #[test]
+        fn test_struct_variant_helpers() {
+            let variant = EnumVariantInfo {
+                name: "ChangeColor".to_string(),
+                kind: EnumVariantKind::Struct(vec![FieldInfo {
+                    name: "r".to_string(),
+                    rust_type: "u8".to_string(),
+                    is_optional: false,
+                    is_public: true,
+                    validator_attributes: None,
+                    serde_rename: None,
+                    type_structure: TypeStructure::Primitive("number".to_string()),
+                }]),
+                serde_rename: None,
+            };
+
+            assert!(!variant.is_unit());
+            assert!(!variant.is_tuple());
+            assert!(variant.is_struct());
+
+            assert!(variant.tuple_fields().is_none());
+            let fields = variant.struct_fields().unwrap();
+            assert_eq!(fields.len(), 1);
+            assert_eq!(fields[0].name, "r");
+        }
+
+        #[test]
+        fn test_variant_with_serde_rename() {
+            let variant = EnumVariantInfo {
+                name: "Quit".to_string(),
+                kind: EnumVariantKind::Unit,
+                serde_rename: Some("quit".to_string()),
+            };
+
+            assert_eq!(variant.serde_rename, Some("quit".to_string()));
+        }
+
+        #[test]
+        fn test_clone() {
+            let original = EnumVariantInfo {
+                name: "Write".to_string(),
+                kind: EnumVariantKind::Tuple(vec![TypeStructure::Primitive("string".to_string())]),
+                serde_rename: None,
+            };
+
+            let cloned = original.clone();
+            assert_eq!(cloned.name, "Write");
+            assert!(cloned.is_tuple());
         }
     }
 

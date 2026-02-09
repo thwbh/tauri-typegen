@@ -435,6 +435,8 @@ mod tests {
                 file_path: "test.rs".to_string(),
                 is_enum: false,
                 serde_rename_all: None,
+                serde_tag: None,
+                enum_variants: None,
             }
         }
 
@@ -561,6 +563,8 @@ mod tests {
                 file_path: "test.rs".to_string(),
                 is_enum: false,
                 serde_rename_all: None,
+                serde_tag: None,
+                enum_variants: None,
             }
         }
 

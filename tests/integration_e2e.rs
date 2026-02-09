@@ -433,3 +433,212 @@ fn test_deeply_nested_types_full_pipeline() {
             || commands_file.contains("{ [key: string]: User }")
     );
 }
+
+/// Test complex enum (discriminated union) TypeScript generation
+#[test]
+fn test_complex_enum_typescript_generation() {
+    let project = TestProject::new();
+
+    project.write_file(
+        "main.rs",
+        r#"
+        use serde::{Deserialize, Serialize};
+
+        #[derive(Debug, Clone, Serialize, Deserialize)]
+        #[serde(tag = "type")]
+        pub enum Message {
+            Quit,
+            Move(i32, i32),
+            Write(String),
+            ChangeColor { r: u8, g: u8, b: u8 },
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize)]
+        pub enum Status {
+            Active,
+            Inactive,
+            Pending,
+        }
+
+        #[tauri::command]
+        pub fn send_message(msg: Message) -> Result<Status, String> {
+            Ok(Status::Active)
+        }
+    "#,
+    );
+
+    let (analyzer, commands) = project.analyze();
+    let generator = TestGenerator::new();
+    generator.generate(
+        &commands,
+        analyzer.get_discovered_structs(),
+        &analyzer,
+        Some("none"),
+        None,
+    );
+
+    let types = generator.read_file("types.ts");
+
+    // Simple enum should be string literal union
+    assert!(
+        types.contains(r#"export type Status = "Active" | "Inactive" | "Pending";"#),
+        "Simple enum should use string literal union. Got:\n{}",
+        types
+    );
+
+    // Complex enum should be discriminated union
+    assert!(
+        types.contains("export type Message ="),
+        "Complex enum should have type declaration. Got:\n{}",
+        types
+    );
+
+    // Check for discriminated union structure
+    assert!(
+        types.contains(r#"type: "Quit""#),
+        "Should have Quit variant. Got:\n{}",
+        types
+    );
+    assert!(
+        types.contains(r#"type: "Move""#),
+        "Should have Move variant. Got:\n{}",
+        types
+    );
+    assert!(
+        types.contains(r#"type: "Write""#),
+        "Should have Write variant. Got:\n{}",
+        types
+    );
+    assert!(
+        types.contains(r#"type: "ChangeColor""#),
+        "Should have ChangeColor variant. Got:\n{}",
+        types
+    );
+
+    // Check tuple variant has data field
+    assert!(
+        types.contains("data:"),
+        "Tuple variants should have data field. Got:\n{}",
+        types
+    );
+
+    // Check struct variant has named fields
+    assert!(
+        types.contains("r: number"),
+        "Struct variant should have r field. Got:\n{}",
+        types
+    );
+}
+
+/// Test complex enum Zod schema generation (discriminated union)
+#[test]
+fn test_complex_enum_zod_generation() {
+    let project = TestProject::new();
+
+    project.write_file(
+        "main.rs",
+        r#"
+        use serde::{Deserialize, Serialize};
+
+        #[derive(Debug, Clone, Serialize, Deserialize)]
+        #[serde(tag = "kind")]
+        pub enum Action {
+            Start,
+            Move { x: i32, y: i32 },
+            Send(String),
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize)]
+        pub enum Status {
+            Active,
+            Inactive,
+        }
+
+        #[tauri::command]
+        pub fn perform_action(action: Action) -> Result<Status, String> {
+            Ok(Status::Active)
+        }
+    "#,
+    );
+
+    let (analyzer, commands) = project.analyze();
+    let generator = TestGenerator::new();
+    generator.generate(
+        &commands,
+        analyzer.get_discovered_structs(),
+        &analyzer,
+        Some("zod"),
+        None,
+    );
+
+    let types = generator.read_file("types.ts");
+
+    // Simple enum should use z.enum
+    assert!(
+        types.contains("StatusSchema = z.enum"),
+        "Simple enum should use z.enum. Got:\n{}",
+        types
+    );
+    assert!(
+        types.contains(r#"["Active", "Inactive"]"#),
+        "Simple enum should list variants. Got:\n{}",
+        types
+    );
+
+    // Complex enum should use z.discriminatedUnion
+    assert!(
+        types.contains("ActionSchema = z.discriminatedUnion"),
+        "Complex enum should use z.discriminatedUnion. Got:\n{}",
+        types
+    );
+
+    // Check discriminator is "kind" (from serde tag)
+    assert!(
+        types.contains(r#"z.discriminatedUnion("kind""#),
+        "Should use 'kind' as discriminator. Got:\n{}",
+        types
+    );
+
+    // Check unit variant
+    assert!(
+        types.contains(r#"z.literal("Start")"#),
+        "Should have Start variant. Got:\n{}",
+        types
+    );
+
+    // Check struct variant with named fields
+    assert!(
+        types.contains(r#"z.literal("Move")"#),
+        "Should have Move variant. Got:\n{}",
+        types
+    );
+    assert!(
+        types.contains("x:") && types.contains("y:"),
+        "Move variant should have x and y fields. Got:\n{}",
+        types
+    );
+
+    // Check tuple variant with data field
+    assert!(
+        types.contains(r#"z.literal("Send")"#),
+        "Should have Send variant. Got:\n{}",
+        types
+    );
+    assert!(
+        types.contains("data:"),
+        "Tuple variant should have data field. Got:\n{}",
+        types
+    );
+
+    // Verify type inference
+    assert!(
+        types.contains("export type Action = z.infer<typeof ActionSchema>"),
+        "Should export inferred Action type. Got:\n{}",
+        types
+    );
+    assert!(
+        types.contains("export type Status = z.infer<typeof StatusSchema>"),
+        "Should export inferred Status type. Got:\n{}",
+        types
+    );
+}
