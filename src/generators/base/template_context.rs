@@ -1,5 +1,7 @@
 use crate::generators::base::type_visitor::TypeVisitor;
-use crate::models::{ChannelInfo, CommandInfo, EventInfo, FieldInfo, ParameterInfo};
+use crate::models::{
+    ChannelInfo, CommandInfo, EnumVariantInfo, EnumVariantKind, EventInfo, FieldInfo, ParameterInfo,
+};
 use crate::{GenerateConfig, TypeStructure};
 use serde::{Deserialize, Serialize};
 use serde_rename_rule::RenameRule;
@@ -327,6 +329,89 @@ impl FieldContext {
     }
 }
 
+/// Template context wrapper for enum variants with computed TypeScript-specific fields
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EnumVariantContext {
+    /// Original variant name
+    pub name: String,
+    /// Serialized name (after applying serde rename rules)
+    pub serialized_name: String,
+    /// Variant kind: "unit", "tuple", or "struct"
+    pub kind: String,
+    /// TypeScript types for tuple variant fields (e.g., ["number", "number"] for Move(i32, i32))
+    pub tuple_types: Vec<String>,
+    /// Zod schemas for tuple variant fields (e.g., ["z.number()", "z.number()"])
+    pub tuple_zod_types: Vec<String>,
+    /// Field contexts for struct variant fields
+    pub struct_fields: Vec<FieldContext>,
+    #[serde(skip)]
+    config: GenerateConfig,
+}
+
+impl NamingContext for EnumVariantContext {
+    fn config(&self) -> &GenerateConfig {
+        &self.config
+    }
+}
+
+impl EnumVariantContext {
+    /// Create a new EnumVariantContext with the given config
+    pub fn new(config: &GenerateConfig) -> Self {
+        Self {
+            name: String::new(),
+            serialized_name: String::new(),
+            kind: String::new(),
+            tuple_types: Vec::new(),
+            tuple_zod_types: Vec::new(),
+            struct_fields: Vec::new(),
+            config: config.clone(),
+        }
+    }
+
+    /// Populate this context from an EnumVariantInfo
+    pub fn from_variant_info<V: TypeVisitor>(
+        mut self,
+        variant: &EnumVariantInfo,
+        enum_rename_all: &Option<RenameRule>,
+        visitor: &V,
+    ) -> Self {
+        // Compute serialized name from serde attributes
+        let serialized_name =
+            self.compute_field_name(&variant.name, &variant.serde_rename, enum_rename_all);
+
+        self.name = variant.name.clone();
+        self.serialized_name = serialized_name;
+
+        match &variant.kind {
+            EnumVariantKind::Unit => {
+                self.kind = "unit".to_string();
+            }
+            EnumVariantKind::Tuple(types) => {
+                self.kind = "tuple".to_string();
+                self.tuple_types = types
+                    .iter()
+                    .map(|t| visitor.visit_type_for_interface(t))
+                    .collect();
+                self.tuple_zod_types = types.iter().map(|t| visitor.visit_type(t)).collect();
+            }
+            EnumVariantKind::Struct(fields) => {
+                self.kind = "struct".to_string();
+                self.struct_fields = fields
+                    .iter()
+                    .map(|field| {
+                        // Struct variant fields don't inherit enum's rename_all
+                        // They use their own serde attributes
+                        FieldContext::new(&self.config).from_field_info(field, &None, visitor)
+                    })
+                    .collect();
+            }
+        }
+
+        self
+    }
+}
+
 /// Template context wrapper for StructInfo with computed TypeScript-specific fields
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -334,6 +419,12 @@ pub struct StructContext {
     pub name: String,
     pub fields: Vec<FieldContext>,
     pub is_enum: bool,
+    /// Whether this is a simple enum (all unit variants) - can use string literal union
+    pub is_simple_enum: bool,
+    /// The discriminator tag name for complex enums (default: "type")
+    pub discriminator_tag: String,
+    /// Enum variants with full type information (only for enums)
+    pub enum_variants: Vec<EnumVariantContext>,
     #[serde(skip)]
     config: GenerateConfig,
 }
@@ -351,6 +442,9 @@ impl StructContext {
             name: String::new(),
             fields: Vec::new(),
             is_enum: false,
+            is_simple_enum: false,
+            discriminator_tag: "type".to_string(),
+            enum_variants: Vec::new(),
             config: config.clone(),
         }
     }
@@ -374,9 +468,30 @@ impl StructContext {
             })
             .collect();
 
+        // Build enum variant contexts if this is an enum with enum_variants
+        let enum_variants: Vec<EnumVariantContext> = struct_info
+            .enum_variants
+            .as_ref()
+            .map(|variants| {
+                variants
+                    .iter()
+                    .map(|v| {
+                        EnumVariantContext::new(&self.config).from_variant_info(
+                            v,
+                            &struct_info.serde_rename_all,
+                            visitor,
+                        )
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
         self.name = name.to_string();
         self.fields = field_contexts;
         self.is_enum = struct_info.is_enum;
+        self.is_simple_enum = struct_info.is_simple_enum();
+        self.discriminator_tag = struct_info.discriminator_tag().to_string();
+        self.enum_variants = enum_variants;
 
         self
     }
@@ -800,6 +915,22 @@ mod tests {
         assert_eq!(ctx.name, "");
         assert_eq!(ctx.fields.len(), 0);
         assert!(!ctx.is_enum);
+        assert!(!ctx.is_simple_enum);
+        assert_eq!(ctx.discriminator_tag, "type");
+        assert_eq!(ctx.enum_variants.len(), 0);
+    }
+
+    #[test]
+    fn test_enum_variant_context_builder_pattern() {
+        let config = mock_config();
+        let ctx = EnumVariantContext::new(&config);
+
+        assert_eq!(ctx.name, "");
+        assert_eq!(ctx.serialized_name, "");
+        assert_eq!(ctx.kind, "");
+        assert_eq!(ctx.tuple_types.len(), 0);
+        assert_eq!(ctx.tuple_zod_types.len(), 0);
+        assert_eq!(ctx.struct_fields.len(), 0);
     }
 
     #[test]
