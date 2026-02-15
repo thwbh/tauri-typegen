@@ -433,3 +433,81 @@ fn test_deeply_nested_types_full_pipeline() {
             || commands_file.contains("{ [key: string]: User }")
     );
 }
+
+/// Test event payload type discovery when emitting from helper functions
+/// Verifies that variable types are correctly inferred from function parameters
+#[test]
+fn test_event_payload_discovery_from_helper_function() {
+    let project = TestProject::new();
+
+    project.write_file(
+        "main.rs",
+        r#"
+        use tauri::{AppHandle, Manager};
+        use serde::{Deserialize, Serialize};
+
+        #[derive(Debug, Clone, Serialize, Deserialize)]
+        pub struct ProgressUpdate {
+            pub task_id: String,
+            pub progress: f64,
+            pub message: String,
+        }
+
+        /// Command that uses a helper function to emit events
+        #[tauri::command]
+        pub async fn process_task(app: AppHandle, task_id: String) -> Result<String, String> {
+            let update = ProgressUpdate {
+                task_id: task_id.clone(),
+                progress: 50.0,
+                message: "Processing".to_string(),
+            };
+            emit_progress(app, &update);
+            Ok(format!("Task {} completed", task_id))
+        }
+
+        /// Helper function that emits the event with a reference parameter
+        pub fn emit_progress(app: AppHandle, update: &ProgressUpdate) {
+            app.emit("progress-update", update).unwrap();
+        }
+    "#,
+    );
+
+    let (analyzer, commands) = project.analyze();
+    let events = analyzer.get_discovered_events();
+
+    // Verify the command was found
+    assert_eq!(commands.len(), 1);
+
+    // Verify the event was discovered with correct payload type
+    assert_eq!(events.len(), 1, "Should discover one event");
+    assert_eq!(events[0].event_name, "progress-update");
+    assert_eq!(
+        events[0].payload_type, "ProgressUpdate",
+        "Should infer ProgressUpdate type from function parameter, got: {}",
+        events[0].payload_type
+    );
+
+    // Generate code and verify struct is included
+    let generator = TestGenerator::new();
+    generator.generate(
+        &commands,
+        analyzer.get_discovered_structs(),
+        &analyzer,
+        Some("zod"),
+        None,
+    );
+
+    let types = generator.read_file("types.ts");
+    assert!(
+        types.contains("ProgressUpdate"),
+        "Should include ProgressUpdate in types.ts. Got:\n{}",
+        types
+    );
+
+    let events_file = generator.read_file("events.ts");
+    assert!(
+        events_file.contains("ProgressUpdate"),
+        "Should reference ProgressUpdate in events.ts. Got:\n{}",
+        events_file
+    );
+}
