@@ -6,6 +6,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-02-24
+
+### Added
+- **Complex Enum Variant Support**: Full support for Rust enums with tuple and struct variants
+  - Simple enums (unit variants only) continue to generate TypeScript string literal unions / `z.enum()`
+  - Complex enums (tuple or struct variants) now generate TypeScript discriminated unions / `z.discriminatedUnion()`
+  - Variant payloads are fully typed, including nested structs and generics
+  - Enum variants are included in the AST cache for efficient subsequent runs
+
+### Changed
+- **Serde Attribute Parsing**: Replaced regex-based parsing with `syn` AST functions
+  - More robust and accurate handling of `#[serde(...)]` attributes
+  - Eliminates edge cases caused by pattern matching on raw token strings
+
 ## [0.4.2] - 2026-02-15
 
 ### Fixed
