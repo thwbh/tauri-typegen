@@ -305,7 +305,7 @@ mod tests {
 
     #[test]
     fn test_default_impl() {
-        let parser = SerdeParser::default();
+        let parser = SerdeParser::new();
         let attrs: Vec<Attribute> = vec![parse_quote!(#[serde(rename = "test")])];
         let result = parser.parse_field_serde_attrs(&attrs);
         assert_eq!(result.rename, Some("test".to_string()));
