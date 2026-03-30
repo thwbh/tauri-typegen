@@ -17,27 +17,45 @@ impl CommandParser {
         }
     }
 
-    /// Extract commands from a cached AST
+    /// Extract commands from a cached AST (including nested modules)
     pub fn extract_commands_from_ast(
         &self,
         ast: &SynFile,
         file_path: &Path,
         type_resolver: &mut TypeResolver,
     ) -> Result<Vec<CommandInfo>, Box<dyn std::error::Error>> {
-        let commands = ast
-            .items
-            .iter()
-            .filter_map(|item| {
-                if let syn::Item::Fn(func) = item {
+        let mut commands = Vec::new();
+        self.extract_commands_from_items(&ast.items, file_path, type_resolver, &mut commands);
+        Ok(commands)
+    }
+
+    /// Recursively extract commands from items
+    fn extract_commands_from_items(
+        &self,
+        items: &[syn::Item],
+        file_path: &Path,
+        type_resolver: &mut TypeResolver,
+        commands: &mut Vec<CommandInfo>,
+    ) {
+        for item in items {
+            match item {
+                syn::Item::Fn(func) => {
                     if self.is_tauri_command(func) {
-                        return self.extract_command_info(func, file_path, type_resolver);
+                        if let Some(info) =
+                            self.extract_command_info(func, file_path, type_resolver)
+                        {
+                            commands.push(info);
+                        }
                     }
                 }
-                None
-            })
-            .collect();
-
-        Ok(commands)
+                syn::Item::Mod(item_mod) => {
+                    if let Some((_, items)) = &item_mod.content {
+                        self.extract_commands_from_items(items, file_path, type_resolver, commands);
+                    }
+                }
+                _ => {}
+            }
+        }
     }
 
     /// Check if a function is a Tauri command

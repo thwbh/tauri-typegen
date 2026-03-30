@@ -242,7 +242,12 @@ impl CommandAnalyzer {
 
     /// Build an index of type definitions from an AST
     fn index_type_definitions(&mut self, ast: &syn::File, file_path: &Path) {
-        for item in &ast.items {
+        self.index_items(&ast.items, file_path);
+    }
+
+    /// Recursively index items for type definitions
+    fn index_items(&mut self, items: &[syn::Item], file_path: &Path) {
+        for item in items {
             match item {
                 syn::Item::Struct(item_struct) => {
                     if self.struct_parser.should_include_struct(item_struct) {
@@ -256,6 +261,11 @@ impl CommandAnalyzer {
                         let enum_name = item_enum.ident.to_string();
                         self.dependency_graph
                             .add_type_definition(enum_name, file_path.to_path_buf());
+                    }
+                }
+                syn::Item::Mod(item_mod) => {
+                    if let Some((_, items)) = &item_mod.content {
+                        self.index_items(items, file_path);
                     }
                 }
                 _ => {}
@@ -358,7 +368,17 @@ impl CommandAnalyzer {
         type_name: &str,
         file_path: &Path,
     ) -> Option<StructInfo> {
-        for item in &ast.items {
+        self.find_type_in_items(&ast.items, type_name, file_path)
+    }
+
+    /// Recursively find a type in a list of items
+    fn find_type_in_items(
+        &mut self,
+        items: &[syn::Item],
+        type_name: &str,
+        file_path: &Path,
+    ) -> Option<StructInfo> {
+        for item in items {
             match item {
                 syn::Item::Struct(item_struct) => {
                     if item_struct.ident == type_name
@@ -380,6 +400,13 @@ impl CommandAnalyzer {
                             file_path,
                             &mut self.type_resolver,
                         );
+                    }
+                }
+                syn::Item::Mod(item_mod) => {
+                    if let Some((_, items)) = &item_mod.content {
+                        if let Some(info) = self.find_type_in_items(items, type_name, file_path) {
+                            return Some(info);
+                        }
                     }
                 }
                 _ => {}
@@ -523,17 +550,36 @@ impl CommandAnalyzer {
             .collect()
     }
 
-    /// Find a function by name in an AST
+    /// Find a function by name in an AST (recursive)
     fn find_function_in_ast<'a>(
         &self,
         ast: &'a syn::File,
         function_name: &str,
     ) -> Option<&'a syn::ItemFn> {
-        for item in &ast.items {
-            if let syn::Item::Fn(func) = item {
-                if func.sig.ident == function_name {
-                    return Some(func);
+        self.find_function_in_items(&ast.items, function_name)
+    }
+
+    /// Recursively find a function in a list of items
+    fn find_function_in_items<'a>(
+        &self,
+        items: &'a [syn::Item],
+        function_name: &str,
+    ) -> Option<&'a syn::ItemFn> {
+        for item in items {
+            match item {
+                syn::Item::Fn(func) => {
+                    if func.sig.ident == function_name {
+                        return Some(func);
+                    }
                 }
+                syn::Item::Mod(item_mod) => {
+                    if let Some((_, items)) = &item_mod.content {
+                        if let Some(func) = self.find_function_in_items(items, function_name) {
+                            return Some(func);
+                        }
+                    }
+                }
+                _ => {}
             }
         }
         None

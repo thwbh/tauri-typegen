@@ -45,17 +45,15 @@ impl StructParser {
 
     /// Check if an attribute indicates the type should be included
     fn should_include(&self, attr: &Attribute) -> bool {
-        if let Ok(meta_list) = attr.meta.require_list() {
-            if meta_list.path.is_ident("derive") {
-                let tokens_str = meta_list.to_token_stream().to_string();
+        let tokens_str = attr.to_token_stream().to_string();
 
-                tokens_str.contains("Serialize") || tokens_str.contains("Deserialize")
-            } else {
-                false
-            }
-        } else {
-            false
-        }
+        // Very permissive check for any serde-related derives or attributes
+        // This handles #[derive(Serialize)], #[derive(serde::Serialize)],
+        // #[derive(::serde::Serialize)], and even direct #[serde(...)] attributes
+        tokens_str.contains("Serialize")
+            || tokens_str.contains("Deserialize")
+            || (tokens_str.contains("serde") && !tokens_str.contains("serde_rename"))
+        // Avoid matching internal markers if any
     }
 
     /// Parse a Rust struct into StructInfo
