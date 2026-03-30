@@ -298,6 +298,33 @@ impl CommandAnalyzer {
                             self.extract_type_names(&field.rust_type, &mut type_dependencies);
                         }
 
+                        // Collect dependencies from enum variants
+                        if let Some(variants) = &struct_info.enum_variants {
+                            for variant in variants {
+                                match &variant.kind {
+                                    crate::models::EnumVariantKind::Unit => {}
+                                    crate::models::EnumVariantKind::Tuple(types) => {
+                                        for type_struct in types {
+                                            let mut variant_types = HashSet::new();
+                                            crate::generators::TypeCollector::collect_referenced_types_from_structure(
+                                                type_struct,
+                                                &mut variant_types,
+                                            );
+                                            type_dependencies.extend(variant_types);
+                                        }
+                                    }
+                                    crate::models::EnumVariantKind::Struct(fields) => {
+                                        for field in fields {
+                                            self.extract_type_names(
+                                                &field.rust_type,
+                                                &mut type_dependencies,
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         // Add dependencies to the resolution queue
                         for dep_type in &type_dependencies {
                             if !resolved_types.contains(dep_type)

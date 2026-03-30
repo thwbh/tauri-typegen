@@ -265,12 +265,19 @@ impl StructParser {
                                 let generic_args: Vec<String> = args
                                     .args
                                     .iter()
-                                    .map(|arg| match arg {
-                                        syn::GenericArgument::Type(t) => Self::type_to_string(t),
-                                        _ => "unknown".to_string(),
+                                    .filter_map(|arg| match arg {
+                                        syn::GenericArgument::Type(t) => {
+                                            Some(Self::type_to_string(t))
+                                        }
+                                        _ => None,
                                     })
                                     .collect();
-                                format!("{}<{}>", ident, generic_args.join(", "))
+
+                                if generic_args.is_empty() {
+                                    ident
+                                } else {
+                                    format!("{}<{}>", ident, generic_args.join(", "))
+                                }
                             }
                             syn::PathArguments::Parenthesized(_) => ident, // Function types, not common in structs
                         }

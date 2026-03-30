@@ -175,7 +175,15 @@ impl TypeResolver {
     /// Parse a Rust type string into a structured TypeStructure
     /// This is the single source of truth for type parsing - generators use this instead of parsing strings
     pub fn parse_type_structure(&self, rust_type: &str) -> TypeStructure {
-        let cleaned = rust_type.trim();
+        let mut cleaned = rust_type.trim();
+
+        // Strip module prefixes like std::collections::HashMap -> HashMap
+        if let Some(last_double_colon) = cleaned.rfind("::") {
+            // But only if it's not part of generic arguments
+            if !cleaned.contains('<') || last_double_colon < cleaned.find('<').unwrap() {
+                cleaned = &cleaned[last_double_colon + 2..];
+            }
+        }
 
         // Handle references &T -> T
         if let Some(inner) = self.extract_reference_type(cleaned) {
@@ -195,6 +203,21 @@ impl TypeResolver {
         // Handle Vec<T> -> Array(T)
         if let Some(inner_type) = self.extract_vec_inner_type(cleaned) {
             return TypeStructure::Array(Box::new(self.parse_type_structure(&inner_type)));
+        }
+
+        // Handle [T] or [T; N] -> Array(T)
+        if cleaned.starts_with('[') && cleaned.ends_with(']') {
+            let inner = &cleaned[1..cleaned.len() - 1];
+            // Split by ; for [T; N]
+            let inner_type = if let Some(semi_pos) = inner.find(';') {
+                inner[..semi_pos].trim()
+            } else {
+                inner.trim()
+            };
+
+            if !inner_type.is_empty() {
+                return TypeStructure::Array(Box::new(self.parse_type_structure(inner_type)));
+            }
         }
 
         // Handle HashMap<K, V> and BTreeMap<K, V> -> Map { key, value }
