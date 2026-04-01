@@ -110,7 +110,12 @@ impl StructParser {
         let mut enum_variants = Vec::new();
 
         for variant in &item_enum.variants {
-            let variant_name = variant.ident.to_string();
+            let mut variant_name = variant.ident.to_string();
+
+            // Strip raw identifier prefix (r#) used for Rust keywords
+            if variant_name.starts_with("r#") {
+                variant_name = variant_name[2..].to_string();
+            }
 
             // Parse variant-level serde attributes
             let variant_serde_attrs = self.serde_parser.parse_field_serde_attrs(&variant.attrs);
@@ -205,7 +210,12 @@ impl StructParser {
         field: &syn::Field,
         type_resolver: &mut TypeResolver,
     ) -> Option<FieldInfo> {
-        let name = field.ident.as_ref()?.to_string();
+        let mut name = field.ident.as_ref()?.to_string();
+
+        // Strip raw identifier prefix (r#) used for Rust keywords
+        if name.starts_with("r#") {
+            name = name[2..].to_string();
+        }
 
         // Parse field-level serde attributes
         let field_serde_attrs = self.serde_parser.parse_field_serde_attrs(&field.attrs);
