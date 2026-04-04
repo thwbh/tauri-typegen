@@ -50,10 +50,11 @@ fn type_structure_to_zod_schema_with_validation(
 ) -> String {
     match type_structure {
         TypeStructure::Optional(inner) => {
-            // For optional types, apply validation to the inner type, then add .optional()
+            // For optional types, apply validation to the inner type, then add .nullable()
+            // Rust Option<T> serializes to null via serde, not undefined
             let inner_schema =
                 type_structure_to_zod_schema_with_validation(inner, is_record_key, validator);
-            format!("{}.optional()", inner_schema)
+            format!("{}.nullable()", inner_schema)
         }
         _ => {
             // For non-optional types, generate base schema and apply validation
@@ -92,7 +93,7 @@ fn type_structure_to_zod_schema(type_structure: &TypeStructure, is_record_key: b
         }
         TypeStructure::Optional(inner) => {
             let inner_schema = type_structure_to_zod_schema(inner, is_record_key);
-            format!("{}.optional()", inner_schema)
+            format!("{}.nullable()", inner_schema)
         }
         TypeStructure::Result(inner) => {
             // Result<T, E> maps to union of T and error
@@ -277,7 +278,7 @@ mod tests {
         let ts = TypeStructure::Optional(Box::new(TypeStructure::Primitive("string".to_string())));
         assert_eq!(
             type_structure_to_zod_schema(&ts, false),
-            "z.string().optional()"
+            "z.string().nullable()"
         );
 
         // Test custom type

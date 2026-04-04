@@ -288,20 +288,21 @@ impl BaseBindingsGenerator for ZodBindingsGenerator {
             .collector
             .collect_used_types(commands, discovered_structs);
 
-        // Also collect types used in events
+        // Also collect types used in events (including nested dependencies)
         let events = analyzer.get_discovered_events();
+        let mut event_types = std::collections::HashSet::new();
         for event in events {
-            let mut event_types = std::collections::HashSet::new();
             TypeCollector::collect_referenced_types_from_structure(
                 &event.payload_type_structure,
                 &mut event_types,
             );
-
-            // Add event payload types to used_structs
-            for type_name in event_types {
-                if let Some(struct_info) = discovered_structs.get(&type_name) {
-                    used_structs.insert(type_name.clone(), struct_info.clone());
-                }
+        }
+        let initial_event_types = event_types.clone();
+        self.collector
+            .discover_nested_dependencies(&initial_event_types, discovered_structs, &mut event_types);
+        for type_name in &event_types {
+            if let Some(struct_info) = discovered_structs.get(type_name) {
+                used_structs.insert(type_name.clone(), struct_info.clone());
             }
         }
 

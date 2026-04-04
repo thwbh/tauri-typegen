@@ -39,7 +39,7 @@ impl<'a> ZodSchemaBuilder<'a> {
         match ts {
             TypeStructure::Optional(inner) => {
                 format!(
-                    "{}.optional()",
+                    "{}.nullable()",
                     self.render_type(inner, validator, false, is_record_key)
                 )
             }
@@ -295,7 +295,7 @@ mod tests {
         let builder = ZodSchemaBuilder::new(&config);
 
         let ts = TypeStructure::Optional(Box::new(TypeStructure::Primitive("string".to_string())));
-        assert_eq!(builder.build_schema(&ts, &None), "z.string().optional()");
+        assert_eq!(builder.build_schema(&ts, &None), "z.string().nullable()");
     }
 
     #[test]

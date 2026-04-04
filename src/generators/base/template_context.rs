@@ -27,6 +27,32 @@ pub trait NamingContext {
         convention.apply_to_field(field_name)
     }
 
+    /// Apply serde naming convention transformations for enum variants.
+    /// Uses apply_to_variant which handles PascalCase input correctly.
+    fn apply_variant_naming_convention(
+        &self,
+        variant_name: &str,
+        convention: RenameRule,
+    ) -> String {
+        convention.apply_to_variant(variant_name)
+    }
+
+    /// Compute the serialized name for an enum variant based on serde attributes.
+    fn compute_variant_name(
+        &self,
+        variant_name: &str,
+        variant_rename: &Option<String>,
+        enum_rename_all: &Option<RenameRule>,
+    ) -> String {
+        if let Some(rename) = variant_rename {
+            rename.to_string()
+        } else if let Some(convention) = enum_rename_all {
+            self.apply_variant_naming_convention(variant_name, *convention)
+        } else {
+            variant_name.to_string()
+        }
+    }
+
     /// Compute the serialized name for a field based on serde attributes
     ///
     /// Priority:
@@ -376,9 +402,9 @@ impl EnumVariantContext {
         enum_rename_all: &Option<RenameRule>,
         visitor: &V,
     ) -> Self {
-        // Compute serialized name from serde attributes
+        // Compute serialized name from serde attributes (use variant naming, not field naming)
         let serialized_name =
-            self.compute_field_name(&variant.name, &variant.serde_rename, enum_rename_all);
+            self.compute_variant_name(&variant.name, &variant.serde_rename, enum_rename_all);
 
         self.name = variant.name.clone();
         self.serialized_name = serialized_name;
