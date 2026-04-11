@@ -66,8 +66,10 @@ impl TypeDependencyGraph {
         let mut sorted = Vec::new();
         let mut visited = HashSet::new();
         let mut visiting = HashSet::new();
+        let mut type_names: Vec<&String> = types.iter().collect();
+        type_names.sort_unstable();
 
-        for type_name in types {
+        for type_name in type_names {
             if !visited.contains(type_name) {
                 self.topological_visit(type_name, &mut sorted, &mut visited, &mut visiting);
             }
@@ -101,7 +103,10 @@ impl TypeDependencyGraph {
 
         // Visit dependencies first
         if let Some(deps) = self.dependencies.get(type_name) {
-            for dep in deps {
+            let mut sorted_deps: Vec<&String> = deps.iter().collect();
+            sorted_deps.sort_unstable();
+
+            for dep in sorted_deps {
                 self.topological_visit(dep, sorted, visited, visiting);
             }
         }
@@ -390,9 +395,7 @@ mod tests {
             types.insert("Post".to_string());
 
             let sorted = graph.topological_sort_types(&types);
-            assert_eq!(sorted.len(), 2);
-            assert!(sorted.contains(&"User".to_string()));
-            assert!(sorted.contains(&"Post".to_string()));
+            assert_eq!(sorted, vec!["Post", "User"]);
         }
 
         #[test]
@@ -433,11 +436,7 @@ mod tests {
             assert_eq!(sorted[0], "A");
             // D must come last (depends on everything)
             assert_eq!(sorted[3], "D");
-            // B and C can be in either order but after A and before D
-            let b_pos = sorted.iter().position(|x| x == "B").unwrap();
-            let c_pos = sorted.iter().position(|x| x == "C").unwrap();
-            assert!(b_pos > 0 && b_pos < 3);
-            assert!(c_pos > 0 && c_pos < 3);
+            assert_eq!(sorted, vec!["A", "B", "C", "D"]);
         }
 
         #[test]

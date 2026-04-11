@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use syn::File as SynFile;
 use walkdir::WalkDir;
 
@@ -33,6 +33,15 @@ impl AstCache {
         }
     }
 
+    fn should_skip_path(path: &Path) -> bool {
+        path.components().any(|component| {
+            component
+                .as_os_str()
+                .to_str()
+                .is_some_and(|part| part == "target" || part == ".git")
+        })
+    }
+
     /// Parse and cache all Rust files in the given project path
     pub fn parse_and_cache_all_files(
         &mut self,
@@ -47,14 +56,11 @@ impl AstCache {
             let entry = entry?;
             let path = entry.path();
 
-            if path.is_file() && path.extension().is_some_and(|ext| ext == "rs") {
-                // Skip target directory and other build artifacts
-                if path.to_string_lossy().contains("/target/")
-                    || path.to_string_lossy().contains("/.git/")
-                {
-                    continue;
-                }
+            if Self::should_skip_path(path) {
+                continue;
+            }
 
+            if path.is_file() && path.extension().is_some_and(|ext| ext == "rs") {
                 if verbose {
                     println!("📄 Parsing file: {}", path.display());
                 }

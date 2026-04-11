@@ -84,7 +84,8 @@ impl CommandAnalyzer {
             .parse_and_cache_all_files(project_path, verbose)?;
 
         // Extract commands from cached ASTs
-        let file_paths: Vec<PathBuf> = self.ast_cache.keys().cloned().collect();
+        let mut file_paths: Vec<PathBuf> = self.ast_cache.keys().cloned().collect();
+        file_paths.sort_unstable();
         let mut commands = Vec::new();
         let mut type_names_to_discover = HashSet::new();
 
