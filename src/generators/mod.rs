@@ -175,9 +175,16 @@ impl TypeCollector {
         config: &GenerateConfig,
     ) -> Vec<CommandContext> {
         let type_resolver = analyzer.get_type_resolver();
+        let mut sorted_commands: Vec<_> = commands.iter().collect();
+        sorted_commands.sort_by(|a, b| {
+            a.name
+                .cmp(&b.name)
+                .then_with(|| a.file_path.cmp(&b.file_path))
+                .then_with(|| a.line_number.cmp(&b.line_number))
+        });
 
-        commands
-            .iter()
+        sorted_commands
+            .into_iter()
             .map(|cmd| {
                 CommandContext::new(config).from_command_info(cmd, visitor, &|rust_type: &str| {
                     type_resolver.borrow_mut().parse_type_structure(rust_type)
@@ -195,9 +202,17 @@ impl TypeCollector {
         config: &GenerateConfig,
     ) -> Vec<EventContext> {
         let type_resolver = analyzer.get_type_resolver();
+        let mut sorted_events: Vec<_> = events.iter().collect();
+        sorted_events.sort_by(|a, b| {
+            a.event_name
+                .cmp(&b.event_name)
+                .then_with(|| a.file_path.cmp(&b.file_path))
+                .then_with(|| a.line_number.cmp(&b.line_number))
+                .then_with(|| a.payload_type.cmp(&b.payload_type))
+        });
 
-        events
-            .iter()
+        sorted_events
+            .into_iter()
             .map(|event| {
                 EventContext::new(config).from_event_info(event, visitor, &|rust_type: &str| {
                     type_resolver.borrow_mut().parse_type_structure(rust_type)
@@ -213,8 +228,15 @@ impl TypeCollector {
         visitor: &V,
         config: &GenerateConfig,
     ) -> Vec<StructContext> {
-        used_structs
-            .iter()
+        let mut sorted_structs: Vec<_> = used_structs.iter().collect();
+        sorted_structs.sort_by(|(name_a, struct_a), (name_b, struct_b)| {
+            name_a
+                .cmp(name_b)
+                .then_with(|| struct_a.file_path.cmp(&struct_b.file_path))
+        });
+
+        sorted_structs
+            .into_iter()
             .map(|(name, struct_info)| {
                 StructContext::new(config).from_struct_info(name, struct_info, visitor)
             })
