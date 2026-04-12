@@ -116,6 +116,39 @@ impl TypeDependencyGraph {
         sorted.push(type_name.to_string());
     }
 
+    fn sorted_commands<'a>(&self, commands: &'a [CommandInfo]) -> Vec<&'a CommandInfo> {
+        let mut sorted: Vec<_> = commands.iter().collect();
+        sorted.sort_by(|a, b| {
+            a.name
+                .cmp(&b.name)
+                .then_with(|| a.file_path.cmp(&b.file_path))
+                .then_with(|| a.line_number.cmp(&b.line_number))
+        });
+        sorted
+    }
+
+    fn sorted_resolved_type_names(&self) -> Vec<&String> {
+        let mut names: Vec<_> = self.resolved_types.keys().collect();
+        names.sort_unstable();
+        names
+    }
+
+    fn sorted_dependencies_for(&self, type_name: &str) -> Vec<&String> {
+        let mut deps: Vec<_> = self
+            .dependencies
+            .get(type_name)
+            .map(|deps| deps.iter().collect())
+            .unwrap_or_default();
+        deps.sort_unstable();
+        deps
+    }
+
+    fn sorted_dependency_owners(&self) -> Vec<&String> {
+        let mut owners: Vec<_> = self.dependencies.keys().collect();
+        owners.sort_unstable();
+        owners
+    }
+
     /// Build visualization of the dependency graph
     pub fn visualize_dependencies(&self, entry_commands: &[crate::models::CommandInfo]) -> String {
         let mut output = String::new();
@@ -124,7 +157,7 @@ impl TypeDependencyGraph {
 
         // Show command entry points
         output.push_str("📋 Command Entry Points:\n");
-        for cmd in entry_commands {
+        for cmd in self.sorted_commands(entry_commands) {
             output.push_str(&format!(
                 "• {} ({}:{})\n",
                 cmd.name, cmd.file_path, cmd.line_number
@@ -140,7 +173,8 @@ impl TypeDependencyGraph {
         }
 
         output.push_str("\n🏗️  Discovered Types:\n");
-        for (type_name, struct_info) in &self.resolved_types {
+        for type_name in self.sorted_resolved_type_names() {
+            let struct_info = &self.resolved_types[type_name];
             let type_kind = if struct_info.is_enum {
                 "enum"
             } else {
@@ -155,17 +189,19 @@ impl TypeDependencyGraph {
             ));
 
             // Show dependencies
-            if let Some(deps) = self.dependencies.get(type_name) {
-                if !deps.is_empty() {
-                    let deps_list: Vec<String> = deps.iter().cloned().collect();
-                    output.push_str(&format!("  └─ depends on: {}\n", deps_list.join(", ")));
-                }
+            let deps_list: Vec<String> = self
+                .sorted_dependencies_for(type_name)
+                .into_iter()
+                .cloned()
+                .collect();
+            if !deps_list.is_empty() {
+                output.push_str(&format!("  └─ depends on: {}\n", deps_list.join(", ")));
             }
         }
 
         // Show dependency chains
         output.push_str("\n🔗 Dependency Chains:\n");
-        for type_name in self.resolved_types.keys() {
+        for type_name in self.sorted_resolved_type_names() {
             self.show_dependency_chain(type_name, &mut output, 0);
         }
 
@@ -184,12 +220,10 @@ impl TypeDependencyGraph {
         let indent_str = "  ".repeat(indent);
         output.push_str(&format!("{}├─ {}\n", indent_str, type_name));
 
-        if let Some(deps) = self.dependencies.get(type_name) {
-            for dep in deps {
-                if indent < 3 {
-                    // Prevent too deep recursion in visualization
-                    self.show_dependency_chain(dep, output, indent + 1);
-                }
+        for dep in self.sorted_dependencies_for(type_name) {
+            if indent < 3 {
+                // Prevent too deep recursion in visualization
+                self.show_dependency_chain(dep, output, indent + 1);
             }
         }
     }
@@ -203,7 +237,7 @@ impl TypeDependencyGraph {
         output.push('\n');
 
         // Add command nodes
-        for command in commands {
+        for command in self.sorted_commands(commands) {
             output.push_str(&format!(
                 "  \"{}\" [color=blue, style=filled, fillcolor=lightblue];\n",
                 command.name
@@ -211,12 +245,12 @@ impl TypeDependencyGraph {
         }
 
         // Add type nodes
-        for type_name in self.resolved_types.keys() {
+        for type_name in self.sorted_resolved_type_names() {
             output.push_str(&format!("  \"{}\" [color=green];\n", type_name));
         }
 
         // Add edges from commands to their parameter/return types
-        for command in commands {
+        for command in self.sorted_commands(commands) {
             for param in &command.parameters {
                 if self.resolved_types.contains_key(&param.rust_type) {
                     output.push_str(&format!(
@@ -234,8 +268,8 @@ impl TypeDependencyGraph {
         }
 
         // Add type dependency edges
-        for (type_name, deps) in &self.dependencies {
-            for dep in deps {
+        for type_name in self.sorted_dependency_owners() {
+            for dep in self.sorted_dependencies_for(type_name) {
                 output.push_str(&format!("  \"{}\" -> \"{}\";\n", type_name, dep));
             }
         }
@@ -259,6 +293,10 @@ mod tests {
             serde_tag: None,
             enum_variants: None,
         }
+    }
+
+    fn create_test_command(name: &str, file: &str, line: usize) -> CommandInfo {
+        CommandInfo::new_for_test(name, file, line, vec![], "String", false, vec![])
     }
 
     #[test]
@@ -547,5 +585,67 @@ mod tests {
         types.insert("Post".to_string());
         let sorted = graph.topological_sort_types(&types);
         assert_eq!(sorted, vec!["User", "Post"]);
+    }
+
+    #[test]
+    fn test_visualize_dependencies_is_deterministic() {
+        let mut graph1 = TypeDependencyGraph::new();
+        graph1.add_resolved_type("Beta".to_string(), create_test_struct("Beta", "beta.rs"));
+        graph1.add_resolved_type("Alpha".to_string(), create_test_struct("Alpha", "alpha.rs"));
+        graph1.add_dependency("Beta".to_string(), "Delta".to_string());
+        graph1.add_dependency("Beta".to_string(), "Gamma".to_string());
+        graph1.add_dependency("Alpha".to_string(), "Gamma".to_string());
+
+        let mut graph2 = TypeDependencyGraph::new();
+        graph2.add_resolved_type("Alpha".to_string(), create_test_struct("Alpha", "alpha.rs"));
+        graph2.add_resolved_type("Beta".to_string(), create_test_struct("Beta", "beta.rs"));
+        graph2.add_dependency("Alpha".to_string(), "Gamma".to_string());
+        graph2.add_dependency("Beta".to_string(), "Gamma".to_string());
+        graph2.add_dependency("Beta".to_string(), "Delta".to_string());
+
+        let commands1 = vec![
+            create_test_command("beta_command", "beta.rs", 20),
+            create_test_command("alpha_command", "alpha.rs", 10),
+        ];
+        let commands2 = vec![
+            create_test_command("alpha_command", "alpha.rs", 10),
+            create_test_command("beta_command", "beta.rs", 20),
+        ];
+
+        assert_eq!(
+            graph1.visualize_dependencies(&commands1),
+            graph2.visualize_dependencies(&commands2)
+        );
+    }
+
+    #[test]
+    fn test_generate_dot_graph_is_deterministic() {
+        let mut graph1 = TypeDependencyGraph::new();
+        graph1.add_resolved_type("Beta".to_string(), create_test_struct("Beta", "beta.rs"));
+        graph1.add_resolved_type("Alpha".to_string(), create_test_struct("Alpha", "alpha.rs"));
+        graph1.add_dependency("Beta".to_string(), "Delta".to_string());
+        graph1.add_dependency("Beta".to_string(), "Gamma".to_string());
+        graph1.add_dependency("Alpha".to_string(), "Gamma".to_string());
+
+        let mut graph2 = TypeDependencyGraph::new();
+        graph2.add_resolved_type("Alpha".to_string(), create_test_struct("Alpha", "alpha.rs"));
+        graph2.add_resolved_type("Beta".to_string(), create_test_struct("Beta", "beta.rs"));
+        graph2.add_dependency("Alpha".to_string(), "Gamma".to_string());
+        graph2.add_dependency("Beta".to_string(), "Gamma".to_string());
+        graph2.add_dependency("Beta".to_string(), "Delta".to_string());
+
+        let commands1 = vec![
+            create_test_command("beta_command", "beta.rs", 20),
+            create_test_command("alpha_command", "alpha.rs", 10),
+        ];
+        let commands2 = vec![
+            create_test_command("alpha_command", "alpha.rs", 10),
+            create_test_command("beta_command", "beta.rs", 20),
+        ];
+
+        assert_eq!(
+            graph1.generate_dot_graph(&commands1),
+            graph2.generate_dot_graph(&commands2)
+        );
     }
 }

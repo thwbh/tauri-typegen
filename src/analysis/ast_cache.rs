@@ -151,6 +151,11 @@ mod tests {
     use super::*;
     use std::fs;
     use std::io::Write;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::{Arc, Mutex};
+    use std::thread;
+
+    static TEMP_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
 
     fn temp_dir() -> String {
         use std::time::{SystemTime, UNIX_EPOCH};
@@ -158,21 +163,51 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        format!("./test_ast_cache_{}_{}", std::process::id(), timestamp)
+        let counter = TEMP_DIR_COUNTER.fetch_add(1, Ordering::Relaxed);
+        format!(
+            "./test_ast_cache_{}_{}_{}",
+            std::process::id(),
+            timestamp,
+            counter
+        )
     }
 
-    fn cleanup_dir(dir: &str) {
-        let _ = fs::remove_dir_all(dir);
+    fn cleanup_dir(dir: impl AsRef<Path>) {
+        let _ = fs::remove_dir_all(dir.as_ref());
     }
 
-    fn create_rust_file(dir: &str, name: &str, content: &str) -> PathBuf {
-        let path = PathBuf::from(format!("{}/{}", dir, name));
+    fn create_rust_file(dir: impl AsRef<Path>, name: &str, content: &str) -> PathBuf {
+        let path = dir.as_ref().join(name);
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).unwrap();
         }
         let mut file = fs::File::create(&path).unwrap();
         file.write_all(content.as_bytes()).unwrap();
         path
+    }
+
+    #[test]
+    fn test_temp_dir_helper_is_unique_under_concurrency() {
+        let seen = Arc::new(Mutex::new(std::collections::HashSet::new()));
+        let mut handles = Vec::new();
+
+        for _ in 0..32 {
+            let seen = Arc::clone(&seen);
+            handles.push(thread::spawn(move || {
+                for _ in 0..1000 {
+                    let dir = temp_dir();
+                    let mut guard = seen.lock().unwrap();
+                    assert!(
+                        guard.insert(dir),
+                        "temp_dir helper returned a duplicate path"
+                    );
+                }
+            }));
+        }
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
     }
 
     mod parsed_file {
@@ -219,7 +254,6 @@ mod tests {
         #[test]
         fn test_parse_and_cache_single_file() {
             let dir = temp_dir();
-            fs::create_dir_all(&dir).unwrap();
             let path = create_rust_file(&dir, "test.rs", "fn main() {}");
 
             let mut cache = AstCache::new();
@@ -227,21 +261,18 @@ mod tests {
             assert!(result.is_ok());
             assert_eq!(cache.len(), 1);
             assert!(cache.contains(&path));
-
             cleanup_dir(&dir);
         }
 
         #[test]
         fn test_parse_invalid_syntax_errors() {
             let dir = temp_dir();
-            fs::create_dir_all(&dir).unwrap();
             let path = create_rust_file(&dir, "invalid.rs", "fn main( {");
 
             let mut cache = AstCache::new();
             let result = cache.parse_and_cache_file(&path);
             assert!(result.is_err());
             assert_eq!(cache.len(), 0);
-
             cleanup_dir(&dir);
         }
 
@@ -260,7 +291,6 @@ mod tests {
         #[test]
         fn test_parse_and_cache_all_files() {
             let dir = temp_dir();
-            fs::create_dir_all(&dir).unwrap();
 
             create_rust_file(&dir, "lib.rs", "pub fn hello() {}");
             create_rust_file(&dir, "main.rs", "fn main() {}");
@@ -270,14 +300,13 @@ mod tests {
             let result = cache.parse_and_cache_all_files(&dir, false);
             assert!(result.is_ok());
             assert_eq!(cache.len(), 3);
-
             cleanup_dir(&dir);
         }
 
         #[test]
         fn test_parse_skips_target_directory() {
             let dir = temp_dir();
-            fs::create_dir_all(format!("{}/target", dir)).unwrap();
+            fs::create_dir_all(Path::new(&dir).join("target")).unwrap();
 
             create_rust_file(&dir, "lib.rs", "pub fn hello() {}");
             create_rust_file(&dir, "target/debug.rs", "fn debug() {}");
@@ -287,14 +316,13 @@ mod tests {
 
             // Should only have lib.rs, not target/debug.rs
             assert_eq!(cache.len(), 1);
-
             cleanup_dir(&dir);
         }
 
         #[test]
         fn test_parse_skips_git_directory() {
             let dir = temp_dir();
-            fs::create_dir_all(format!("{}/.git", dir)).unwrap();
+            fs::create_dir_all(Path::new(&dir).join(".git")).unwrap();
 
             create_rust_file(&dir, "lib.rs", "pub fn hello() {}");
             create_rust_file(&dir, ".git/hooks.rs", "fn hook() {}");
@@ -303,14 +331,12 @@ mod tests {
             cache.parse_and_cache_all_files(&dir, false).unwrap();
 
             assert_eq!(cache.len(), 1);
-
             cleanup_dir(&dir);
         }
 
         #[test]
         fn test_parse_continues_on_syntax_error() {
             let dir = temp_dir();
-            fs::create_dir_all(&dir).unwrap();
 
             create_rust_file(&dir, "valid.rs", "fn main() {}");
             create_rust_file(&dir, "invalid.rs", "fn main( {");
@@ -321,21 +347,18 @@ mod tests {
             assert!(result.is_ok());
             // Should have 2 valid files, skip the invalid one
             assert_eq!(cache.len(), 2);
-
             cleanup_dir(&dir);
         }
 
         #[test]
         fn test_parse_with_verbose_output() {
             let dir = temp_dir();
-            fs::create_dir_all(&dir).unwrap();
             create_rust_file(&dir, "lib.rs", "pub fn hello() {}");
 
             let mut cache = AstCache::new();
             // Just verify it doesn't panic with verbose=true
             let result = cache.parse_and_cache_all_files(&dir, true);
             assert!(result.is_ok());
-
             cleanup_dir(&dir);
         }
     }
@@ -480,42 +503,36 @@ mod tests {
             let result = cache.parse_and_cache_all_files(&dir, false);
             assert!(result.is_ok());
             assert_eq!(cache.len(), 0);
-
             cleanup_dir(&dir);
         }
 
         #[test]
         fn test_directory_with_only_non_rust_files() {
             let dir = temp_dir();
-            fs::create_dir_all(&dir).unwrap();
             create_rust_file(&dir, "readme.txt", "Hello");
             create_rust_file(&dir, "config.json", "{}");
 
             let mut cache = AstCache::new();
             cache.parse_and_cache_all_files(&dir, false).unwrap();
             assert_eq!(cache.len(), 0);
-
             cleanup_dir(&dir);
         }
 
         #[test]
         fn test_parse_empty_rust_file() {
             let dir = temp_dir();
-            fs::create_dir_all(&dir).unwrap();
             let path = create_rust_file(&dir, "empty.rs", "");
 
             let mut cache = AstCache::new();
             let result = cache.parse_and_cache_file(&path);
             assert!(result.is_ok());
             assert_eq!(cache.len(), 1);
-
             cleanup_dir(&dir);
         }
 
         #[test]
         fn test_cache_same_file_twice() {
             let dir = temp_dir();
-            fs::create_dir_all(&dir).unwrap();
             let path = create_rust_file(&dir, "test.rs", "fn main() {}");
 
             let mut cache = AstCache::new();
@@ -524,7 +541,6 @@ mod tests {
 
             // Should still be 1 (overwritten)
             assert_eq!(cache.len(), 1);
-
             cleanup_dir(&dir);
         }
     }

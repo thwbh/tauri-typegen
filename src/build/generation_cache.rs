@@ -125,6 +125,7 @@ impl GenerationCache {
         #[derive(Serialize)]
         struct CommandHashData<'a> {
             name: &'a str,
+            serde_rename_all: Option<&'a str>,
             parameters: Vec<ParameterHashData<'a>>,
             return_type: &'a str,
             is_async: bool,
@@ -136,12 +137,14 @@ impl GenerationCache {
             name: &'a str,
             rust_type: &'a str,
             is_optional: bool,
+            serde_rename: Option<&'a str>,
         }
 
         #[derive(Serialize)]
         struct ChannelHashData<'a> {
             parameter_name: &'a str,
             message_type: &'a str,
+            serde_rename: Option<&'a str>,
         }
 
         let mut serialized_commands: Vec<String> = commands
@@ -149,6 +152,10 @@ impl GenerationCache {
             .map(|cmd| {
                 serde_json::to_string(&CommandHashData {
                     name: &cmd.name,
+                    serde_rename_all: cmd
+                        .serde_rename_all
+                        .as_ref()
+                        .map(|rule| rule.to_rename_all_str()),
                     parameters: cmd
                         .parameters
                         .iter()
@@ -156,6 +163,7 @@ impl GenerationCache {
                             name: &p.name,
                             rust_type: &p.rust_type,
                             is_optional: p.is_optional,
+                            serde_rename: p.serde_rename.as_deref(),
                         })
                         .collect(),
                     return_type: &cmd.return_type,
@@ -166,6 +174,7 @@ impl GenerationCache {
                         .map(|c| ChannelHashData {
                             parameter_name: &c.parameter_name,
                             message_type: &c.message_type,
+                            serde_rename: c.serde_rename.as_deref(),
                         })
                         .collect(),
                 })
@@ -206,7 +215,10 @@ impl GenerationCache {
         struct StructHashData<'a> {
             name: &'a str,
             is_enum: bool,
+            serde_rename_all: Option<&'a str>,
+            serde_tag: Option<&'a str>,
             fields: Vec<FieldHashData<'a>>,
+            enum_variants: Vec<EnumVariantHashData<'a>>,
         }
 
         #[derive(Serialize)]
@@ -215,6 +227,16 @@ impl GenerationCache {
             rust_type: &'a str,
             is_optional: bool,
             is_public: bool,
+            validator_attributes: Option<&'a crate::models::ValidatorAttributes>,
+            serde_rename: Option<&'a str>,
+            type_structure: &'a crate::models::TypeStructure,
+        }
+
+        #[derive(Serialize)]
+        struct EnumVariantHashData<'a> {
+            name: &'a str,
+            serde_rename: Option<&'a str>,
+            kind: &'a crate::models::EnumVariantKind,
         }
 
         let mut serialized_structs: Vec<String> = structs
@@ -223,6 +245,11 @@ impl GenerationCache {
                 serde_json::to_string(&StructHashData {
                     name: &s.name,
                     is_enum: s.is_enum,
+                    serde_rename_all: s
+                        .serde_rename_all
+                        .as_ref()
+                        .map(|rule| rule.to_rename_all_str()),
+                    serde_tag: s.serde_tag.as_deref(),
                     fields: s
                         .fields
                         .iter()
@@ -231,8 +258,25 @@ impl GenerationCache {
                             rust_type: &f.rust_type,
                             is_optional: f.is_optional,
                             is_public: f.is_public,
+                            validator_attributes: f.validator_attributes.as_ref(),
+                            serde_rename: f.serde_rename.as_deref(),
+                            type_structure: &f.type_structure,
                         })
                         .collect(),
+                    enum_variants: s
+                        .enum_variants
+                        .as_ref()
+                        .map(|variants| {
+                            variants
+                                .iter()
+                                .map(|variant| EnumVariantHashData {
+                                    name: &variant.name,
+                                    serde_rename: variant.serde_rename.as_deref(),
+                                    kind: &variant.kind,
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default(),
                 })
             })
             .collect::<Result<_, _>>()?;
@@ -299,6 +343,11 @@ impl GenerationCache {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::{
+        EnumVariantInfo, EnumVariantKind, FieldInfo, LengthConstraint, ParameterInfo,
+        TypeStructure, ValidatorAttributes,
+    };
+    use serde_rename_rule::RenameRule;
     // Test utilities already imported from parent module
     use tempfile::TempDir;
 
@@ -650,8 +699,6 @@ mod tests {
 
     #[test]
     fn struct_hash_ignores_source_location() {
-        use crate::models::{FieldInfo, StructInfo, TypeStructure};
-
         let config = create_test_config();
         let commands = vec![create_test_command("test_command")];
 
@@ -688,6 +735,174 @@ mod tests {
 
         assert_eq!(cache1.structs_hash, cache2.structs_hash);
         assert_eq!(cache1.combined_hash, cache2.combined_hash);
+    }
+
+    #[test]
+    fn command_hash_changes_with_serde_metadata() {
+        let config = create_test_config();
+        let structs = HashMap::new();
+
+        let mut command1 = CommandInfo::new_for_test(
+            "test_command",
+            "src/test.rs",
+            10,
+            vec![ParameterInfo {
+                name: "user_id".to_string(),
+                rust_type: "String".to_string(),
+                is_optional: false,
+                type_structure: TypeStructure::Primitive("string".to_string()),
+                serde_rename: None,
+            }],
+            "String",
+            false,
+            vec![crate::models::ChannelInfo::new_for_test(
+                "progress_updates",
+                "String",
+                "test_command",
+                "src/test.rs",
+                10,
+            )],
+        );
+        let mut command2 = CommandInfo::new_for_test(
+            "test_command",
+            "src/test.rs",
+            10,
+            vec![ParameterInfo {
+                name: "user_id".to_string(),
+                rust_type: "String".to_string(),
+                is_optional: false,
+                type_structure: TypeStructure::Primitive("string".to_string()),
+                serde_rename: Some("userIdExplicit".to_string()),
+            }],
+            "String",
+            false,
+            vec![crate::models::ChannelInfo::new_for_test(
+                "progress_updates",
+                "String",
+                "test_command",
+                "src/test.rs",
+                10,
+            )],
+        );
+        command1.serde_rename_all = Some(RenameRule::SnakeCase);
+        command2.channels[0].serde_rename = Some("progressUpdates".to_string());
+
+        let cache1 = GenerationCache::new(&[command1], &structs, &[], &config).unwrap();
+        let cache2 = GenerationCache::new(&[command2], &structs, &[], &config).unwrap();
+
+        assert_ne!(cache1.commands_hash, cache2.commands_hash);
+        assert_ne!(cache1.combined_hash, cache2.combined_hash);
+    }
+
+    #[test]
+    fn struct_hash_changes_with_field_metadata() {
+        let config = create_test_config();
+        let commands = vec![create_test_command("test_command")];
+
+        let struct1 = StructInfo {
+            name: "Payload".to_string(),
+            fields: vec![FieldInfo {
+                name: "created_at".to_string(),
+                rust_type: "String".to_string(),
+                is_optional: false,
+                is_public: true,
+                validator_attributes: None,
+                serde_rename: None,
+                type_structure: TypeStructure::Primitive("string".to_string()),
+            }],
+            file_path: "src/payload.rs".to_string(),
+            is_enum: false,
+            serde_rename_all: None,
+            serde_tag: None,
+            enum_variants: None,
+        };
+        let struct2 = StructInfo {
+            fields: vec![FieldInfo {
+                name: "created_at".to_string(),
+                rust_type: "String".to_string(),
+                is_optional: false,
+                is_public: true,
+                validator_attributes: Some(ValidatorAttributes {
+                    length: Some(LengthConstraint {
+                        min: Some(1),
+                        max: None,
+                        message: Some("required".to_string()),
+                    }),
+                    range: None,
+                    email: false,
+                    url: false,
+                    custom_message: Some("required".to_string()),
+                }),
+                serde_rename: Some("createdAt".to_string()),
+                type_structure: TypeStructure::Primitive("string".to_string()),
+            }],
+            serde_rename_all: Some(RenameRule::CamelCase),
+            ..struct1.clone()
+        };
+
+        let mut structs1 = HashMap::new();
+        structs1.insert("Payload".to_string(), struct1);
+
+        let mut structs2 = HashMap::new();
+        structs2.insert("Payload".to_string(), struct2);
+
+        let cache1 = GenerationCache::new(&commands, &structs1, &[], &config).unwrap();
+        let cache2 = GenerationCache::new(&commands, &structs2, &[], &config).unwrap();
+
+        assert_ne!(cache1.structs_hash, cache2.structs_hash);
+        assert_ne!(cache1.combined_hash, cache2.combined_hash);
+    }
+
+    #[test]
+    fn struct_hash_changes_with_enum_metadata() {
+        let config = create_test_config();
+        let commands = vec![create_test_command("test_command")];
+
+        let base_variant = EnumVariantInfo {
+            name: "ReadyState".to_string(),
+            kind: EnumVariantKind::Struct(vec![FieldInfo {
+                name: "event_id".to_string(),
+                rust_type: "String".to_string(),
+                is_optional: false,
+                is_public: true,
+                validator_attributes: None,
+                serde_rename: None,
+                type_structure: TypeStructure::Primitive("string".to_string()),
+            }]),
+            serde_rename: None,
+        };
+        let renamed_variant = EnumVariantInfo {
+            serde_rename: Some("ready_state".to_string()),
+            ..base_variant.clone()
+        };
+
+        let enum1 = StructInfo {
+            name: "StatusEvent".to_string(),
+            fields: vec![],
+            file_path: "src/status.rs".to_string(),
+            is_enum: true,
+            serde_rename_all: None,
+            serde_tag: None,
+            enum_variants: Some(vec![base_variant]),
+        };
+        let enum2 = StructInfo {
+            serde_rename_all: Some(RenameRule::SnakeCase),
+            serde_tag: Some("kind".to_string()),
+            enum_variants: Some(vec![renamed_variant]),
+            ..enum1.clone()
+        };
+
+        let mut structs1 = HashMap::new();
+        structs1.insert("StatusEvent".to_string(), enum1);
+
+        let mut structs2 = HashMap::new();
+        structs2.insert("StatusEvent".to_string(), enum2);
+
+        let cache1 = GenerationCache::new(&commands, &structs1, &[], &config).unwrap();
+        let cache2 = GenerationCache::new(&commands, &structs2, &[], &config).unwrap();
+
+        assert_ne!(cache1.structs_hash, cache2.structs_hash);
+        assert_ne!(cache1.combined_hash, cache2.combined_hash);
     }
 
     #[test]
