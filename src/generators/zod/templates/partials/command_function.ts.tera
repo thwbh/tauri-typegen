@@ -1,9 +1,7 @@
 {%- set has_params = command.parameters | length > 0 -%}
 {%- set has_channels = command.channels | length > 0 -%}
 {%- set return_type = command.returnTypeTs | add_types_prefix -%}
-
-{# Determine parameter signature #}
-{%- if has_params or has_channels -%}
+{#- Params and channels share the generated Params type so validation can stay in one path. -#}{%- if has_params or has_channels -%}
 export async function {{ command.tsFunctionName }}(params: types.{{ command.tsTypeName }}Params, hooks?: CommandHooks<{{ return_type }}>): Promise<{{ return_type }}> {
   try {
 {%- if has_params %}
@@ -14,13 +12,13 @@ export async function {{ command.tsFunctionName }}(params: types.{{ command.tsTy
       throw result.error;
     }
 {%- if has_channels %}
-    {# Build channel references #}
+    {#- Build channel references. -#}
     const data = await invoke<{{ return_type }}>('{{ command.name }}', { ...result.data, {% for channel in command.channels %}{{ channel.serializedParameterName }}: params.{{ channel.serializedParameterName }}{% if not loop.last %}, {% endif %}{% endfor %} });
 {%- else %}
     const data = await invoke<{{ return_type }}>('{{ command.name }}', result.data);
 {%- endif %}
 {%- else %}
-    {# Only channels, no validation #}
+    {#- Channel-only commands skip Zod parsing and pass params through unchanged. -#}
     const data = await invoke<{{ return_type }}>('{{ command.name }}', params);
 {%- endif %}
     hooks?.onSuccess?.(data);
@@ -38,8 +36,7 @@ export async function {{ command.tsFunctionName }}(params: types.{{ command.tsTy
     hooks?.onSettled?.();
   }
 }
-{%- else -%}
-{# No parameters at all #}
+{#- Commands with no inputs can skip both Params generation and schema validation. -#}{%- else -%}
 export async function {{ command.tsFunctionName }}(hooks?: CommandHooks<{{ return_type }}>): Promise<{{ return_type }}> {
   try {
     const data = await invoke<{{ return_type }}>('{{ command.name }}');
@@ -52,5 +49,4 @@ export async function {{ command.tsFunctionName }}(hooks?: CommandHooks<{{ retur
     hooks?.onSettled?.();
   }
 }
-{%- endif %}
-
+{%- endif -%}

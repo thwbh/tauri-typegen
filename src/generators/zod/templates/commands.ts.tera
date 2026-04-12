@@ -1,7 +1,6 @@
-{{ header }}
-{% if has_channels -%}
+{{ header }}{% if has_channels %}
 import { invoke, Channel } from '@tauri-apps/api/core';
-{% else -%}
+{% else %}
 import { invoke } from '@tauri-apps/api/core';
 {% endif -%}
 import { ZodError } from 'zod';
@@ -19,8 +18,9 @@ export interface CommandHooks<T> {
 
   /** Called after command settles (success or error) */
   onSettled?: () => void;
-}
+}{% if commands | length > 0 %}
 
-{% for command in commands -%}
-{% include "zod/partials/command_function.ts.tera" %}
-{% endfor -%}
+{% for command in commands %}{% include "zod/partials/command_function.ts.tera" %}{% if not loop.last %}
+
+{% endif %}{% endfor %}
+{% endif -%}

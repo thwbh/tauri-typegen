@@ -5,7 +5,11 @@
  */
 import { listen, type UnlistenFn, type Event } from '@tauri-apps/api/event';
 import * as types from './types';
+{% if events | length > 0 %}
 
-{% for event in events -%}
-{% include "zod/partials/event_listener.ts.tera" %}
-{% endfor -%}
+{%- for event in events %}
+{% include "zod/partials/event_listener.ts.tera" -%}
+{% if not loop.last %}
+{%- endif %}
+{%- endfor %}
+{% endif %}

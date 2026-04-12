@@ -1,9 +1,9 @@
 {{ header }}
-import { z } from 'zod';
-{% if has_channels %}
+import { z } from 'zod';{% if has_channels %}
 import type { Channel } from '@tauri-apps/api/core';
 {% endif %}
 
-{{ struct_schemas }}
-{{ param_schemas }}
-{{ type_aliases }}
+{% for section in struct_sections %}{{ section }}{% if not loop.last or commands_with_params | length > 0 or commands_with_type_aliases | length > 0 %}
+{% endif %}{% endfor %}{% for command in commands_with_params %}{% include "zod/partials/param_schemas.ts.tera" %}{% if not loop.last or commands_with_type_aliases | length > 0 %}
+{% endif %}{% endfor %}{% for command in commands_with_type_aliases %}{% include "zod/partials/type_aliases.ts.tera" %}{% if not loop.last %}
+{% endif %}{% endfor %}

@@ -125,13 +125,18 @@ impl ZodBindingsGenerator {
         let type_names: HashSet<String> = used_structs.keys().cloned().collect();
         let sorted_types = analyzer.topological_sort_types(&type_names);
 
-        // Generate struct schemas
-        let mut struct_schemas = String::new();
-        for name in &sorted_types {
-            if let Some(struct_info) = used_structs.get(name) {
-                struct_schemas.push_str(&self.generate_struct_schema(name, struct_info, config));
-            }
-        }
+        // Render struct schemas up front so the template only handles section layout.
+        let sections = sorted_types
+            .iter()
+            .filter_map(|name| {
+                used_structs.get(name).map(|struct_info| {
+                    self.generate_struct_schema(name, struct_info, config)
+                        .trim()
+                        .to_string()
+                })
+            })
+            .filter(|section| !section.is_empty())
+            .collect::<Vec<_>>();
 
         // Convert commands to context wrappers
         let visitor = ZodVisitor::with_config(config);
@@ -148,28 +153,17 @@ impl ZodBindingsGenerator {
             }
         }
 
-        // Generate parameter schemas using template
-        let param_schemas = {
-            let mut context = Context::new();
-            context.insert("commands", &command_contexts);
-            self.render("zod/partials/param_schemas.ts.tera", &context)
-                .unwrap_or_else(|e| {
-                    eprintln!("Template rendering failed for param schemas: {}", e);
-                    String::new()
-                })
-        };
-
-        // Generate type aliases using template
-        let type_aliases = {
-            let mut context = Context::new();
-            context.insert("commands", &command_contexts);
-            context.insert("struct_names", &sorted_types);
-            self.render("zod/partials/type_aliases.ts.tera", &context)
-                .unwrap_or_else(|e| {
-                    eprintln!("Template rendering failed for type aliases: {}", e);
-                    String::new()
-                })
-        };
+        // Split command contexts by the template fragments they actually need.
+        let commands_with_params = command_contexts
+            .iter()
+            .filter(|command| !command.parameters.is_empty())
+            .cloned()
+            .collect::<Vec<_>>();
+        let commands_with_type_aliases = command_contexts
+            .iter()
+            .filter(|command| !command.parameters.is_empty() || !command.channels.is_empty())
+            .cloned()
+            .collect::<Vec<_>>();
 
         // Render main types.ts template
         let mut context = Context::new();
@@ -178,9 +172,9 @@ impl ZodBindingsGenerator {
             "has_channels",
             &commands.iter().any(|cmd| !cmd.channels.is_empty()),
         );
-        context.insert("struct_schemas", &struct_schemas);
-        context.insert("param_schemas", &param_schemas);
-        context.insert("type_aliases", &type_aliases);
+        context.insert("struct_sections", &sections);
+        context.insert("commands_with_params", &commands_with_params);
+        context.insert("commands_with_type_aliases", &commands_with_type_aliases);
 
         self.render("zod/types.ts.tera", &context)
             .unwrap_or_else(|e| {
@@ -222,9 +216,14 @@ impl ZodBindingsGenerator {
 
     /// Generate index.ts file
     fn generate_index_file(&self, generated_files: &[String]) -> String {
+        let modules = generated_files
+            .iter()
+            .filter(|file| file.as_str() != "index.ts")
+            .cloned()
+            .collect::<Vec<_>>();
         let mut context = Context::new();
         context.insert("header", &self.generate_file_header());
-        context.insert("files", generated_files);
+        context.insert("modules", &modules);
 
         self.render("zod/index.ts.tera", &context)
             .unwrap_or_else(|e| {
@@ -341,7 +340,9 @@ impl Default for ZodBindingsGenerator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{FieldInfo, TypeStructure};
+    use crate::analysis::CommandAnalyzer;
+    use crate::models::{EventInfo, FieldInfo, TypeStructure};
+    use std::collections::HashMap;
 
     mod initialization {
         use super::*;
@@ -551,6 +552,7 @@ mod tests {
 
     mod helper_methods {
         use super::*;
+        use crate::models::{ChannelInfo, ParameterInfo, TypeStructure};
 
         #[test]
         fn test_generate_index_file_with_empty_files() {
@@ -566,6 +568,384 @@ mod tests {
             let files = vec!["types.ts".to_string(), "commands.ts".to_string()];
             let result = gen.generate_index_file(&files);
             assert!(!result.is_empty());
+        }
+
+        #[test]
+        fn test_generate_index_file_skips_index_without_blank_lines() {
+            let gen = ZodBindingsGenerator::new();
+            let files = vec![
+                "types.ts".to_string(),
+                "index.ts".to_string(),
+                "commands.ts".to_string(),
+            ];
+            let result = result_without_timestamp(&gen.generate_index_file(&files));
+
+            assert!(result.contains(" */\n\nexport * from './types';"));
+            assert!(result.contains("export * from './types';\nexport * from './commands';"));
+            assert!(!result.contains("export * from './types';\n\nexport * from './commands';"));
+        }
+
+        #[test]
+        fn test_generate_command_bindings_avoid_blank_lines_between_functions() {
+            let gen = ZodBindingsGenerator::new();
+            let analyzer = CommandAnalyzer::new();
+            let config = GenerateConfig {
+                project_path: ".".to_string(),
+                output_path: "./output".to_string(),
+                validation_library: "zod".to_string(),
+                visualize_deps: Some(false),
+                verbose: Some(false),
+                include_private: Some(false),
+                type_mappings: None,
+                exclude_patterns: None,
+                include_patterns: None,
+                default_parameter_case: "camelCase".to_string(),
+                default_field_case: "snake_case".to_string(),
+                force: Some(false),
+            };
+            let commands = vec![
+                CommandInfo::new_for_test(
+                    "alpha_command",
+                    "a.rs",
+                    1,
+                    vec![ParameterInfo {
+                        name: "value".to_string(),
+                        rust_type: "String".to_string(),
+                        is_optional: false,
+                        type_structure: TypeStructure::Primitive("string".to_string()),
+                        serde_rename: None,
+                    }],
+                    "Alpha",
+                    false,
+                    vec![],
+                ),
+                CommandInfo::new_for_test("beta_command", "b.rs", 1, vec![], "Beta", false, vec![]),
+            ];
+            let rendered = result_without_timestamp(
+                &gen.generate_command_bindings(&commands, &analyzer, &config),
+            );
+
+            assert!(
+                rendered.contains("}\n\nexport async function alphaCommand"),
+                "unexpected render:\n{rendered}"
+            );
+            assert!(
+                rendered.contains("  }\n}\n\nexport async function betaCommand"),
+                "unexpected render:\n{rendered}"
+            );
+            assert!(
+                !rendered.contains("  }\n}\n\n\nexport async function betaCommand"),
+                "unexpected render:\n{rendered}"
+            );
+        }
+
+        #[test]
+        fn test_generate_events_file_has_single_blank_line_between_listeners() {
+            let gen = ZodBindingsGenerator::new();
+            let analyzer = CommandAnalyzer::new();
+            let config = GenerateConfig {
+                project_path: ".".to_string(),
+                output_path: "./output".to_string(),
+                validation_library: "zod".to_string(),
+                visualize_deps: Some(false),
+                verbose: Some(false),
+                include_private: Some(false),
+                type_mappings: None,
+                exclude_patterns: None,
+                include_patterns: None,
+                default_parameter_case: "camelCase".to_string(),
+                default_field_case: "snake_case".to_string(),
+                force: Some(false),
+            };
+            let events = vec![
+                EventInfo {
+                    event_name: "alpha-ready".to_string(),
+                    payload_type: "String".to_string(),
+                    payload_type_structure: TypeStructure::Primitive("string".to_string()),
+                    file_path: "a.rs".to_string(),
+                    line_number: 1,
+                },
+                EventInfo {
+                    event_name: "beta-ready".to_string(),
+                    payload_type: "String".to_string(),
+                    payload_type_structure: TypeStructure::Primitive("string".to_string()),
+                    file_path: "b.rs".to_string(),
+                    line_number: 2,
+                },
+            ];
+            let rendered =
+                result_without_timestamp(&gen.generate_events_file(&events, &analyzer, &config));
+
+            assert!(
+                rendered.contains("  });\n}\n\n/**\n * Listen for 'beta-ready' events"),
+                "unexpected render:\n{rendered}"
+            );
+            assert!(
+                !rendered.contains("  });\n}\n\n\n/**\n * Listen for 'beta-ready' events"),
+                "unexpected render:\n{rendered}"
+            );
+        }
+
+        #[test]
+        fn test_generate_types_file_keeps_blank_line_after_header() {
+            let gen = ZodBindingsGenerator::new();
+            let analyzer = CommandAnalyzer::new();
+            let config = GenerateConfig {
+                project_path: ".".to_string(),
+                output_path: "./output".to_string(),
+                validation_library: "zod".to_string(),
+                visualize_deps: Some(false),
+                verbose: Some(false),
+                include_private: Some(false),
+                type_mappings: None,
+                exclude_patterns: None,
+                include_patterns: None,
+                default_parameter_case: "camelCase".to_string(),
+                default_field_case: "snake_case".to_string(),
+                force: Some(false),
+            };
+            let rendered = result_without_timestamp(&gen.generate_types_file_content(
+                &[],
+                &HashMap::new(),
+                &analyzer,
+                &config,
+            ));
+
+            assert!(
+                rendered.contains(" */\n\nimport { z } from 'zod';"),
+                "unexpected render:\n{rendered}"
+            );
+        }
+
+        #[test]
+        fn test_generate_types_file_compacts_channel_interfaces() {
+            let gen = ZodBindingsGenerator::new();
+            let analyzer = CommandAnalyzer::new();
+            let config = GenerateConfig {
+                project_path: ".".to_string(),
+                output_path: "./output".to_string(),
+                validation_library: "zod".to_string(),
+                visualize_deps: Some(false),
+                verbose: Some(false),
+                include_private: Some(false),
+                type_mappings: None,
+                exclude_patterns: None,
+                include_patterns: None,
+                default_parameter_case: "camelCase".to_string(),
+                default_field_case: "snake_case".to_string(),
+                force: Some(false),
+            };
+            let commands = vec![CommandInfo::new_for_test(
+                "abort_loopback_fetch",
+                "test.rs",
+                1,
+                vec![ParameterInfo {
+                    name: "request_id".to_string(),
+                    rust_type: "String".to_string(),
+                    is_optional: false,
+                    type_structure: TypeStructure::Primitive("string".to_string()),
+                    serde_rename: None,
+                }],
+                "void",
+                false,
+                vec![ChannelInfo::new_for_test(
+                    "updates",
+                    "String",
+                    "abort_loopback_fetch",
+                    "test.rs",
+                    1,
+                )],
+            )];
+            let rendered = result_without_timestamp(&gen.generate_types_file_content(
+                &commands,
+                &HashMap::new(),
+                &analyzer,
+                &config,
+            ));
+
+            assert!(
+                rendered.contains(
+                    "export interface AbortLoopbackFetchParams extends z.infer<typeof AbortLoopbackFetchParamsSchema> {\n  updates: Channel<string>;\n}"
+                ),
+                "unexpected render:\n{rendered}"
+            );
+        }
+
+        fn result_without_timestamp(content: &str) -> String {
+            content
+                .lines()
+                .map(|line| {
+                    if line.starts_with(" * Generated at:") {
+                        " * Generated at: <normalized>".to_string()
+                    } else {
+                        line.to_string()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        }
+    }
+
+    mod whitespace {
+        use super::*;
+
+        fn create_test_config() -> GenerateConfig {
+            GenerateConfig {
+                project_path: ".".to_string(),
+                output_path: "./output".to_string(),
+                validation_library: "zod".to_string(),
+                visualize_deps: Some(false),
+                verbose: Some(false),
+                include_private: Some(false),
+                type_mappings: None,
+                exclude_patterns: None,
+                include_patterns: None,
+                default_parameter_case: "camelCase".to_string(),
+                default_field_case: "snake_case".to_string(),
+                force: Some(false),
+            }
+        }
+
+        fn create_test_struct(name: &str, rust_type: &str, ts_type: &str) -> StructInfo {
+            StructInfo {
+                name: name.to_string(),
+                fields: vec![FieldInfo {
+                    name: "value".to_string(),
+                    rust_type: rust_type.to_string(),
+                    is_optional: false,
+                    is_public: true,
+                    type_structure: TypeStructure::Primitive(ts_type.to_string()),
+                    serde_rename: None,
+                    validator_attributes: None,
+                }],
+                file_path: format!("{name}.rs"),
+                is_enum: false,
+                serde_rename_all: None,
+                serde_tag: None,
+                enum_variants: None,
+            }
+        }
+
+        fn create_test_event(event_name: &str, file_path: &str, line_number: usize) -> EventInfo {
+            EventInfo {
+                event_name: event_name.to_string(),
+                payload_type: "String".to_string(),
+                payload_type_structure: TypeStructure::Primitive("string".to_string()),
+                file_path: file_path.to_string(),
+                line_number,
+            }
+        }
+
+        fn normalize_generated_output(content: &str) -> String {
+            content
+                .lines()
+                .map(|line| {
+                    if line.starts_with(" * Generated at:") {
+                        " * Generated at: <normalized>".to_string()
+                    } else {
+                        line.to_string()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        }
+
+        #[test]
+        fn deterministic_output_for_reversed_inputs() {
+            let generator = ZodBindingsGenerator::new();
+            let analyzer = CommandAnalyzer::new();
+            let config = create_test_config();
+
+            let commands1 = vec![
+                CommandInfo::new_for_test(
+                    "alpha_command",
+                    "b.rs",
+                    1,
+                    vec![],
+                    "Alpha",
+                    false,
+                    vec![],
+                ),
+                CommandInfo::new_for_test("beta_command", "a.rs", 1, vec![], "Beta", false, vec![]),
+            ];
+            let commands2 = vec![
+                CommandInfo::new_for_test("beta_command", "a.rs", 1, vec![], "Beta", false, vec![]),
+                CommandInfo::new_for_test(
+                    "alpha_command",
+                    "b.rs",
+                    1,
+                    vec![],
+                    "Alpha",
+                    false,
+                    vec![],
+                ),
+            ];
+
+            let mut structs1 = HashMap::new();
+            structs1.insert(
+                "Alpha".to_string(),
+                create_test_struct("Alpha", "String", "string"),
+            );
+            structs1.insert(
+                "Beta".to_string(),
+                create_test_struct("Beta", "i32", "number"),
+            );
+
+            let mut structs2 = HashMap::new();
+            structs2.insert(
+                "Beta".to_string(),
+                create_test_struct("Beta", "i32", "number"),
+            );
+            structs2.insert(
+                "Alpha".to_string(),
+                create_test_struct("Alpha", "String", "string"),
+            );
+
+            let events1 = vec![
+                create_test_event("beta-ready", "b.rs", 20),
+                create_test_event("alpha-ready", "a.rs", 10),
+            ];
+            let events2 = vec![
+                create_test_event("alpha-ready", "a.rs", 10),
+                create_test_event("beta-ready", "b.rs", 20),
+            ];
+
+            let types1 =
+                generator.generate_types_file_content(&commands1, &structs1, &analyzer, &config);
+            let types2 =
+                generator.generate_types_file_content(&commands2, &structs2, &analyzer, &config);
+            let commands_file1 =
+                generator.generate_command_bindings(&commands1, &analyzer, &config);
+            let commands_file2 =
+                generator.generate_command_bindings(&commands2, &analyzer, &config);
+            let events_file1 = generator.generate_events_file(&events1, &analyzer, &config);
+            let events_file2 = generator.generate_events_file(&events2, &analyzer, &config);
+
+            assert_eq!(
+                normalize_generated_output(&types1),
+                normalize_generated_output(&types2)
+            );
+            assert_eq!(
+                normalize_generated_output(&commands_file1),
+                normalize_generated_output(&commands_file2)
+            );
+            assert_eq!(
+                normalize_generated_output(&events_file1),
+                normalize_generated_output(&events_file2)
+            );
+
+            for (file_name, content) in [
+                ("types.ts", &types1),
+                ("commands.ts", &commands_file1),
+                ("events.ts", &events_file1),
+            ] {
+                let normalized = normalize_generated_output(&content);
+                assert!(
+                    !normalized.contains("\n\n\n"),
+                    "unexpected blank lines in {file_name}:\n{normalized}"
+                );
+                assert!(content.ends_with('\n'));
+            }
         }
     }
 }
