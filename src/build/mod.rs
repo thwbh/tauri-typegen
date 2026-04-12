@@ -200,6 +200,7 @@ impl BuildSystem {
 
         // Check cache to see if regeneration is needed (unless force is set)
         let discovered_structs = analyzer.get_discovered_structs();
+        let discovered_events = analyzer.get_discovered_events();
         if config.should_force() {
             self.logger.verbose("Force flag set, regenerating bindings");
         } else {
@@ -207,6 +208,7 @@ impl BuildSystem {
                 &config.output_path,
                 &commands,
                 discovered_structs,
+                discovered_events,
                 config,
             ) {
                 Ok(false) => {
@@ -252,7 +254,7 @@ impl BuildSystem {
         }
 
         // Save cache after successful generation
-        let cache = GenerationCache::new(&commands, discovered_structs, config)?;
+        let cache = GenerationCache::new(&commands, discovered_structs, discovered_events, config)?;
         if let Err(e) = cache.save(&config.output_path) {
             self.logger
                 .warning(&format!("Failed to save generation cache: {}", e));
@@ -292,7 +294,39 @@ impl BuildSystem {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::interface::config::GenerateConfig;
+    use std::path::Path;
     use tempfile::TempDir;
+
+    fn create_build_config(project_path: &Path, output_path: &Path) -> GenerateConfig {
+        GenerateConfig {
+            project_path: project_path.to_string_lossy().to_string(),
+            output_path: output_path.to_string_lossy().to_string(),
+            validation_library: "none".to_string(),
+            verbose: Some(false),
+            visualize_deps: Some(false),
+            include_private: Some(false),
+            type_mappings: None,
+            exclude_patterns: None,
+            include_patterns: None,
+            default_parameter_case: "camelCase".to_string(),
+            default_field_case: "snake_case".to_string(),
+            force: Some(false),
+        }
+    }
+
+    fn run_generation(build_system: &BuildSystem, config: &GenerateConfig) -> Vec<String> {
+        let generated_files = build_system.generate_bindings(config).unwrap();
+        let mut output_manager = OutputManager::new(&config.output_path);
+        output_manager
+            .finalize_generation(&generated_files)
+            .unwrap();
+        generated_files
+    }
+
+    fn read_generated(output_path: &Path, file_name: &str) -> String {
+        std::fs::read_to_string(output_path.join(file_name)).unwrap()
+    }
 
     #[test]
     fn test_build_system_creation() {
@@ -328,18 +362,16 @@ mod tests {
         std::fs::create_dir_all(&custom_src_path).unwrap();
 
         // Create a tauri.conf.json with typegen plugin configuration
-        let config_content = format!(
-            r#"{{
-            "plugins": {{
-                "typegen": {{
-                    "projectPath": "{}",
+        let config_content = serde_json::json!({
+            "plugins": {
+                "typegen": {
+                    "projectPath": custom_src_path.to_string_lossy().to_string(),
                     "outputPath": "./custom-output",
                     "validationLibrary": "zod"
-                }}
-            }}
-        }}"#,
-            custom_src_path.to_string_lossy()
-        );
+                }
+            }
+        })
+        .to_string();
         std::fs::write(&tauri_config_path, &config_content).unwrap();
 
         let project_info = ProjectInfo {
@@ -365,14 +397,12 @@ mod tests {
         std::fs::create_dir_all(&project_path).unwrap();
 
         // Create a standalone typegen.json configuration
-        let config_content = format!(
-            r#"{{
-            "project_path": "{}",
+        let config_content = serde_json::json!({
+            "project_path": project_path.to_string_lossy().to_string(),
             "output_path": "./standalone-output",
             "validation_library": "zod"
-        }}"#,
-            project_path.to_string_lossy()
-        );
+        })
+        .to_string();
         std::fs::write(&typegen_config_path, config_content).unwrap();
 
         let project_info = ProjectInfo {
@@ -431,5 +461,355 @@ mod tests {
         assert!(!build_system
             .logger
             .should_log(crate::interface::output::LogLevel::Debug));
+    }
+
+    #[test]
+    fn test_generate_bindings_skips_unrelated_rust_changes() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("src-tauri");
+        let output_path = temp_dir.path().join("generated");
+        std::fs::create_dir_all(&project_path).unwrap();
+
+        let source_file = project_path.join("main.rs");
+        std::fs::write(
+            &source_file,
+            r#"
+            use serde::{Deserialize, Serialize};
+            use tauri::Manager;
+
+            #[derive(Debug, Clone, Serialize, Deserialize)]
+            pub struct Payload {
+                pub value: String,
+            }
+
+            fn helper_text() -> &'static str {
+                "one"
+            }
+
+            #[tauri::command]
+            pub fn fetch_payload() -> Result<Payload, String> {
+                Ok(Payload {
+                    value: helper_text().to_string(),
+                })
+            }
+
+            #[tauri::command]
+            pub fn emit_event(app: tauri::AppHandle) -> Result<(), String> {
+                app.emit("stable-event", Payload {
+                    value: helper_text().to_string(),
+                }).ok();
+                Ok(())
+            }
+        "#,
+        )
+        .unwrap();
+
+        let config = create_build_config(&project_path, &output_path);
+        let build_system = BuildSystem::new(false, false);
+
+        run_generation(&build_system, &config);
+
+        let commands_before = read_generated(&output_path, "commands.ts");
+        let types_before = read_generated(&output_path, "types.ts");
+        let events_before = read_generated(&output_path, "events.ts");
+        let index_before = read_generated(&output_path, "index.ts");
+
+        std::fs::write(
+            &source_file,
+            r#"
+            use serde::{Deserialize, Serialize};
+            use tauri::Manager;
+
+            #[derive(Debug, Clone, Serialize, Deserialize)]
+            pub struct Payload {
+                pub value: String,
+            }
+
+            fn helper_text() -> &'static str {
+                "two"
+            }
+
+            #[tauri::command]
+            pub fn fetch_payload() -> Result<Payload, String> {
+                Ok(Payload {
+                    value: helper_text().to_string(),
+                })
+            }
+
+            #[tauri::command]
+            pub fn emit_event(app: tauri::AppHandle) -> Result<(), String> {
+                app.emit("stable-event", Payload {
+                    value: helper_text().to_string(),
+                }).ok();
+                Ok(())
+            }
+        "#,
+        )
+        .unwrap();
+
+        run_generation(&build_system, &config);
+
+        assert_eq!(commands_before, read_generated(&output_path, "commands.ts"));
+        assert_eq!(types_before, read_generated(&output_path, "types.ts"));
+        assert_eq!(events_before, read_generated(&output_path, "events.ts"));
+        assert_eq!(index_before, read_generated(&output_path, "index.ts"));
+    }
+
+    #[test]
+    fn test_generate_bindings_skips_source_location_only_changes() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("src-tauri");
+        let output_path = temp_dir.path().join("generated");
+        std::fs::create_dir_all(&project_path).unwrap();
+
+        let source_file = project_path.join("main.rs");
+        std::fs::write(
+            &source_file,
+            r#"
+            use serde::{Deserialize, Serialize};
+            use tauri::Manager;
+
+            #[derive(Debug, Clone, Serialize, Deserialize)]
+            pub struct Payload {
+                pub value: String,
+            }
+
+            #[tauri::command]
+            pub fn fetch_payload() -> Result<Payload, String> {
+                Ok(Payload {
+                    value: "one".to_string(),
+                })
+            }
+
+            #[tauri::command]
+            pub fn emit_event(app: tauri::AppHandle) -> Result<(), String> {
+                app.emit("stable-event", Payload {
+                    value: "one".to_string(),
+                }).ok();
+                Ok(())
+            }
+        "#,
+        )
+        .unwrap();
+
+        let config = create_build_config(&project_path, &output_path);
+        let build_system = BuildSystem::new(false, false);
+
+        run_generation(&build_system, &config);
+
+        let commands_before = read_generated(&output_path, "commands.ts");
+        let types_before = read_generated(&output_path, "types.ts");
+        let events_before = read_generated(&output_path, "events.ts");
+
+        std::fs::write(
+            &source_file,
+            r#"
+            use serde::{Deserialize, Serialize};
+            use tauri::Manager;
+
+            // Unrelated comment that shifts every discovered item downward.
+            // The generated bindings should stay byte-stable.
+
+            #[derive(Debug, Clone, Serialize, Deserialize)]
+            pub struct Payload {
+                pub value: String,
+            }
+
+            #[tauri::command]
+            pub fn fetch_payload() -> Result<Payload, String> {
+                Ok(Payload {
+                    value: "one".to_string(),
+                })
+            }
+
+            #[tauri::command]
+            pub fn emit_event(app: tauri::AppHandle) -> Result<(), String> {
+                app.emit("stable-event", Payload {
+                    value: "one".to_string(),
+                }).ok();
+                Ok(())
+            }
+        "#,
+        )
+        .unwrap();
+
+        run_generation(&build_system, &config);
+
+        assert_eq!(commands_before, read_generated(&output_path, "commands.ts"));
+        assert_eq!(types_before, read_generated(&output_path, "types.ts"));
+        assert_eq!(events_before, read_generated(&output_path, "events.ts"));
+    }
+
+    #[test]
+    fn test_generate_bindings_regenerates_when_commands_change() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("src-tauri");
+        let output_path = temp_dir.path().join("generated");
+        std::fs::create_dir_all(&project_path).unwrap();
+
+        let source_file = project_path.join("main.rs");
+        std::fs::write(
+            &source_file,
+            r#"
+            #[tauri::command]
+            pub fn first_command() -> Result<String, String> {
+                Ok("one".to_string())
+            }
+        "#,
+        )
+        .unwrap();
+
+        let config = create_build_config(&project_path, &output_path);
+        let build_system = BuildSystem::new(false, false);
+
+        run_generation(&build_system, &config);
+        let commands_before = read_generated(&output_path, "commands.ts");
+
+        std::fs::write(
+            &source_file,
+            r#"
+            #[tauri::command]
+            pub fn second_command() -> Result<String, String> {
+                Ok("two".to_string())
+            }
+        "#,
+        )
+        .unwrap();
+
+        run_generation(&build_system, &config);
+        let commands_after = read_generated(&output_path, "commands.ts");
+
+        assert_ne!(commands_before, commands_after);
+        assert!(commands_after.contains("secondCommand"));
+        assert!(!commands_after.contains("firstCommand"));
+    }
+
+    #[test]
+    fn test_generate_bindings_regenerates_when_structs_change() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("src-tauri");
+        let output_path = temp_dir.path().join("generated");
+        std::fs::create_dir_all(&project_path).unwrap();
+
+        let source_file = project_path.join("main.rs");
+        std::fs::write(
+            &source_file,
+            r#"
+            use serde::{Deserialize, Serialize};
+
+            #[derive(Debug, Clone, Serialize, Deserialize)]
+            pub struct Payload {
+                pub value: String,
+            }
+
+            #[tauri::command]
+            pub fn fetch_payload() -> Result<Payload, String> {
+                Ok(Payload {
+                    value: "one".to_string(),
+                })
+            }
+        "#,
+        )
+        .unwrap();
+
+        let config = create_build_config(&project_path, &output_path);
+        let build_system = BuildSystem::new(false, false);
+
+        run_generation(&build_system, &config);
+        let types_before = read_generated(&output_path, "types.ts");
+
+        std::fs::write(
+            &source_file,
+            r#"
+            use serde::{Deserialize, Serialize};
+
+            #[derive(Debug, Clone, Serialize, Deserialize)]
+            pub struct Payload {
+                pub value: String,
+                pub count: i32,
+            }
+
+            #[tauri::command]
+            pub fn fetch_payload() -> Result<Payload, String> {
+                Ok(Payload {
+                    value: "one".to_string(),
+                    count: 2,
+                })
+            }
+        "#,
+        )
+        .unwrap();
+
+        run_generation(&build_system, &config);
+        let types_after = read_generated(&output_path, "types.ts");
+
+        assert_ne!(types_before, types_after);
+        assert!(types_after.contains("count: number"));
+    }
+
+    #[test]
+    fn test_generate_bindings_regenerates_when_events_change() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("src-tauri");
+        let output_path = temp_dir.path().join("generated");
+        std::fs::create_dir_all(&project_path).unwrap();
+
+        let source_file = project_path.join("main.rs");
+        std::fs::write(
+            &source_file,
+            r#"
+            use serde::{Deserialize, Serialize};
+            use tauri::Manager;
+
+            #[derive(Debug, Clone, Serialize, Deserialize)]
+            pub struct Payload {
+                pub value: String,
+            }
+
+            #[tauri::command]
+            pub fn emit_event(app: tauri::AppHandle) -> Result<(), String> {
+                app.emit("first-event", Payload {
+                    value: "one".to_string(),
+                }).ok();
+                Ok(())
+            }
+        "#,
+        )
+        .unwrap();
+
+        let config = create_build_config(&project_path, &output_path);
+
+        let build_system = BuildSystem::new(false, false);
+        run_generation(&build_system, &config);
+        let events_before = read_generated(&output_path, "events.ts");
+
+        std::fs::write(
+            &source_file,
+            r#"
+            use serde::{Deserialize, Serialize};
+            use tauri::Manager;
+
+            #[derive(Debug, Clone, Serialize, Deserialize)]
+            pub struct Payload {
+                pub value: String,
+            }
+
+            #[tauri::command]
+            pub fn emit_event(app: tauri::AppHandle) -> Result<(), String> {
+                app.emit("second-event", Payload {
+                    value: "two".to_string(),
+                }).ok();
+                Ok(())
+            }
+        "#,
+        )
+        .unwrap();
+
+        run_generation(&build_system, &config);
+
+        let events_after = read_generated(&output_path, "events.ts");
+        assert_ne!(events_before, events_after);
+        assert!(events_after.contains("second-event"));
+        assert!(!events_after.contains("first-event"));
     }
 }

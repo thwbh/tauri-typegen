@@ -215,6 +215,7 @@ fn run_generate(
 
     // Check cache to see if regeneration is needed (unless force is set)
     let discovered_structs = analyzer.get_discovered_structs();
+    let discovered_events = analyzer.get_discovered_events();
     let needs_regeneration = if config.should_force() {
         if config.is_verbose() {
             println!("🔄 Force flag set, regenerating bindings");
@@ -225,6 +226,7 @@ fn run_generate(
             &config.output_path,
             &commands,
             discovered_structs,
+            discovered_events,
             &config,
         )
         .unwrap_or(true) // On error, assume regeneration is needed
@@ -273,7 +275,7 @@ fn run_generate(
     }
 
     // Save cache after successful generation
-    let cache = GenerationCache::new(&commands, discovered_structs, &config)?;
+    let cache = GenerationCache::new(&commands, discovered_structs, discovered_events, &config)?;
     if let Err(e) = cache.save(&config.output_path) {
         eprintln!("Warning: Failed to save generation cache: {}", e);
     }
