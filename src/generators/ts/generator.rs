@@ -639,7 +639,7 @@ mod tests {
                 ("commands.ts", &commands_file1),
                 ("events.ts", &events_file1),
             ] {
-                let normalized = normalize_generated_output(&content);
+                let normalized = normalize_generated_output(content);
                 assert!(
                     !normalized.contains("\n\n\n"),
                     "unexpected blank lines in {file_name}:\n{normalized}"
