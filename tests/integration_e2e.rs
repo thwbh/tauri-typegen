@@ -434,6 +434,147 @@ fn test_deeply_nested_types_full_pipeline() {
     );
 }
 
+/// Test generated output ordering is stable across files and dependency graphs.
+#[test]
+fn test_generated_output_has_stable_order() {
+    fn assert_before(content: &str, first: &str, second: &str) {
+        let first_pos = content
+            .find(first)
+            .unwrap_or_else(|| panic!("Missing `{}` in:\n{}", first, content));
+        let second_pos = content
+            .find(second)
+            .unwrap_or_else(|| panic!("Missing `{}` in:\n{}", second, content));
+        assert!(
+            first_pos < second_pos,
+            "Expected `{}` before `{}` in:\n{}",
+            first,
+            second,
+            content
+        );
+    }
+
+    let project = TestProject::new();
+
+    project.write_file(
+        "b_commands.rs",
+        r#"
+        use serde::{Deserialize, Serialize};
+
+        #[derive(Debug, Clone, Serialize, Deserialize)]
+        pub struct Parent {
+            pub child: Child,
+            pub note: String,
+        }
+
+        #[tauri::command]
+        pub fn beta_command(parent: Parent) -> Result<Parent, String> {
+            Ok(parent)
+        }
+
+        pub fn emit_beta(app: tauri::AppHandle, payload: Parent) {
+            app.emit("beta-event", payload).ok();
+        }
+    "#,
+    );
+
+    project.write_file(
+        "a_commands.rs",
+        r#"
+        use serde::{Deserialize, Serialize};
+
+        #[derive(Debug, Clone, Serialize, Deserialize)]
+        pub struct Child {
+            pub id: String,
+        }
+
+        #[tauri::command]
+        pub fn alpha_command(id: String) -> Child {
+            Child { id }
+        }
+
+        pub fn emit_alpha(app: tauri::AppHandle, payload: Child) {
+            app.emit("alpha-event", payload).ok();
+        }
+    "#,
+    );
+
+    let (analyzer, commands) = project.analyze();
+    assert_eq!(
+        commands
+            .iter()
+            .map(|cmd| cmd.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["alpha_command", "beta_command"]
+    );
+
+    assert_eq!(
+        analyzer
+            .get_discovered_events()
+            .iter()
+            .map(|event| event.event_name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["alpha-event", "beta-event"]
+    );
+
+    let vanilla_generator = TestGenerator::new();
+    vanilla_generator.generate(
+        &commands,
+        analyzer.get_discovered_structs(),
+        &analyzer,
+        Some("none"),
+        None,
+    );
+
+    let vanilla_types = vanilla_generator.read_file("types.ts");
+    assert_before(
+        &vanilla_types,
+        "export interface Child",
+        "export interface Parent",
+    );
+    assert_before(
+        &vanilla_types,
+        "export interface AlphaCommandParams",
+        "export interface BetaCommandParams",
+    );
+
+    let vanilla_commands = vanilla_generator.read_file("commands.ts");
+    assert_before(
+        &vanilla_commands,
+        "export async function alphaCommand",
+        "export async function betaCommand",
+    );
+
+    let vanilla_events = vanilla_generator.read_file("events.ts");
+    assert_before(&vanilla_events, "onAlphaEvent", "onBetaEvent");
+
+    let zod_generator = TestGenerator::new();
+    zod_generator.generate(
+        &commands,
+        analyzer.get_discovered_structs(),
+        &analyzer,
+        Some("zod"),
+        None,
+    );
+
+    let zod_types = zod_generator.read_file("types.ts");
+    assert_before(&zod_types, "ChildSchema", "ParentSchema");
+    assert_before(
+        &zod_types,
+        "AlphaCommandParamsSchema",
+        "BetaCommandParamsSchema",
+    );
+
+    let zod_commands = zod_generator.read_file("commands.ts");
+    assert_before(
+        &zod_commands,
+        "export async function alphaCommand",
+        "export async function betaCommand",
+    );
+
+    let zod_events = zod_generator.read_file("events.ts");
+    assert_before(&zod_events, "onAlphaEvent", "onBetaEvent");
+}
+
 /// Test event payload type discovery when emitting from helper functions
 /// Verifies that variable types are correctly inferred from function parameters
 #[test]

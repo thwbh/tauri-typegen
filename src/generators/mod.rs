@@ -103,6 +103,7 @@ impl TypeCollector {
         all_types: &mut std::collections::HashSet<String>,
     ) {
         let mut to_process: Vec<String> = initial_types.iter().cloned().collect();
+        to_process.sort_by(|a, b| b.cmp(a));
         let mut processed: std::collections::HashSet<String> = std::collections::HashSet::new();
 
         while let Some(type_name) = to_process.pop() {
@@ -120,13 +121,18 @@ impl TypeCollector {
                         &mut nested_types,
                     );
 
+                    let mut nested_types: Vec<String> = nested_types
+                        .into_iter()
+                        .filter(|nested_type| {
+                            !all_types.contains(nested_type)
+                                && all_structs.contains_key(nested_type)
+                        })
+                        .collect();
+                    nested_types.sort_by(|a, b| b.cmp(a));
+
                     for nested_type in nested_types {
-                        if !all_types.contains(&nested_type)
-                            && all_structs.contains_key(&nested_type)
-                        {
-                            all_types.insert(nested_type.clone());
-                            to_process.push(nested_type);
-                        }
+                        all_types.insert(nested_type.clone());
+                        to_process.push(nested_type);
                     }
                 }
             }
@@ -213,10 +219,31 @@ impl TypeCollector {
         visitor: &V,
         config: &GenerateConfig,
     ) -> Vec<StructContext> {
-        used_structs
-            .iter()
+        let mut structs: Vec<_> = used_structs.iter().collect();
+        structs.sort_by(|(a, _), (b, _)| a.cmp(b));
+
+        structs
+            .into_iter()
             .map(|(name, struct_info)| {
                 StructContext::new(config).from_struct_info(name, struct_info, visitor)
+            })
+            .collect()
+    }
+
+    /// Create StructContext instances following a caller-provided type order.
+    pub fn create_struct_contexts_in_order<V: TypeVisitor>(
+        &self,
+        type_names: &[String],
+        used_structs: &HashMap<String, StructInfo>,
+        visitor: &V,
+        config: &GenerateConfig,
+    ) -> Vec<StructContext> {
+        type_names
+            .iter()
+            .filter_map(|name| {
+                used_structs.get(name).map(|struct_info| {
+                    StructContext::new(config).from_struct_info(name, struct_info, visitor)
+                })
             })
             .collect()
     }

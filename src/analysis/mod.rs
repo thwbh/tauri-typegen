@@ -84,7 +84,8 @@ impl CommandAnalyzer {
             .parse_and_cache_all_files(project_path, verbose)?;
 
         // Extract commands from cached ASTs
-        let file_paths: Vec<PathBuf> = self.ast_cache.keys().cloned().collect();
+        let mut file_paths: Vec<PathBuf> = self.ast_cache.keys().cloned().collect();
+        file_paths.sort();
         let mut commands = Vec::new();
         let mut type_names_to_discover = HashSet::new();
 
@@ -269,6 +270,7 @@ impl CommandAnalyzer {
         initial_types: &HashSet<String>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let mut types_to_resolve: Vec<String> = initial_types.iter().cloned().collect();
+        types_to_resolve.sort_by(|a, b| b.cmp(a));
         let mut resolved_types = HashSet::new();
 
         while let Some(type_name) = types_to_resolve.pop() {
@@ -299,14 +301,17 @@ impl CommandAnalyzer {
                         }
 
                         // Add dependencies to the resolution queue
-                        for dep_type in &type_dependencies {
-                            if !resolved_types.contains(dep_type)
-                                && !self.discovered_structs.contains_key(dep_type)
-                                && self.dependency_graph.has_type_definition(dep_type)
-                            {
-                                types_to_resolve.push(dep_type.clone());
-                            }
-                        }
+                        let mut dependencies_to_resolve: Vec<String> = type_dependencies
+                            .iter()
+                            .filter(|dep_type| {
+                                !resolved_types.contains(*dep_type)
+                                    && !self.discovered_structs.contains_key(*dep_type)
+                                    && self.dependency_graph.has_type_definition(dep_type)
+                            })
+                            .cloned()
+                            .collect();
+                        dependencies_to_resolve.sort_by(|a, b| b.cmp(a));
+                        types_to_resolve.extend(dependencies_to_resolve);
 
                         // Store the resolved type
                         self.dependency_graph

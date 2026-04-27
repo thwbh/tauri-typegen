@@ -67,7 +67,10 @@ impl TypeDependencyGraph {
         let mut visited = HashSet::new();
         let mut visiting = HashSet::new();
 
-        for type_name in types {
+        let mut type_names: Vec<_> = types.iter().map(String::as_str).collect();
+        type_names.sort_unstable();
+
+        for type_name in type_names {
             if !visited.contains(type_name) {
                 self.topological_visit(type_name, &mut sorted, &mut visited, &mut visiting);
             }
@@ -101,7 +104,10 @@ impl TypeDependencyGraph {
 
         // Visit dependencies first
         if let Some(deps) = self.dependencies.get(type_name) {
-            for dep in deps {
+            let mut sorted_deps: Vec<_> = deps.iter().map(String::as_str).collect();
+            sorted_deps.sort_unstable();
+
+            for dep in sorted_deps {
                 self.topological_visit(dep, sorted, visited, visiting);
             }
         }
@@ -135,7 +141,10 @@ impl TypeDependencyGraph {
         }
 
         output.push_str("\n🏗️  Discovered Types:\n");
-        for (type_name, struct_info) in &self.resolved_types {
+        let mut resolved_types: Vec<_> = self.resolved_types.iter().collect();
+        resolved_types.sort_by(|(a, _), (b, _)| a.cmp(b));
+
+        for (type_name, struct_info) in resolved_types {
             let type_kind = if struct_info.is_enum {
                 "enum"
             } else {
@@ -152,7 +161,8 @@ impl TypeDependencyGraph {
             // Show dependencies
             if let Some(deps) = self.dependencies.get(type_name) {
                 if !deps.is_empty() {
-                    let deps_list: Vec<String> = deps.iter().cloned().collect();
+                    let mut deps_list: Vec<String> = deps.iter().cloned().collect();
+                    deps_list.sort();
                     output.push_str(&format!("  └─ depends on: {}\n", deps_list.join(", ")));
                 }
             }
@@ -160,7 +170,9 @@ impl TypeDependencyGraph {
 
         // Show dependency chains
         output.push_str("\n🔗 Dependency Chains:\n");
-        for type_name in self.resolved_types.keys() {
+        let mut type_names: Vec<_> = self.resolved_types.keys().map(String::as_str).collect();
+        type_names.sort_unstable();
+        for type_name in type_names {
             self.show_dependency_chain(type_name, &mut output, 0);
         }
 
@@ -180,7 +192,10 @@ impl TypeDependencyGraph {
         output.push_str(&format!("{}├─ {}\n", indent_str, type_name));
 
         if let Some(deps) = self.dependencies.get(type_name) {
-            for dep in deps {
+            let mut sorted_deps: Vec<_> = deps.iter().map(String::as_str).collect();
+            sorted_deps.sort_unstable();
+
+            for dep in sorted_deps {
                 if indent < 3 {
                     // Prevent too deep recursion in visualization
                     self.show_dependency_chain(dep, output, indent + 1);
@@ -206,7 +221,9 @@ impl TypeDependencyGraph {
         }
 
         // Add type nodes
-        for type_name in self.resolved_types.keys() {
+        let mut type_names: Vec<_> = self.resolved_types.keys().map(String::as_str).collect();
+        type_names.sort_unstable();
+        for type_name in type_names {
             output.push_str(&format!("  \"{}\" [color=green];\n", type_name));
         }
 
@@ -229,8 +246,14 @@ impl TypeDependencyGraph {
         }
 
         // Add type dependency edges
-        for (type_name, deps) in &self.dependencies {
-            for dep in deps {
+        let mut dependencies: Vec<_> = self.dependencies.iter().collect();
+        dependencies.sort_by(|(a, _), (b, _)| a.cmp(b));
+
+        for (type_name, deps) in dependencies {
+            let mut sorted_deps: Vec<_> = deps.iter().map(String::as_str).collect();
+            sorted_deps.sort_unstable();
+
+            for dep in sorted_deps {
                 output.push_str(&format!("  \"{}\" -> \"{}\";\n", type_name, dep));
             }
         }
