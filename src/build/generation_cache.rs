@@ -220,30 +220,15 @@ impl GenerationCache {
         struct ConfigHashData<'a> {
             validation_library: &'a str,
             include_private: bool,
-            type_mappings: Option<Vec<TypeMappingHashData<'a>>>,
+            type_mappings: Option<&'a HashMap<String, String>>,
             default_parameter_case: &'a str,
             default_field_case: &'a str,
         }
 
-        #[derive(Serialize)]
-        struct TypeMappingHashData<'a> {
-            rust_type: &'a str,
-            ts_type: &'a str,
-        }
-
-        let type_mappings = config.type_mappings.as_ref().map(|mappings| {
-            let mut mappings: Vec<_> = mappings
-                .iter()
-                .map(|(rust_type, ts_type)| TypeMappingHashData { rust_type, ts_type })
-                .collect();
-            mappings.sort_by(|a, b| a.rust_type.cmp(b.rust_type));
-            mappings
-        });
-
         let hash_data = ConfigHashData {
             validation_library: &config.validation_library,
             include_private: config.include_private.unwrap_or(false),
-            type_mappings,
+            type_mappings: config.type_mappings.as_ref(),
             default_parameter_case: &config.default_parameter_case,
             default_field_case: &config.default_field_case,
         };

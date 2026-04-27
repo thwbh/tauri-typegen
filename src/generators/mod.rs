@@ -3,7 +3,7 @@ pub mod ts;
 pub mod zod;
 
 use crate::analysis::CommandAnalyzer;
-use crate::models::{CommandInfo, EventInfo, StructInfo};
+use crate::models::{CommandInfo, EnumVariantKind, EventInfo, StructInfo};
 use crate::GenerateConfig;
 use base::template_context::{CommandContext, EventContext, FieldContext, StructContext};
 use base::type_visitor::TypeVisitor;
@@ -103,7 +103,6 @@ impl TypeCollector {
         all_types: &mut std::collections::HashSet<String>,
     ) {
         let mut to_process: Vec<String> = initial_types.iter().cloned().collect();
-        to_process.sort_by(|a, b| b.cmp(a));
         let mut processed: std::collections::HashSet<String> = std::collections::HashSet::new();
 
         while let Some(type_name) = to_process.pop() {
@@ -121,18 +120,13 @@ impl TypeCollector {
                         &mut nested_types,
                     );
 
-                    let mut nested_types: Vec<String> = nested_types
-                        .into_iter()
-                        .filter(|nested_type| {
-                            !all_types.contains(nested_type)
-                                && all_structs.contains_key(nested_type)
-                        })
-                        .collect();
-                    nested_types.sort_by(|a, b| b.cmp(a));
-
                     for nested_type in nested_types {
-                        all_types.insert(nested_type.clone());
-                        to_process.push(nested_type);
+                        if !all_types.contains(&nested_type)
+                            && all_structs.contains_key(&nested_type)
+                        {
+                            all_types.insert(nested_type.clone());
+                            to_process.push(nested_type);
+                        }
                     }
                 }
             }
@@ -172,6 +166,103 @@ impl TypeCollector {
         }
     }
 
+    /// Return generated type names in deterministic dependency-first order.
+    pub fn sort_struct_names_for_generation(
+        used_structs: &HashMap<String, StructInfo>,
+    ) -> Vec<String> {
+        let mut type_names: Vec<_> = used_structs.keys().cloned().collect();
+        type_names.sort();
+
+        let mut sorted = Vec::new();
+        let mut visited = std::collections::HashSet::new();
+        let mut visiting = std::collections::HashSet::new();
+
+        for type_name in type_names {
+            Self::visit_struct_for_generation(
+                &type_name,
+                used_structs,
+                &mut sorted,
+                &mut visited,
+                &mut visiting,
+            );
+        }
+
+        sorted
+    }
+
+    fn visit_struct_for_generation(
+        type_name: &str,
+        used_structs: &HashMap<String, StructInfo>,
+        sorted: &mut Vec<String>,
+        visited: &mut std::collections::HashSet<String>,
+        visiting: &mut std::collections::HashSet<String>,
+    ) {
+        if visited.contains(type_name) || !used_structs.contains_key(type_name) {
+            return;
+        }
+
+        if !visiting.insert(type_name.to_string()) {
+            return;
+        }
+
+        if let Some(struct_info) = used_structs.get(type_name) {
+            let mut dependencies = std::collections::HashSet::new();
+            Self::collect_struct_dependencies(struct_info, &mut dependencies);
+
+            let mut dependencies: Vec<_> = dependencies
+                .into_iter()
+                .filter(|dependency| {
+                    dependency != type_name && used_structs.contains_key(dependency)
+                })
+                .collect();
+            dependencies.sort();
+
+            for dependency in dependencies {
+                Self::visit_struct_for_generation(
+                    &dependency,
+                    used_structs,
+                    sorted,
+                    visited,
+                    visiting,
+                );
+            }
+        }
+
+        visiting.remove(type_name);
+        visited.insert(type_name.to_string());
+        sorted.push(type_name.to_string());
+    }
+
+    fn collect_struct_dependencies(
+        struct_info: &StructInfo,
+        dependencies: &mut std::collections::HashSet<String>,
+    ) {
+        for field in &struct_info.fields {
+            Self::collect_referenced_types_from_structure(&field.type_structure, dependencies);
+        }
+
+        if let Some(variants) = &struct_info.enum_variants {
+            for variant in variants {
+                match &variant.kind {
+                    EnumVariantKind::Tuple(types) => {
+                        for ty in types {
+                            Self::collect_referenced_types_from_structure(ty, dependencies);
+                        }
+                    }
+                    EnumVariantKind::Struct(fields) => {
+                        for field in fields {
+                            Self::collect_referenced_types_from_structure(
+                                &field.type_structure,
+                                dependencies,
+                            );
+                        }
+                    }
+                    EnumVariantKind::Unit => {}
+                }
+            }
+        }
+    }
+
     /// Create CommandContext instances from CommandInfo using the provided visitor
     pub fn create_command_contexts<V: TypeVisitor>(
         &self,
@@ -182,14 +273,23 @@ impl TypeCollector {
     ) -> Vec<CommandContext> {
         let type_resolver = analyzer.get_type_resolver();
 
-        commands
+        let mut contexts: Vec<_> = commands
             .iter()
             .map(|cmd| {
                 CommandContext::new(config).from_command_info(cmd, visitor, &|rust_type: &str| {
                     type_resolver.borrow_mut().parse_type_structure(rust_type)
                 })
             })
-            .collect()
+            .collect();
+
+        contexts.sort_by(|a, b| {
+            a.ts_function_name
+                .cmp(&b.ts_function_name)
+                .then_with(|| a.name.cmp(&b.name))
+                .then_with(|| a.file_path.cmp(&b.file_path))
+                .then_with(|| a.line_number.cmp(&b.line_number))
+        });
+        contexts
     }
 
     /// Create EventContext instances from EventInfo using the provided visitor
@@ -202,14 +302,23 @@ impl TypeCollector {
     ) -> Vec<EventContext> {
         let type_resolver = analyzer.get_type_resolver();
 
-        events
+        let mut contexts: Vec<_> = events
             .iter()
             .map(|event| {
                 EventContext::new(config).from_event_info(event, visitor, &|rust_type: &str| {
                     type_resolver.borrow_mut().parse_type_structure(rust_type)
                 })
             })
-            .collect()
+            .collect();
+
+        contexts.sort_by(|a, b| {
+            a.ts_function_name
+                .cmp(&b.ts_function_name)
+                .then_with(|| a.event_name.cmp(&b.event_name))
+                .then_with(|| a.file_path.cmp(&b.file_path))
+                .then_with(|| a.line_number.cmp(&b.line_number))
+        });
+        contexts
     }
 
     /// Create StructContext instances from StructInfo using the provided visitor

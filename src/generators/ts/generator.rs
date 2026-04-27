@@ -36,9 +36,8 @@ impl TypeScriptBindingsGenerator {
         let has_channels = commands.iter().any(|cmd| !cmd.channels.is_empty());
         let visitor = TypeScriptVisitor::with_config(config);
 
-        // Convert structs to context wrappers in dependency-safe, deterministic order.
-        let type_names: std::collections::HashSet<String> = used_structs.keys().cloned().collect();
-        let sorted_types = analyzer.topological_sort_types(&type_names);
+        // Convert structs to context wrappers in dependency-safe, deterministic output order.
+        let sorted_types = TypeCollector::sort_struct_names_for_generation(used_structs);
         let struct_context = self.collector.create_struct_contexts_in_order(
             &sorted_types,
             used_structs,

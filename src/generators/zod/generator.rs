@@ -9,7 +9,7 @@ use crate::generators::zod::type_visitor::ZodVisitor;
 use crate::generators::TypeCollector;
 use crate::models::{CommandInfo, EventInfo, StructInfo};
 use crate::GenerateConfig;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use tera::{Context, Tera};
 
 /// Generator for Zod schema-based TypeScript bindings with validation
@@ -121,9 +121,8 @@ impl ZodBindingsGenerator {
         analyzer: &CommandAnalyzer,
         config: &GenerateConfig,
     ) -> String {
-        // Sort structs topologically
-        let type_names: HashSet<String> = used_structs.keys().cloned().collect();
-        let sorted_types = analyzer.topological_sort_types(&type_names);
+        // Sort structs in dependency-safe, deterministic output order.
+        let sorted_types = TypeCollector::sort_struct_names_for_generation(used_structs);
 
         // Generate struct schemas
         let mut struct_schemas = String::new();
