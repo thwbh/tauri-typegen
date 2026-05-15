@@ -49,9 +49,10 @@ impl AstCache {
 
             if path.is_file() && path.extension().is_some_and(|ext| ext == "rs") {
                 // Skip target directory and other build artifacts
-                if path.to_string_lossy().contains("/target/")
-                    || path.to_string_lossy().contains("/.git/")
-                {
+                if path.components().any(|c| {
+                    let s = c.as_os_str().to_string_lossy();
+                    s == "target" || s == ".git"
+                }) {
                     continue;
                 }
 

@@ -45,17 +45,15 @@ impl StructParser {
 
     /// Check if an attribute indicates the type should be included
     fn should_include(&self, attr: &Attribute) -> bool {
-        if let Ok(meta_list) = attr.meta.require_list() {
-            if meta_list.path.is_ident("derive") {
-                let tokens_str = meta_list.to_token_stream().to_string();
+        let tokens_str = attr.to_token_stream().to_string();
 
-                tokens_str.contains("Serialize") || tokens_str.contains("Deserialize")
-            } else {
-                false
-            }
-        } else {
-            false
-        }
+        // Very permissive check for any serde-related derives or attributes
+        // This handles #[derive(Serialize)], #[derive(serde::Serialize)],
+        // #[derive(::serde::Serialize)], and even direct #[serde(...)] attributes
+        tokens_str.contains("Serialize")
+            || tokens_str.contains("Deserialize")
+            || (tokens_str.contains("serde") && !tokens_str.contains("serde_rename"))
+        // Avoid matching internal markers if any
     }
 
     /// Parse a Rust struct into StructInfo
@@ -112,7 +110,12 @@ impl StructParser {
         let mut enum_variants = Vec::new();
 
         for variant in &item_enum.variants {
-            let variant_name = variant.ident.to_string();
+            let mut variant_name = variant.ident.to_string();
+
+            // Strip raw identifier prefix (r#) used for Rust keywords
+            if variant_name.starts_with("r#") {
+                variant_name = variant_name[2..].to_string();
+            }
 
             // Parse variant-level serde attributes
             let variant_serde_attrs = self.serde_parser.parse_field_serde_attrs(&variant.attrs);
@@ -207,7 +210,12 @@ impl StructParser {
         field: &syn::Field,
         type_resolver: &mut TypeResolver,
     ) -> Option<FieldInfo> {
-        let name = field.ident.as_ref()?.to_string();
+        let mut name = field.ident.as_ref()?.to_string();
+
+        // Strip raw identifier prefix (r#) used for Rust keywords
+        if name.starts_with("r#") {
+            name = name[2..].to_string();
+        }
 
         // Parse field-level serde attributes
         let field_serde_attrs = self.serde_parser.parse_field_serde_attrs(&field.attrs);
@@ -265,12 +273,19 @@ impl StructParser {
                                 let generic_args: Vec<String> = args
                                     .args
                                     .iter()
-                                    .map(|arg| match arg {
-                                        syn::GenericArgument::Type(t) => Self::type_to_string(t),
-                                        _ => "unknown".to_string(),
+                                    .filter_map(|arg| match arg {
+                                        syn::GenericArgument::Type(t) => {
+                                            Some(Self::type_to_string(t))
+                                        }
+                                        _ => None,
                                     })
                                     .collect();
-                                format!("{}<{}>", ident, generic_args.join(", "))
+
+                                if generic_args.is_empty() {
+                                    ident
+                                } else {
+                                    format!("{}<{}>", ident, generic_args.join(", "))
+                                }
                             }
                             syn::PathArguments::Parenthesized(_) => ident, // Function types, not common in structs
                         }

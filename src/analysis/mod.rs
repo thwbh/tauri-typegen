@@ -242,7 +242,12 @@ impl CommandAnalyzer {
 
     /// Build an index of type definitions from an AST
     fn index_type_definitions(&mut self, ast: &syn::File, file_path: &Path) {
-        for item in &ast.items {
+        self.index_items(&ast.items, file_path);
+    }
+
+    /// Recursively index items for type definitions
+    fn index_items(&mut self, items: &[syn::Item], file_path: &Path) {
+        for item in items {
             match item {
                 syn::Item::Struct(item_struct) => {
                     if self.struct_parser.should_include_struct(item_struct) {
@@ -256,6 +261,11 @@ impl CommandAnalyzer {
                         let enum_name = item_enum.ident.to_string();
                         self.dependency_graph
                             .add_type_definition(enum_name, file_path.to_path_buf());
+                    }
+                }
+                syn::Item::Mod(item_mod) => {
+                    if let Some((_, items)) = &item_mod.content {
+                        self.index_items(items, file_path);
                     }
                 }
                 _ => {}
@@ -298,6 +308,33 @@ impl CommandAnalyzer {
                             self.extract_type_names(&field.rust_type, &mut type_dependencies);
                         }
 
+                        // Collect dependencies from enum variants
+                        if let Some(variants) = &struct_info.enum_variants {
+                            for variant in variants {
+                                match &variant.kind {
+                                    crate::models::EnumVariantKind::Unit => {}
+                                    crate::models::EnumVariantKind::Tuple(types) => {
+                                        for type_struct in types {
+                                            let mut variant_types = HashSet::new();
+                                            crate::generators::TypeCollector::collect_referenced_types_from_structure(
+                                                type_struct,
+                                                &mut variant_types,
+                                            );
+                                            type_dependencies.extend(variant_types);
+                                        }
+                                    }
+                                    crate::models::EnumVariantKind::Struct(fields) => {
+                                        for field in fields {
+                                            self.extract_type_names(
+                                                &field.rust_type,
+                                                &mut type_dependencies,
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         // Add dependencies to the resolution queue
                         for dep_type in &type_dependencies {
                             if !resolved_types.contains(dep_type)
@@ -331,7 +368,17 @@ impl CommandAnalyzer {
         type_name: &str,
         file_path: &Path,
     ) -> Option<StructInfo> {
-        for item in &ast.items {
+        self.find_type_in_items(&ast.items, type_name, file_path)
+    }
+
+    /// Recursively find a type in a list of items
+    fn find_type_in_items(
+        &mut self,
+        items: &[syn::Item],
+        type_name: &str,
+        file_path: &Path,
+    ) -> Option<StructInfo> {
+        for item in items {
             match item {
                 syn::Item::Struct(item_struct) => {
                     if item_struct.ident == type_name
@@ -355,6 +402,13 @@ impl CommandAnalyzer {
                         );
                     }
                 }
+                syn::Item::Mod(item_mod) => {
+                    if let Some((_, items)) = &item_mod.content {
+                        if let Some(info) = self.find_type_in_items(items, type_name, file_path) {
+                            return Some(info);
+                        }
+                    }
+                }
                 _ => {}
             }
         }
@@ -370,9 +424,20 @@ impl CommandAnalyzer {
     fn extract_type_names_recursive(&self, rust_type: &str, type_names: &mut HashSet<String>) {
         let rust_type = rust_type.trim();
 
+        // Handle references first
+        if rust_type.starts_with('&') {
+            let without_ref = rust_type.trim_start_matches('&');
+            self.extract_type_names_recursive(without_ref, type_names);
+            return;
+        }
+
+        // Strip module prefixes like std::, ::std::, ::core::, etc. for generic type detection
+        // but keep the original for custom type name detection
+        let stripped = Self::strip_module_prefix(rust_type);
+
         // Handle Result<T, E> - extract both T and E
-        if rust_type.starts_with("Result<") {
-            if let Some(inner) = rust_type
+        if stripped.starts_with("Result<") {
+            if let Some(inner) = stripped
                 .strip_prefix("Result<")
                 .and_then(|s| s.strip_suffix(">"))
             {
@@ -386,9 +451,9 @@ impl CommandAnalyzer {
             return;
         }
 
-        // Handle Option<T> - extract T
-        if rust_type.starts_with("Option<") {
-            if let Some(inner) = rust_type
+        // Handle Option<T> - extract T (handles both Option<T> and ::core::option::Option<T>)
+        if stripped.starts_with("Option<") {
+            if let Some(inner) = stripped
                 .strip_prefix("Option<")
                 .and_then(|s| s.strip_suffix(">"))
             {
@@ -397,9 +462,9 @@ impl CommandAnalyzer {
             return;
         }
 
-        // Handle Vec<T> - extract T
-        if rust_type.starts_with("Vec<") {
-            if let Some(inner) = rust_type
+        // Handle Vec<T> - extract T (handles both Vec<T> and ::std::vec::Vec<T>)
+        if stripped.starts_with("Vec<") {
+            if let Some(inner) = stripped
                 .strip_prefix("Vec<")
                 .and_then(|s| s.strip_suffix(">"))
             {
@@ -409,13 +474,13 @@ impl CommandAnalyzer {
         }
 
         // Handle HashMap<K, V> and BTreeMap<K, V> - extract K and V
-        if rust_type.starts_with("HashMap<") || rust_type.starts_with("BTreeMap<") {
-            let prefix = if rust_type.starts_with("HashMap<") {
+        if stripped.starts_with("HashMap<") || stripped.starts_with("BTreeMap<") {
+            let prefix = if stripped.starts_with("HashMap<") {
                 "HashMap<"
             } else {
                 "BTreeMap<"
             };
-            if let Some(inner) = rust_type
+            if let Some(inner) = stripped
                 .strip_prefix(prefix)
                 .and_then(|s| s.strip_suffix(">"))
             {
@@ -430,13 +495,13 @@ impl CommandAnalyzer {
         }
 
         // Handle HashSet<T> and BTreeSet<T> - extract T
-        if rust_type.starts_with("HashSet<") || rust_type.starts_with("BTreeSet<") {
-            let prefix = if rust_type.starts_with("HashSet<") {
+        if stripped.starts_with("HashSet<") || stripped.starts_with("BTreeSet<") {
+            let prefix = if stripped.starts_with("HashSet<") {
                 "HashSet<"
             } else {
                 "BTreeSet<"
             };
-            if let Some(inner) = rust_type
+            if let Some(inner) = stripped
                 .strip_prefix(prefix)
                 .and_then(|s| s.strip_suffix(">"))
             {
@@ -454,13 +519,6 @@ impl CommandAnalyzer {
             return;
         }
 
-        // Handle references
-        if rust_type.starts_with('&') {
-            let without_ref = rust_type.trim_start_matches('&');
-            self.extract_type_names_recursive(without_ref, type_names);
-            return;
-        }
-
         // Check if this is a custom type name
         if !rust_type.is_empty()
             && !self.type_resolver.get_type_set().contains(rust_type)
@@ -469,7 +527,34 @@ impl CommandAnalyzer {
             && !rust_type.contains('<')
         // Skip generic type names with parameters
         {
-            type_names.insert(rust_type.to_string());
+            // Extract just the type name, stripping module prefix if present
+            let type_name = Self::extract_simple_type_name(rust_type);
+            type_names.insert(type_name);
+        }
+    }
+
+    /// Strip module prefixes like std::, ::std::, ::core::, crate::, etc.
+    /// Used for pattern matching on generic types
+    fn strip_module_prefix(rust_type: &str) -> &str {
+        // Find the last :: to separate module path from type name
+        if let Some(last_double_colon) = rust_type.rfind("::") {
+            // Only strip if what follows contains < (it's a generic type)
+            let after_colon = &rust_type[last_double_colon + 2..];
+            if after_colon.contains('<') {
+                return after_colon;
+            }
+        }
+        rust_type
+    }
+
+    /// Extract just the type name from a potentially module-qualified name
+    /// E.g., "::my_module::MyType" -> "MyType"
+    fn extract_simple_type_name(rust_type: &str) -> String {
+        // Take everything after the last ::, or the whole thing if no ::
+        if let Some(last_double_colon) = rust_type.rfind("::") {
+            rust_type[last_double_colon + 2..].to_string()
+        } else {
+            rust_type.to_string()
         }
     }
 
@@ -496,17 +581,36 @@ impl CommandAnalyzer {
             .collect()
     }
 
-    /// Find a function by name in an AST
+    /// Find a function by name in an AST (recursive)
     fn find_function_in_ast<'a>(
         &self,
         ast: &'a syn::File,
         function_name: &str,
     ) -> Option<&'a syn::ItemFn> {
-        for item in &ast.items {
-            if let syn::Item::Fn(func) = item {
-                if func.sig.ident == function_name {
-                    return Some(func);
+        self.find_function_in_items(&ast.items, function_name)
+    }
+
+    /// Recursively find a function in a list of items
+    fn find_function_in_items<'a>(
+        &self,
+        items: &'a [syn::Item],
+        function_name: &str,
+    ) -> Option<&'a syn::ItemFn> {
+        for item in items {
+            match item {
+                syn::Item::Fn(func) => {
+                    if func.sig.ident == function_name {
+                        return Some(func);
+                    }
                 }
+                syn::Item::Mod(item_mod) => {
+                    if let Some((_, items)) = &item_mod.content {
+                        if let Some(func) = self.find_function_in_items(items, function_name) {
+                            return Some(func);
+                        }
+                    }
+                }
+                _ => {}
             }
         }
         None
