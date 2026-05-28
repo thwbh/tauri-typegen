@@ -120,10 +120,27 @@ impl GenerateConfig {
 
     /// Load configuration from a file
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, ConfigError> {
-        let content = fs::read_to_string(path)?;
-        let config: Self = serde_json::from_str(&content)?;
-        config.validate()?;
-        Ok(config)
+        let is_tauri_config = path
+            .as_ref()
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|n| n == "tauri.conf.json")
+            .unwrap_or(false);
+
+        if is_tauri_config {
+            Self::from_tauri_config(path).and_then(|opt| {
+                opt.ok_or_else(|| {
+                    ConfigError::InvalidConfig(
+                        "No tauri-typegen plugin configuration found in tauri.conf.json"
+                            .to_string(),
+                    )
+                })
+            })
+        } else {
+            let content = fs::read_to_string(path)?;
+            let config: Self = serde_json::from_str(&content)?;
+            Ok(config)
+        }
     }
 
     /// Load configuration from Tauri configuration file
@@ -136,29 +153,51 @@ impl GenerateConfig {
             if let Some(typegen) = plugins.get("typegen") {
                 let mut config = Self::default();
 
-                if let Some(project_path) = typegen.get("projectPath").and_then(|v| v.as_str()) {
-                    config.project_path = project_path.to_string();
+                let get_string = |keys: &[&str]| {
+                    for key in keys {
+                        if let Some(val) = typegen.get(*key).and_then(|v| v.as_str()) {
+                            return Some(val.to_string());
+                        }
+                    }
+                    None
+                };
+
+                let get_bool = |keys: &[&str]| {
+                    for key in keys {
+                        if let Some(val) = typegen.get(*key).and_then(|v| v.as_bool()) {
+                            return Some(val);
+                        }
+                    }
+                    None
+                };
+
+                if let Some(p) = get_string(&["projectPath", "project_path"]) {
+                    config.project_path = p;
                 }
-                if let Some(output_path) = typegen.get("outputPath").and_then(|v| v.as_str()) {
-                    config.output_path = output_path.to_string();
+                if let Some(o) = get_string(&[
+                    "outputPath",
+                    "output_path",
+                    "generatedPath",
+                    "generated_path",
+                ]) {
+                    config.output_path = o;
                 }
-                if let Some(validation) = typegen.get("validationLibrary").and_then(|v| v.as_str())
+                if let Some(v) = get_string(&["validationLibrary", "validation_library"]) {
+                    config.validation_library = v;
+                }
+                if let Some(v) = get_bool(&["verbose"]) {
+                    config.verbose = Some(v);
+                }
+                if let Some(v) = get_bool(&["visualizeDeps", "visualize_deps"]) {
+                    config.visualize_deps = Some(v);
+                }
+                if let Some(v) = get_bool(&["includePrivate", "include_private"]) {
+                    config.include_private = Some(v);
+                }
+                if let Some(type_mappings) = typegen
+                    .get("typeMappings")
+                    .or_else(|| typegen.get("type_mappings"))
                 {
-                    config.validation_library = validation.to_string();
-                }
-                if let Some(verbose) = typegen.get("verbose").and_then(|v| v.as_bool()) {
-                    config.verbose = Some(verbose);
-                }
-                if let Some(visualize_deps) = typegen.get("visualizeDeps").and_then(|v| v.as_bool())
-                {
-                    config.visualize_deps = Some(visualize_deps);
-                }
-                if let Some(include_private) =
-                    typegen.get("includePrivate").and_then(|v| v.as_bool())
-                {
-                    config.include_private = Some(include_private);
-                }
-                if let Some(type_mappings) = typegen.get("typeMappings") {
                     if let Ok(mappings) = serde_json::from_value::<
                         std::collections::HashMap<String, String>,
                     >(type_mappings.clone())
@@ -166,25 +205,36 @@ impl GenerateConfig {
                         config.type_mappings = Some(mappings);
                     }
                 }
-                if let Some(exclude_patterns) = typegen.get("excludePatterns") {
+                if let Some(exclude_patterns) = typegen
+                    .get("excludePatterns")
+                    .or_else(|| typegen.get("exclude_patterns"))
+                {
                     if let Ok(patterns) =
                         serde_json::from_value::<Vec<String>>(exclude_patterns.clone())
                     {
                         config.exclude_patterns = Some(patterns);
                     }
                 }
-                if let Some(include_patterns) = typegen.get("includePatterns") {
+                if let Some(include_patterns) = typegen
+                    .get("includePatterns")
+                    .or_else(|| typegen.get("include_patterns"))
+                {
                     if let Ok(patterns) =
                         serde_json::from_value::<Vec<String>>(include_patterns.clone())
                     {
                         config.include_patterns = Some(patterns);
                     }
                 }
-                if let Some(force) = typegen.get("force").and_then(|v| v.as_bool()) {
-                    config.force = Some(force);
+                if let Some(v) = get_bool(&["force"]) {
+                    config.force = Some(v);
+                }
+                if let Some(p) = get_string(&["defaultParameterCase", "default_parameter_case"]) {
+                    config.default_parameter_case = p;
+                }
+                if let Some(f) = get_string(&["defaultFieldCase", "default_field_case"]) {
+                    config.default_field_case = f;
                 }
 
-                config.validate()?;
                 return Ok(Some(config));
             }
         }

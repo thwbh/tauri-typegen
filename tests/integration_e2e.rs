@@ -720,3 +720,83 @@ fn test_complex_enum_zod_generation() {
         types
     );
 }
+
+/// Test fully qualified types (::core::option::Option, ::std::vec::Vec) with nested types
+/// This tests the fix for handling types with full module paths like Protobuf generated code
+#[test]
+fn test_fully_qualified_types_with_nested_structs() {
+    let project = TestProject::new();
+
+    project.write_file(
+        "main.rs",
+        r#"
+        use serde::{Deserialize, Serialize};
+
+        /// Simulates protobuf-generated field type with full qualification
+        #[derive(Debug, Clone, Serialize, Deserialize)]
+        pub struct RtpParameters {
+            pub mid: String,
+            pub codecs: Vec<String>,
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize)]
+        pub struct ConsumedResponse {
+            pub consumer_id: String,
+            pub producer_id: String,
+            pub kind: String,
+            /// This field uses fully qualified Option type as in protobuf generated code
+            pub rtp_parameters: ::core::option::Option<RtpParameters>,
+        }
+
+        #[tauri::command]
+        pub fn get_consumed_response() -> Result<ConsumedResponse, String> {
+            Ok(ConsumedResponse {
+                consumer_id: "123".to_string(),
+                producer_id: "456".to_string(),
+                kind: "audio".to_string(),
+                rtp_parameters: None,
+            })
+        }
+    "#,
+    );
+
+    let (analyzer, commands) = project.analyze();
+    assert_eq!(commands.len(), 1);
+
+    let generator = TestGenerator::new();
+    generator.generate(
+        &commands,
+        analyzer.get_discovered_structs(),
+        &analyzer,
+        Some("none"),
+        None,
+    );
+
+    let types = generator.read_file("types.ts");
+
+    // Both ConsumedResponse AND RtpParameters should be generated
+    assert!(
+        types.contains("export interface ConsumedResponse"),
+        "Should generate ConsumedResponse type. Got:\n{}",
+        types
+    );
+    assert!(
+        types.contains("export interface RtpParameters"),
+        "Should generate RtpParameters type (nested struct). Got:\n{}",
+        types
+    );
+
+    // ConsumedResponse should reference RtpParameters
+    assert!(
+        types.contains("rtp_parameters?:") && types.contains("RtpParameters"),
+        "ConsumedResponse should have rtp_parameters field of type RtpParameters. Got:\n{}",
+        types
+    );
+
+    // RtpParameters fields should be present
+    assert!(
+        types.contains("mid:") && types.contains("codecs:"),
+        "RtpParameters should have mid and codecs fields. Got:\n{}",
+        types
+    );
+}

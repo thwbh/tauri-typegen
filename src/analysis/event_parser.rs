@@ -16,11 +16,7 @@ impl EventParser {
         Self
     }
 
-    /// Extract event emissions from a cached AST
-    /// Looks for patterns like:
-    /// - app.emit("event-name", payload)
-    /// - window.emit("event-name", payload)
-    /// - app.emit_to("label", "event-name", payload)
+    /// Extract event emissions from a cached AST (including nested modules)
     pub fn extract_events_from_ast(
         &self,
         ast: &SynFile,
@@ -28,26 +24,42 @@ impl EventParser {
         type_resolver: &mut TypeResolver,
     ) -> Result<Vec<EventInfo>, Box<dyn std::error::Error>> {
         let mut events = Vec::new();
+        self.extract_events_from_items(&ast.items, file_path, type_resolver, &mut events);
+        Ok(events)
+    }
 
-        // Visit all items in the AST looking for emit calls
-        for item in &ast.items {
-            if let syn::Item::Fn(func) = item {
-                // Build symbol table from function parameters
-                let mut symbols = SymbolTable::new();
-                self.extract_param_types(&func.sig.inputs, &mut symbols);
+    /// Recursively search through items for events
+    fn extract_events_from_items(
+        &self,
+        items: &[syn::Item],
+        file_path: &Path,
+        type_resolver: &mut TypeResolver,
+        events: &mut Vec<EventInfo>,
+    ) {
+        for item in items {
+            match item {
+                syn::Item::Fn(func) => {
+                    // Build symbol table from function parameters
+                    let mut symbols = SymbolTable::new();
+                    self.extract_param_types(&func.sig.inputs, &mut symbols);
 
-                // Search within function bodies with symbol context
-                self.extract_events_from_block(
-                    &func.block.stmts,
-                    file_path,
-                    type_resolver,
-                    &mut events,
-                    &mut symbols,
-                );
+                    // Search within function bodies with symbol context
+                    self.extract_events_from_block(
+                        &func.block.stmts,
+                        file_path,
+                        type_resolver,
+                        events,
+                        &mut symbols,
+                    );
+                }
+                syn::Item::Mod(item_mod) => {
+                    if let Some((_, items)) = &item_mod.content {
+                        self.extract_events_from_items(items, file_path, type_resolver, events);
+                    }
+                }
+                _ => {}
             }
         }
-
-        Ok(events)
     }
 
     /// Extract parameter types from function signature into symbol table
@@ -163,8 +175,12 @@ impl EventParser {
     fn infer_type_from_init(&self, expr: &Expr, symbols: &SymbolTable) -> String {
         match expr {
             Expr::Struct(expr_struct) => {
-                // Struct construction: Type { ... }
-                if let Some(segment) = expr_struct.path.segments.last() {
+                // Struct construction: Type { ... } or Enum::Variant { ... }
+                let segments = &expr_struct.path.segments;
+                if segments.len() >= 2 {
+                    // It's likely an Enum variant: MyEnum::MyVariant { ... }
+                    return segments[0].ident.to_string();
+                } else if let Some(segment) = segments.last() {
                     return segment.ident.to_string();
                 }
             }
@@ -446,9 +462,13 @@ impl EventParser {
                 // Try to infer from the inner expression
                 self.infer_payload_type(&expr_ref.expr, symbols)
             }
-            // Struct construction: User { ... }
+            // Struct construction: User { ... } or Enum::Variant { ... }
             Expr::Struct(expr_struct) => {
-                if let Some(segment) = expr_struct.path.segments.last() {
+                let segments = &expr_struct.path.segments;
+                if segments.len() >= 2 {
+                    // It's likely an Enum variant: MyEnum::MyVariant { ... }
+                    return segments[0].ident.to_string();
+                } else if let Some(segment) = segments.last() {
                     return segment.ident.to_string();
                 }
                 "unknown".to_string()
@@ -497,8 +517,13 @@ impl EventParser {
                 "unknown".to_string()
             }
             // Function calls
-            Expr::Call(_) => {
-                // Can't easily infer return type without type checker
+            Expr::Call(call) => {
+                // Check if this is a struct-like variant or constructor: Type::Variant(...)
+                if let Expr::Path(path) = &*call.func {
+                    if path.path.segments.len() >= 2 {
+                        return path.path.segments[0].ident.to_string();
+                    }
+                }
                 "unknown".to_string()
             }
             _ => "unknown".to_string(),

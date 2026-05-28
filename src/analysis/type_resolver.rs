@@ -172,35 +172,131 @@ impl TypeResolver {
         &self.type_set
     }
 
+    /// Strip module prefixes from a type name, handling generic arguments
+    /// Examples:
+    /// - "std::vec::Vec" -> "Vec"
+    /// - "::core::option::Option" -> "Option"
+    /// - "core::option::Option<prost::alloc::string::String>" -> "Option<String>"
+    fn strip_module_prefix(&self, type_str: &str) -> String {
+        let type_str = type_str.trim();
+
+        // Find the position of the first '<' if it exists
+        let angle_bracket_pos = type_str.find('<');
+
+        // Split into type name and generic arguments
+        let (type_name, generics) = if let Some(pos) = angle_bracket_pos {
+            (&type_str[..pos], Some(&type_str[pos..]))
+        } else {
+            (type_str, None)
+        };
+
+        // Strip leading :: and all module path prefixes from type name
+        let cleaned_type_name = type_name
+            .strip_prefix("::")
+            .unwrap_or(type_name)
+            .split("::")
+            .last()
+            .unwrap_or(type_name);
+
+        // Recursively clean generic arguments
+        if let Some(gen_str) = generics {
+            let cleaned_generics = self.clean_generic_arguments(gen_str);
+            format!("{}{}", cleaned_type_name, cleaned_generics)
+        } else {
+            cleaned_type_name.to_string()
+        }
+    }
+
+    /// Clean up module paths within generic arguments
+    /// Example: "<prost::alloc::string::String, core::option::Option<i32>>" -> "<String, Option<i32>>"
+    fn clean_generic_arguments(&self, gen_str: &str) -> String {
+        if !gen_str.starts_with('<') || !gen_str.ends_with('>') {
+            return gen_str.to_string();
+        }
+
+        let inner = &gen_str[1..gen_str.len() - 1];
+        let mut result = String::from("<");
+        let mut depth = 0;
+        let mut current_arg = String::new();
+
+        for ch in inner.chars() {
+            match ch {
+                '<' => {
+                    depth += 1;
+                    current_arg.push(ch);
+                }
+                '>' => {
+                    depth -= 1;
+                    current_arg.push(ch);
+                }
+                ',' if depth == 0 => {
+                    // Clean this argument and add it
+                    let cleaned = self.strip_module_prefix(current_arg.trim());
+                    result.push_str(&cleaned);
+                    result.push_str(", ");
+                    current_arg.clear();
+                }
+                _ => {
+                    current_arg.push(ch);
+                }
+            }
+        }
+
+        // Don't forget the last argument
+        if !current_arg.trim().is_empty() {
+            let cleaned = self.strip_module_prefix(current_arg.trim());
+            result.push_str(&cleaned);
+        }
+
+        result.push('>');
+        result
+    }
+
     /// Parse a Rust type string into a structured TypeStructure
     /// This is the single source of truth for type parsing - generators use this instead of parsing strings
     pub fn parse_type_structure(&self, rust_type: &str) -> TypeStructure {
-        let cleaned = rust_type.trim();
+        let cleaned = self.strip_module_prefix(rust_type);
+        let cleaned_str = cleaned.as_str();
 
         // Handle references &T -> T
-        if let Some(inner) = self.extract_reference_type(cleaned) {
+        if let Some(inner) = self.extract_reference_type(cleaned_str) {
             return self.parse_type_structure(&inner);
         }
 
         // Handle Option<T> -> Optional(T)
-        if let Some(inner_type) = self.extract_option_inner_type(cleaned) {
+        if let Some(inner_type) = self.extract_option_inner_type(cleaned_str) {
             return TypeStructure::Optional(Box::new(self.parse_type_structure(&inner_type)));
         }
 
         // Handle Result<T, E> -> Result(T)
-        if let Some(ok_type) = self.extract_result_ok_type(cleaned) {
+        if let Some(ok_type) = self.extract_result_ok_type(cleaned_str) {
             return TypeStructure::Result(Box::new(self.parse_type_structure(&ok_type)));
         }
 
         // Handle Vec<T> -> Array(T)
-        if let Some(inner_type) = self.extract_vec_inner_type(cleaned) {
+        if let Some(inner_type) = self.extract_vec_inner_type(cleaned_str) {
             return TypeStructure::Array(Box::new(self.parse_type_structure(&inner_type)));
+        }
+
+        // Handle [T] or [T; N] -> Array(T)
+        if cleaned_str.starts_with('[') && cleaned_str.ends_with(']') {
+            let inner = &cleaned_str[1..cleaned_str.len() - 1];
+            // Split by ; for [T; N]
+            let inner_type = if let Some(semi_pos) = inner.find(';') {
+                inner[..semi_pos].trim()
+            } else {
+                inner.trim()
+            };
+
+            if !inner_type.is_empty() {
+                return TypeStructure::Array(Box::new(self.parse_type_structure(inner_type)));
+            }
         }
 
         // Handle HashMap<K, V> and BTreeMap<K, V> -> Map { key, value }
         if let Some((key_type, value_type)) = self
-            .extract_hashmap_types(cleaned)
-            .or_else(|| self.extract_btreemap_types(cleaned))
+            .extract_hashmap_types(cleaned_str)
+            .or_else(|| self.extract_btreemap_types(cleaned_str))
         {
             return TypeStructure::Map {
                 key: Box::new(self.parse_type_structure(&key_type)),
@@ -210,14 +306,14 @@ impl TypeResolver {
 
         // Handle HashSet<T> and BTreeSet<T> -> Set(T)
         if let Some(inner_type) = self
-            .extract_hashset_inner_type(cleaned)
-            .or_else(|| self.extract_btreeset_inner_type(cleaned))
+            .extract_hashset_inner_type(cleaned_str)
+            .or_else(|| self.extract_btreeset_inner_type(cleaned_str))
         {
             return TypeStructure::Set(Box::new(self.parse_type_structure(&inner_type)));
         }
 
         // Handle tuple types (T1, T2, ...) -> Tuple([T1, T2, ...])
-        if let Some(tuple_types) = self.extract_tuple_types(cleaned) {
+        if let Some(tuple_types) = self.extract_tuple_types(cleaned_str) {
             if tuple_types.is_empty() {
                 return TypeStructure::Primitive("void".to_string());
             }
@@ -229,12 +325,12 @@ impl TypeResolver {
         }
 
         // Check if it's a primitive type and map to target primitive
-        if let Some(target_primitive) = self.map_to_target_primitive(cleaned) {
+        if let Some(target_primitive) = self.map_to_target_primitive(cleaned_str) {
             return TypeStructure::Primitive(target_primitive);
         }
 
         // Otherwise, it's a custom type
-        TypeStructure::Custom(cleaned.to_string())
+        TypeStructure::Custom(cleaned)
     }
 
     /// Map Rust primitive types to target language primitives

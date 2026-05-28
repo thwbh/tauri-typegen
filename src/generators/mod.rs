@@ -54,6 +54,7 @@ impl TypeCollector {
     pub fn collect_used_types(
         &self,
         commands: &[CommandInfo],
+        events: &[EventInfo],
         all_structs: &HashMap<String, StructInfo>,
     ) -> HashMap<String, StructInfo> {
         let mut used_types = std::collections::HashSet::new();
@@ -79,6 +80,14 @@ impl TypeCollector {
                     &mut used_types,
                 );
             }
+        }
+
+        // Collect types from events
+        for event in events {
+            Self::collect_referenced_types_from_structure(
+                &event.payload_type_structure,
+                &mut used_types,
+            );
         }
 
         // Clone to avoid borrow checker issues
@@ -112,9 +121,9 @@ impl TypeCollector {
             processed.insert(type_name.clone());
 
             if let Some(struct_info) = all_structs.get(&type_name) {
+                // Collect from fields (for structs and legacy enums)
                 for field in &struct_info.fields {
                     let mut nested_types = std::collections::HashSet::new();
-                    // Use type_structure to collect referenced types
                     Self::collect_referenced_types_from_structure(
                         &field.type_structure,
                         &mut nested_types,
@@ -126,6 +135,51 @@ impl TypeCollector {
                         {
                             all_types.insert(nested_type.clone());
                             to_process.push(nested_type);
+                        }
+                    }
+                }
+
+                // Collect from enum variants (for richer enums)
+                if let Some(variants) = &struct_info.enum_variants {
+                    for variant in variants {
+                        match &variant.kind {
+                            crate::models::EnumVariantKind::Unit => {}
+                            crate::models::EnumVariantKind::Tuple(types) => {
+                                for type_struct in types {
+                                    let mut nested_types = std::collections::HashSet::new();
+                                    Self::collect_referenced_types_from_structure(
+                                        type_struct,
+                                        &mut nested_types,
+                                    );
+
+                                    for nested_type in nested_types {
+                                        if !all_types.contains(&nested_type)
+                                            && all_structs.contains_key(&nested_type)
+                                        {
+                                            all_types.insert(nested_type.clone());
+                                            to_process.push(nested_type);
+                                        }
+                                    }
+                                }
+                            }
+                            crate::models::EnumVariantKind::Struct(fields) => {
+                                for field in fields {
+                                    let mut nested_types = std::collections::HashSet::new();
+                                    Self::collect_referenced_types_from_structure(
+                                        &field.type_structure,
+                                        &mut nested_types,
+                                    );
+
+                                    for nested_type in nested_types {
+                                        if !all_types.contains(&nested_type)
+                                            && all_structs.contains_key(&nested_type)
+                                        {
+                                            all_types.insert(nested_type.clone());
+                                            to_process.push(nested_type);
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -202,7 +256,16 @@ impl TypeCollector {
         config: &GenerateConfig,
     ) -> Vec<EventContext> {
         let type_resolver = analyzer.get_type_resolver();
-        let mut sorted_events: Vec<_> = events.iter().collect();
+
+        // Deduplicate events by name - first occurrence wins
+        let mut seen_events: std::collections::HashSet<&str> = std::collections::HashSet::new();
+        let mut sorted_events: Vec<&EventInfo> = Vec::new();
+        for event in events {
+            if seen_events.insert(event.event_name.as_str()) {
+                sorted_events.push(event);
+            }
+        }
+
         sorted_events.sort_by(|a, b| {
             a.event_name
                 .cmp(&b.event_name)
@@ -481,7 +544,7 @@ mod tests {
             let collector = TypeCollector::new();
             let commands = vec![];
             let all_structs = HashMap::new();
-            let used = collector.collect_used_types(&commands, &all_structs);
+            let used = collector.collect_used_types(&commands, &[], &all_structs);
             assert!(used.is_empty());
         }
 
@@ -503,7 +566,7 @@ mod tests {
                 vec![],
             );
 
-            let used = collector.collect_used_types(&[command], &all_structs);
+            let used = collector.collect_used_types(&[command], &[], &all_structs);
             assert_eq!(used.len(), 1);
             assert!(used.contains_key("User"));
         }
@@ -528,7 +591,7 @@ mod tests {
             // Set the return_type_structure
             command.return_type_structure = TypeStructure::Custom("ApiResult".to_string());
 
-            let used = collector.collect_used_types(&[command], &all_structs);
+            let used = collector.collect_used_types(&[command], &[], &all_structs);
             assert_eq!(used.len(), 1);
             assert!(used.contains_key("ApiResult"));
         }
@@ -555,7 +618,7 @@ mod tests {
                 vec![],
             );
 
-            let used = collector.collect_used_types(&[command], &all_structs);
+            let used = collector.collect_used_types(&[command], &[], &all_structs);
             assert_eq!(used.len(), 1);
             assert!(used.contains_key("User"));
             assert!(!used.contains_key("Product"));
@@ -633,7 +696,7 @@ mod tests {
                 vec![],
             );
 
-            let used = collector.collect_used_types(&[command], &all_structs);
+            let used = collector.collect_used_types(&[command], &[], &all_structs);
 
             // Should include both User and Address
             assert_eq!(used.len(), 2);
@@ -668,7 +731,7 @@ mod tests {
                 vec![],
             );
 
-            let used = collector.collect_used_types(&[command], &all_structs);
+            let used = collector.collect_used_types(&[command], &[], &all_structs);
 
             // Should include A, B, and C
             assert_eq!(used.len(), 3);
