@@ -6,6 +6,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-05-28
+
+### Fixed
+- **Deterministic Generation**: Eliminated nondeterministic output across runs
+  - Generator inputs are now sorted before rendering for stable ordering
+  - Stabilized cache hashing and regeneration invalidation
+  - Stabilized analyzer traversal and path filtering
+  - Normalized generated output formatting
+
+### Added
+- **Snake_case Config Keys**: Support `snake_case` keys in `tauri.conf.json` (e.g. `project_path`)
+- **`src-tauri` as Root**: Support projects where `src-tauri` is the root directory
+
+### Changed
+- **Unified Type Discovery**: Consolidated type discovery logic and removed duplicate traversal in the generators
+
+### Fixed
+- **Rust Type Parsing**: Correctly parse previously unsupported types
+  - Module-qualified types (e.g. `std::collections::HashMap`)
+  - Slices (e.g. `[u8]`)
+  - Fixed-size arrays (e.g. `[u8; 32]`)
+  - Lifetimes (e.g. `'a`) are now stripped from generic arguments to avoid unknown types in TypeScript
+- **Enum Type Discovery**: Recursively parse tuple and struct variant payloads so nested types are no longer missed
+- **Event Deduplication**: Deduplicate events by name
+- **Path Filtering**: Filter `.git` and `target` using path components instead of string matching
+
 ## [0.5.0] - 2026-02-24
 
 ### Added
