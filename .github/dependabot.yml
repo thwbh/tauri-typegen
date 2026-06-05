@@ -1,0 +1,62 @@
+# tauri-typegen Dependabot Configuration
+# Automated dependency updates and security scanning.
+#
+# Note on auto-merge: Dependabot has no auto-merge setting in this file. Patch
+# and minor updates are auto-merged by .github/workflows/dependabot-automerge.yml,
+# which requires "Allow auto-merge" + branch protection enabled in repo settings.
+
+version: 2
+updates:
+  # Rust dependencies (Cargo) — Cargo.toml lives at the repo root.
+  - package-ecosystem: "cargo"
+    directory: "/"
+    target-branch: "develop"
+    schedule:
+      interval: "daily"
+      time: "09:30"
+      timezone: "Europe/Vienna"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "thwbh"
+    assignees:
+      - "thwbh"
+    labels:
+      - "devops"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    groups:
+      cargo-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
+      cargo-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  # GitHub Actions workflows
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    target-branch: "develop"
+    schedule:
+      interval: "weekly"
+      time: "10:00"
+      timezone: "Europe/Vienna"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "thwbh"
+    assignees:
+      - "thwbh"
+    labels:
+      - "devops"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    groups:
+      github-actions-updates:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
