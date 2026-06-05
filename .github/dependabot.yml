@@ -54,6 +54,11 @@ updates:
     commit-message:
       prefix: "chore"
       include: "scope"
+    ignore:
+      # dtolnay/rust-toolchain is tagged by Rust release version (e.g. 1.93.0),
+      # not semver. Dependabot reads "1.93.0 -> 1.100.0" as a valid minor bump
+      # to a tag that does not exist. Pin it manually instead.
+      - dependency-name: "dtolnay/rust-toolchain"
     groups:
       github-actions-updates:
         applies-to: version-updates
