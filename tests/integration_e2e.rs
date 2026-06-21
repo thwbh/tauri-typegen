@@ -800,3 +800,62 @@ fn test_fully_qualified_types_with_nested_structs() {
         types
     );
 }
+
+/// Regression test for issue #46: a command declared more than once under
+/// mutually-exclusive `#[cfg(...)]` gates (the standard cross-platform Tauri
+/// pattern) must produce a single TypeScript declaration, not duplicates that
+/// trigger TS2323/TS2393/TS2451.
+#[test]
+fn test_cfg_gated_duplicate_command_emitted_once() {
+    let project = TestProject::new();
+
+    project.write_file(
+        "main.rs",
+        r#"
+        #[tauri::command]
+        #[cfg(target_os = "windows")]
+        pub fn cmd_update_app_icon(variant: String) -> Result<(), String> {
+            Ok(())
+        }
+
+        #[tauri::command]
+        #[cfg(not(target_os = "windows"))]
+        pub fn cmd_update_app_icon(variant: String) -> Result<(), String> {
+            Err("Only supported on Windows".into())
+        }
+    "#,
+    );
+
+    let (analyzer, commands) = project.analyze();
+
+    let generator = TestGenerator::new();
+    generator.generate(
+        &commands,
+        analyzer.get_discovered_structs(),
+        &analyzer,
+        Some("zod"),
+        None,
+    );
+
+    let commands_ts = generator.read_file("commands.ts");
+    let fn_occurrences = commands_ts
+        .matches("export async function cmdUpdateAppIcon")
+        .count();
+    assert_eq!(
+        fn_occurrences, 1,
+        "cfg-gated command should be emitted exactly once. Got:\n{}",
+        commands_ts
+    );
+
+    // The generated Params type/schema must also be emitted once: duplicate
+    // declarations would trigger TS2300 (duplicate identifier).
+    let types_ts = generator.read_file("types.ts");
+    let params_occurrences = types_ts
+        .matches("export const CmdUpdateAppIconParamsSchema")
+        .count();
+    assert_eq!(
+        params_occurrences, 1,
+        "cfg-gated command's Params schema should be declared exactly once. Got:\n{}",
+        types_ts
+    );
+}

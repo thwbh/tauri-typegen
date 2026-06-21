@@ -237,6 +237,13 @@ impl TypeCollector {
                 .then_with(|| a.line_number.cmp(&b.line_number))
         });
 
+        // Deduplicate commands by name - first occurrence wins. The same
+        // command can be declared more than once under mutually-exclusive
+        // `#[cfg(...)]` gates (the standard cross-platform Tauri pattern);
+        // emitting both would produce duplicate TypeScript declarations.
+        let mut seen_commands: std::collections::HashSet<&str> = std::collections::HashSet::new();
+        sorted_commands.retain(|cmd| seen_commands.insert(cmd.name.as_str()));
+
         sorted_commands
             .into_iter()
             .map(|cmd| {
