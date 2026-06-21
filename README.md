@@ -87,10 +87,10 @@ This creates a configuration block in your `tauri.conf.json`:
 ```json
 {
   "plugins": {
-    "tauri-typegen": {
-      "project_path": ".",
-      "output_path": "../src/generated",
-      "validation_library": "none",
+    "typegen": {
+      "projectPath": ".",
+      "outputPath": "../src/generated",
+      "validationLibrary": "none",
       "verbose": false
     }
   }
@@ -646,11 +646,11 @@ Map external Rust types to TypeScript types for libraries like `chrono`, `uuid`,
 ```json
 {
   "plugins": {
-    "tauri-typegen": {
-      "project_path": ".",
-      "output_path": "../src/generated",
-      "validation_library": "zod",
-      "type_mappings": {
+    "typegen": {
+      "projectPath": ".",
+      "outputPath": "../src/generated",
+      "validationLibrary": "zod",
+      "typeMappings": {
         "DateTime<Utc>": "string",
         "PathBuf": "string",
         "Uuid": "string"
