@@ -6,6 +6,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.2] - 2026-06-21
+
+### Fixed
+- **Duplicate Commands Under `#[cfg(...)]` Gates**: Commands declared more than once behind mutually-exclusive `#[cfg(...)]` attributes (the standard cross-platform Tauri pattern) now generate a single TypeScript declaration instead of duplicates (TS2323/TS2393/TS2451)
+  - Commands are deduplicated by name at the generation layer (first occurrence in source order wins), consistent with existing event deduplication
+  - The analyzer continues to report every declaration; deduplication happens only when building generation contexts
+
 ## [0.5.1] - 2026-05-28
 
 ### Fixed
