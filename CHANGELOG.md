@@ -2,13 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
-
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.5.3] - 2026-08-24
+
+### Fixed
+
+- **Aliased Tauri Command Parameters**: Type aliases to Tauri-injected types (e.g. `type AppSaveState<'a> = State<'a, Arc<T>>`) are now resolved and skipped when generating command Params, matching the behavior of a direct `State<...>` / `AppHandle` / etc. parameter
+  - Nested aliases are followed with cycle detection
+  - Analysis indexes type aliases before command extraction so same-file and cross-file aliases work
 
 ## [0.5.2] - 2026-06-21
 
 ### Fixed
+
 - **Duplicate Commands Under `#[cfg(...)]` Gates**: Commands declared more than once behind mutually-exclusive `#[cfg(...)]` attributes (the standard cross-platform Tauri pattern) now generate a single TypeScript declaration instead of duplicates (TS2323/TS2393/TS2451)
   - Commands are deduplicated by name at the generation layer (first occurrence in source order wins), consistent with existing event deduplication
   - The analyzer continues to report every declaration; deduplication happens only when building generation contexts
@@ -16,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.5.1] - 2026-05-28
 
 ### Fixed
+
 - **Deterministic Generation**: Eliminated nondeterministic output across runs
   - Generator inputs are now sorted before rendering for stable ordering
   - Stabilized cache hashing and regeneration invalidation
@@ -23,13 +32,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Normalized generated output formatting
 
 ### Added
+
 - **Snake_case Config Keys**: Support `snake_case` keys in `tauri.conf.json` (e.g. `project_path`)
 - **`src-tauri` as Root**: Support projects where `src-tauri` is the root directory
 
 ### Changed
+
 - **Unified Type Discovery**: Consolidated type discovery logic and removed duplicate traversal in the generators
 
 ### Fixed
+
 - **Rust Type Parsing**: Correctly parse previously unsupported types
   - Module-qualified types (e.g. `std::collections::HashMap`)
   - Slices (e.g. `[u8]`)
@@ -42,6 +54,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.5.0] - 2026-02-24
 
 ### Added
+
 - **Complex Enum Variant Support**: Full support for Rust enums with tuple and struct variants
   - Simple enums (unit variants only) continue to generate TypeScript string literal unions / `z.enum()`
   - Complex enums (tuple or struct variants) now generate TypeScript discriminated unions / `z.discriminatedUnion()`
@@ -49,6 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Enum variants are included in the AST cache for efficient subsequent runs
 
 ### Changed
+
 - **Serde Attribute Parsing**: Replaced regex-based parsing with `syn` AST functions
   - More robust and accurate handling of `#[serde(...)]` attributes
   - Eliminates edge cases caused by pattern matching on raw token strings
@@ -56,11 +70,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.4.2] - 2026-02-15
 
 ### Fixed
+
 - **EventParser**: Fixed bug where types were not discovered when moving emitter to external function
 
 ## [0.4.1] - 2026-02-05
 
 ### Added
+
 - **Smart Caching**: Skip regeneration when source files haven't changed
   - Creates `.typecache` file in output directory with hashes of discovered commands, types, and configuration
   - Compares hashes on subsequent runs to determine if regeneration is needed
@@ -74,6 +90,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.4.0] - 2025-12-26
 
 ### Added
+
 - **Custom Type Mappings**: Added support for mapping external Rust types to TypeScript types via configuration
   - Configure in `tauri.conf.json` under `plugins.typegen.typeMappings`
   - Useful for external crate types like `DateTime<Utc>` → `string` or `PathBuf` → `string`
@@ -96,40 +113,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Ensures generated TypeScript/Zod code has no compilation errors
 
 ### Fixed
-- Updated outdated setup instructions 
+
+- Updated outdated setup instructions
 
 ### Changed
+
 - **BREAKING - TypeScript Type Mappings**: Changed HashMap/BTreeMap generation from `Map<K,V>` to `Record<K,V>`
   - `HashMap<String, number>` now generates `Record<string, number>` instead of `Map<string, number>`
   - More idiomatic TypeScript that matches JSON serialization behavior
 
 ## [0.3.4] - 2025-12-09
+
 ### Fixed
+
 - **Zod**: Fixed bug where `z.coerce.number()` was used for record/map declaration
 
 ## [0.3.3] - 2025-12-04
 
 ### Added
+
 - Generated files now contain a timestamp and tauri-typegen version info
 - Added `--version` flag as CLI argument
 
-
 ### Changed
+
 - Generated zod code now includes type coercion for numbers
 
 ## [0.3.2] - 2025-11-23
 
 ### Fixed
+
 - **Nested Collection Type Discovery**: Fixed bug where nested collection types (e.g., `Vec<HashMap<String, Vec<T>>>`) were not properly discovered when the type was not referenced standalone
   - Type analyzer now recursively traverses nested generic types to discover all referenced custom types
   - Ensures all nested types are included in the generated TypeScript bindings
 
 ### Changed
+
 - Cleaned up unused permissions directory from project structure
 
 ## [0.3.1] - 2025-11-19
 
 ### Fixed
+
 - **Zod Command Generation with Channels**: Fixed bug where commands with both regular parameters and channels generated invalid TypeScript code
   - Previously referenced non-existent `extractChannels` function
   - Now generates explicit channel parameter references (e.g., `{ ...result.data, onProgress: params.onProgress }`)
@@ -137,6 +162,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.0] - 2025-11-13
 
 ### Added
+
 - **Tauri Channel Support**: Automatically generate TypeScript bindings for Tauri IPC Channels
   - New `ChannelParser` detects `Channel<T>` parameters in commands
   - Generates TypeScript channel listener boilerplate with proper typing
@@ -172,6 +198,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Auto-stages formatted files for commit
 
 ### Changed
+
 - **BREAKING**: Default validation library changed from `"zod"` to `"none"`
   - Running `generate` without `--validation` flag now generates vanilla TypeScript
   - Explicit `--validation zod` required for Zod schema generation
@@ -190,6 +217,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Cleaner, more honest API that accurately reflects function dependencies
 
 ### Removed
+
 - **JavaScript/TypeScript Build Setup**: Removed all Node.js-based build infrastructure
   - Removed `package.json`, `rollup.config.js`, `tsconfig.json`
   - Removed `guest-js/` directory (was for plugin guest code)
@@ -200,6 +228,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Cleaner project structure focused on the core library
 
 ### Fixed
+
 - Fixed vanilla TypeScript generator not using camelCase for function names
   - Command functions now properly convert from snake_case to camelCase (e.g., `get_user_count` → `getUserCount()`)
 
@@ -219,6 +248,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.1] - 2025-11-02
 
 ### Fixed
+
 - **CRITICAL**: Fixed CLI arguments being ignored when configuration file exists
   - CLI arguments (`--validation`, `--project-path`, `--output-path`) now properly override config file settings
   - Previously, when a config file was present, CLI flags were replaced by their default values, causing user-specified options to be ignored
@@ -227,12 +257,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Fixes issue where running without `--validation` flag would ignore config file's validation library setting
 
 ### Changed
+
 - CLI argument precedence is now: CLI Arguments > Config File > Hardcoded Defaults
 - Improved help text for CLI arguments to clarify default behavior and config file integration
 
 ## [0.2.0] - 2025-11-01
 
 ### Added
+
 - Added optional hook feature for customizing generated TypeScript code
   - Allows users to inject custom code transformations into the generation process
   - Comprehensive test coverage for hook functionality
@@ -240,20 +272,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Generated files now include metadata about when and with which version they were created
 
 ### Changed
+
 - **BREAKING**: Renamed crate from `tauri-plugin-typegen` to `tauri-typegen`
   - Updated all references, imports, and documentation
   - Updated package names in both Cargo.toml and package.json
   - Updated capability permissions and schema references
 
-## [0.1.5] - 2025-10-31 
+## [0.1.5] - 2025-10-31
 
 ### Fixed
+
 - Fixed regression where `Optional` custom types were not exported properly
 - Fixed regression where primitve types were not imported properly
 
 ## [0.1.4] - 2025-10-30
 
 ### Added
+
 - Added support for custom validation error messages in Zod schemas
   - Validator `message` parameters are now extracted from Rust `#[validate(...)]` attributes
   - Error messages are properly escaped and included in Zod schema validations
@@ -261,11 +296,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Example: `#[validate(length(min = 5, max = 50, message = "Must be 5-50 chars"))]` generates `z.string().min(5, { message: "Must be 5-50 chars" })`
 
 ### Fixed
+
 - Fixed vanilla TypeScript interface properties not using camelCase naming convention
   - Interface properties now consistently use camelCase (e.g., `stringMap` instead of `string_map`)
   - Matches the naming convention already used in Zod schemas for consistency
 
 ### Changed
+
 - Updated `z.record()` generation to use explicit two-parameter syntax for better type safety
   - Now generates `z.record(z.string(), z.number())` instead of `z.record(z.number())`
   - More explicit about both key and value types
@@ -273,27 +310,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.3] - 2025-10-20
 
 ### Fixed
+
 - Fixed camelCase naming convention not being consistently applied to generated TypeScript types
 - Fixed configuration file not being properly loaded from `tauri.conf.json`
 - Fixed topological sorting and forward references in type dependency resolution after refactoring
 - Fixed CLI config loading to properly detect and use `tauri.conf.json` from project directory
 
 ### Changed
-- Changed enum generation to use Zod native enums (`z.enum()`) instead of union types 
+
+- Changed enum generation to use Zod native enums (`z.enum()`) instead of union types
+
 ## [0.1.2] - 2025-10-20
 
 ### Fixed
+
 - Fixed invalid `tauri.conf.json` generation when using standalone configuration files
 - Fixed `tauri.conf.json` path resolution to correctly place file in Rust project directory (`{project-path}/tauri.conf.json`)
 - Improved path detection for default configuration file location using proper parent directory checks
 
 ### Changed
+
 - Reduced CLI verbosity with cleaner progress output using animated spinners (indicatif library)
 - Updated `init` command to require existing `tauri.conf.json` and only update the `plugins.typegen` section
 - Configuration file now defaults to `{project-path}/tauri.conf.json` instead of project root
 - Enhanced verbose mode to properly propagate through AST parsing and analysis steps
 
 ### Added
+
 - Added `indicatif` dependency for progress bar animations
 - Added comprehensive tests for CLI configuration conversion
 - Added tests for tauri.conf.json preservation and plugin section management
@@ -301,11 +344,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.1] - 2025-09-06
 
 ### Fixed
+
 - Fixed invalid `tauri.conf.json` generation when using standalone configuration files
 - Fixed `tauri.conf.json` path resolution to correctly place file in project directory
 - Improved path detection for default configuration file location
 
 ### Changed
+
 - Reduced CLI verbosity with cleaner progress output using animated spinners
 - Improved user experience with single-line progress indication during generation
 - Removed unnecessary info emojis from logging output
@@ -315,6 +360,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.0] - 2025-09-05
 
 ### Added
+
 - Initial release of tauri-typegen
 - TypeScript bindings generation for Tauri commands
 - Support for Zod validation library integration
@@ -336,6 +382,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Automatic generation of barrel exports (`index.ts`)
 
 ### Features
+
 - **Zod Generation Mode**: Generates schemas, inferred types, commands, and exports
 - **Vanilla TypeScript Mode**: Generates types, commands, and exports without validation
 - **Verbose Mode**: Detailed logging for debugging and understanding the generation process
@@ -345,9 +392,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Clean separation between AST parsing and code generation
 
 ### Developer Experience
+
 - Progress reporting with step-by-step feedback
 - Helpful error messages with actionable guidance
 - Usage examples printed after successful generation
 - Dependency visualization tools for understanding type relationships
 - Extensive test coverage
-

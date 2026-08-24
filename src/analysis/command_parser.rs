@@ -1,6 +1,7 @@
 use crate::analysis::serde_parser::SerdeParser;
 use crate::analysis::type_resolver::TypeResolver;
 use crate::models::{CommandInfo, ParameterInfo};
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use syn::{File as SynFile, FnArg, ItemFn, PatType, ReturnType, Type};
 
@@ -23,9 +24,16 @@ impl CommandParser {
         ast: &SynFile,
         file_path: &Path,
         type_resolver: &mut TypeResolver,
+        type_aliases: &HashMap<String, Type>,
     ) -> Result<Vec<CommandInfo>, Box<dyn std::error::Error>> {
         let mut commands = Vec::new();
-        self.extract_commands_from_items(&ast.items, file_path, type_resolver, &mut commands);
+        self.extract_commands_from_items(
+            &ast.items,
+            file_path,
+            type_resolver,
+            type_aliases,
+            &mut commands,
+        );
         Ok(commands)
     }
 
@@ -35,6 +43,7 @@ impl CommandParser {
         items: &[syn::Item],
         file_path: &Path,
         type_resolver: &mut TypeResolver,
+        type_aliases: &HashMap<String, Type>,
         commands: &mut Vec<CommandInfo>,
     ) {
         for item in items {
@@ -42,7 +51,7 @@ impl CommandParser {
                 syn::Item::Fn(func) => {
                     if self.is_tauri_command(func) {
                         if let Some(info) =
-                            self.extract_command_info(func, file_path, type_resolver)
+                            self.extract_command_info(func, file_path, type_resolver, type_aliases)
                         {
                             commands.push(info);
                         }
@@ -50,7 +59,13 @@ impl CommandParser {
                 }
                 syn::Item::Mod(item_mod) => {
                     if let Some((_, items)) = &item_mod.content {
-                        self.extract_commands_from_items(items, file_path, type_resolver, commands);
+                        self.extract_commands_from_items(
+                            items,
+                            file_path,
+                            type_resolver,
+                            type_aliases,
+                            commands,
+                        );
                     }
                 }
                 _ => {}
@@ -74,10 +89,11 @@ impl CommandParser {
         func: &ItemFn,
         file_path: &Path,
         type_resolver: &mut TypeResolver,
+        type_aliases: &HashMap<String, Type>,
     ) -> Option<CommandInfo> {
         let name = func.sig.ident.to_string();
 
-        let parameters = self.extract_parameters(&func.sig.inputs, type_resolver);
+        let parameters = self.extract_parameters(&func.sig.inputs, type_resolver, type_aliases);
         let return_type = self.extract_return_type(&func.sig.output);
         let return_type_structure = type_resolver.parse_type_structure(&return_type);
         let is_async = func.sig.asyncness.is_some();
@@ -109,6 +125,7 @@ impl CommandParser {
         &self,
         inputs: &syn::punctuated::Punctuated<FnArg, syn::token::Comma>,
         type_resolver: &mut TypeResolver,
+        type_aliases: &HashMap<String, Type>,
     ) -> Vec<ParameterInfo> {
         inputs
             .iter()
@@ -117,8 +134,8 @@ impl CommandParser {
                     if let syn::Pat::Ident(pat_ident) = pat.as_ref() {
                         let name = pat_ident.ident.to_string();
 
-                        // Skip Tauri-specific parameters
-                        if self.is_tauri_parameter_type(ty) {
+                        // Skip Tauri-specific parameters (including type aliases to them)
+                        if self.is_tauri_parameter_type(ty, type_aliases) {
                             return None;
                         }
 
@@ -144,8 +161,48 @@ impl CommandParser {
     }
 
     /// Check if a parameter type is a Tauri-specific type that should be skipped
+    /// Respects type aliases that have already been defined
     /// This checks the actual syn::Type to properly handle both imported and fully-qualified types
-    fn is_tauri_parameter_type(&self, ty: &Type) -> bool {
+    fn is_tauri_parameter_type(&self, ty: &Type, type_aliases: &HashMap<String, Type>) -> bool {
+        self.is_tauri_parameter_type_inner(ty, type_aliases, &mut HashSet::new())
+    }
+
+    fn is_tauri_parameter_type_inner(
+        &self,
+        ty: &Type,
+        type_aliases: &HashMap<String, Type>,
+        visiting: &mut HashSet<String>,
+    ) -> bool {
+        // Peel references so `&State<T>` / `&AppHandle` are treated like their targets
+        let ty = match ty {
+            Type::Reference(type_ref) => type_ref.elem.as_ref(),
+            other => other,
+        };
+
+        if self.is_direct_tauri_parameter_type(ty) {
+            return true;
+        }
+
+        // Follow type aliases: `type AppSaveState<'a> = State<'a, T>`
+        if let Type::Path(type_path) = ty {
+            if let Some(last_segment) = type_path.path.segments.last() {
+                let alias_name = last_segment.ident.to_string();
+                if !visiting.insert(alias_name.clone()) {
+                    // Cycle detected
+                    return false;
+                }
+                if let Some(rhs) = type_aliases.get(&alias_name) {
+                    return self.is_tauri_parameter_type_inner(rhs, type_aliases, visiting);
+                }
+            }
+        }
+
+        false
+    }
+
+    /// Check if a parameter type is a Tauri-specific type (no alias resolution).
+    /// This checks the actual syn::Type to properly handle both imported and fully-qualified types.
+    fn is_direct_tauri_parameter_type(&self, ty: &Type) -> bool {
         if let Type::Path(type_path) = ty {
             let segments = &type_path.path.segments;
 
@@ -447,81 +504,85 @@ mod tests {
     mod is_tauri_parameter_type {
         use super::*;
 
+        fn empty_aliases() -> HashMap<String, Type> {
+            HashMap::new()
+        }
+
         #[test]
         fn test_recognizes_app_handle() {
             let parser = CommandParser::new();
             let ty: Type = parse_quote!(tauri::AppHandle);
-            assert!(parser.is_tauri_parameter_type(&ty));
+            assert!(parser.is_tauri_parameter_type(&ty, &empty_aliases()));
         }
 
         #[test]
         fn test_recognizes_imported_app_handle() {
             let parser = CommandParser::new();
             let ty: Type = parse_quote!(AppHandle);
-            assert!(parser.is_tauri_parameter_type(&ty));
+            assert!(parser.is_tauri_parameter_type(&ty, &empty_aliases()));
         }
 
         #[test]
         fn test_recognizes_window_with_generics() {
             let parser = CommandParser::new();
             let ty: Type = parse_quote!(Window<R>);
-            assert!(parser.is_tauri_parameter_type(&ty));
+            assert!(parser.is_tauri_parameter_type(&ty, &empty_aliases()));
         }
 
         #[test]
         fn test_recognizes_state_with_generics() {
             let parser = CommandParser::new();
             let ty: Type = parse_quote!(State<AppState>);
-            assert!(parser.is_tauri_parameter_type(&ty));
+            assert!(parser.is_tauri_parameter_type(&ty, &empty_aliases()));
         }
 
         #[test]
         fn test_recognizes_webview_window() {
             let parser = CommandParser::new();
             let ty: Type = parse_quote!(tauri::WebviewWindow);
-            assert!(parser.is_tauri_parameter_type(&ty));
+            assert!(parser.is_tauri_parameter_type(&ty, &empty_aliases()));
         }
 
         #[test]
         fn test_recognizes_imported_webview_window() {
             let parser = CommandParser::new();
             let ty: Type = parse_quote!(WebviewWindow);
-            assert!(parser.is_tauri_parameter_type(&ty));
+            assert!(parser.is_tauri_parameter_type(&ty, &empty_aliases()));
         }
 
         #[test]
         fn test_recognizes_ipc_request() {
             let parser = CommandParser::new();
             let ty: Type = parse_quote!(tauri::ipc::Request);
-            assert!(parser.is_tauri_parameter_type(&ty));
+            assert!(parser.is_tauri_parameter_type(&ty, &empty_aliases()));
         }
 
         #[test]
         fn test_recognizes_ipc_channel() {
             let parser = CommandParser::new();
             let ty: Type = parse_quote!(tauri::ipc::Channel<String>);
-            assert!(parser.is_tauri_parameter_type(&ty));
+            assert!(parser.is_tauri_parameter_type(&ty, &empty_aliases()));
         }
 
         #[test]
         fn test_recognizes_channel_with_generics() {
             let parser = CommandParser::new();
             let ty: Type = parse_quote!(Channel<ProgressUpdate>);
-            assert!(parser.is_tauri_parameter_type(&ty));
+            assert!(parser.is_tauri_parameter_type(&ty, &empty_aliases()));
         }
 
         #[test]
         fn test_rejects_user_string_type() {
             let parser = CommandParser::new();
             let ty: Type = parse_quote!(String);
-            assert!(!parser.is_tauri_parameter_type(&ty));
+            assert!(!parser.is_tauri_parameter_type(&ty, &empty_aliases()));
         }
 
         #[test]
         fn test_rejects_user_custom_type() {
             let parser = CommandParser::new();
             let ty: Type = parse_quote!(User);
-            assert!(!parser.is_tauri_parameter_type(&ty));
+            assert!(!parser.is_tauri_parameter_type(&ty, &empty_aliases()));
         }
 
         #[test]
@@ -529,7 +590,7 @@ mod tests {
             let parser = CommandParser::new();
             // User might have their own State type without generics
             let ty: Type = parse_quote!(State);
-            assert!(!parser.is_tauri_parameter_type(&ty));
+            assert!(!parser.is_tauri_parameter_type(&ty, &empty_aliases()));
         }
 
         #[test]
@@ -537,7 +598,67 @@ mod tests {
             let parser = CommandParser::new();
             // User might have their own Window type without generics
             let ty: Type = parse_quote!(Window);
-            assert!(!parser.is_tauri_parameter_type(&ty));
+            assert!(!parser.is_tauri_parameter_type(&ty, &empty_aliases()));
+        }
+
+        #[test]
+        fn test_recognizes_alias_to_state() {
+            let parser = CommandParser::new();
+            let mut aliases = HashMap::new();
+            aliases.insert(
+                "AppSaveState".to_string(),
+                parse_quote!(State<'a, Arc<AppSaveService>>),
+            );
+            let ty: Type = parse_quote!(AppSaveState);
+            assert!(parser.is_tauri_parameter_type(&ty, &aliases));
+        }
+
+        #[test]
+        fn test_recognizes_alias_to_tauri_state() {
+            let parser = CommandParser::new();
+            let mut aliases = HashMap::new();
+            aliases.insert(
+                "AppSaveState".to_string(),
+                parse_quote!(tauri::State<'a, Arc<AppSaveService>>),
+            );
+            let ty: Type = parse_quote!(AppSaveState<'_>);
+            assert!(parser.is_tauri_parameter_type(&ty, &aliases));
+        }
+
+        #[test]
+        fn test_recognizes_nested_alias_to_state() {
+            let parser = CommandParser::new();
+            let mut aliases = HashMap::new();
+            aliases.insert("Inner".to_string(), parse_quote!(State<'a, AppState>));
+            aliases.insert("Outer".to_string(), parse_quote!(Inner));
+            let ty: Type = parse_quote!(Outer);
+            assert!(parser.is_tauri_parameter_type(&ty, &aliases));
+        }
+
+        #[test]
+        fn test_cyclic_alias_does_not_hang() {
+            let parser = CommandParser::new();
+            let mut aliases = HashMap::new();
+            aliases.insert("A".to_string(), parse_quote!(B));
+            aliases.insert("B".to_string(), parse_quote!(A));
+            let ty: Type = parse_quote!(A);
+            assert!(!parser.is_tauri_parameter_type(&ty, &aliases));
+        }
+
+        #[test]
+        fn test_rejects_unrelated_alias() {
+            let parser = CommandParser::new();
+            let mut aliases = HashMap::new();
+            aliases.insert("Id".to_string(), parse_quote!(String));
+            let ty: Type = parse_quote!(Id);
+            assert!(!parser.is_tauri_parameter_type(&ty, &aliases));
+        }
+
+        #[test]
+        fn test_recognizes_reference_to_app_handle() {
+            let parser = CommandParser::new();
+            let ty: Type = parse_quote!(&AppHandle);
+            assert!(parser.is_tauri_parameter_type(&ty, &empty_aliases()));
         }
     }
 
@@ -578,13 +699,17 @@ mod tests {
     mod extract_parameters {
         use super::*;
 
+        fn empty_aliases() -> HashMap<String, Type> {
+            HashMap::new()
+        }
+
         #[test]
         fn test_extract_simple_parameter() {
             let parser = CommandParser::new();
             let mut type_resolver = TypeResolver::new();
             let inputs = parse_quote!(name: String);
 
-            let params = parser.extract_parameters(&inputs, &mut type_resolver);
+            let params = parser.extract_parameters(&inputs, &mut type_resolver, &empty_aliases());
 
             assert_eq!(params.len(), 1);
             assert_eq!(params[0].name, "name");
@@ -598,7 +723,7 @@ mod tests {
             let mut type_resolver = TypeResolver::new();
             let inputs = parse_quote!(email: Option<String>);
 
-            let params = parser.extract_parameters(&inputs, &mut type_resolver);
+            let params = parser.extract_parameters(&inputs, &mut type_resolver, &empty_aliases());
 
             assert_eq!(params.len(), 1);
             assert_eq!(params[0].name, "email");
@@ -611,7 +736,7 @@ mod tests {
             let mut type_resolver = TypeResolver::new();
             let inputs = parse_quote!(name: String, age: i32);
 
-            let params = parser.extract_parameters(&inputs, &mut type_resolver);
+            let params = parser.extract_parameters(&inputs, &mut type_resolver, &empty_aliases());
 
             assert_eq!(params.len(), 2);
             assert_eq!(params[0].name, "name");
@@ -624,7 +749,7 @@ mod tests {
             let mut type_resolver = TypeResolver::new();
             let inputs = parse_quote!(app: AppHandle, name: String);
 
-            let params = parser.extract_parameters(&inputs, &mut type_resolver);
+            let params = parser.extract_parameters(&inputs, &mut type_resolver, &empty_aliases());
 
             // AppHandle should be filtered out
             assert_eq!(params.len(), 1);
@@ -637,7 +762,7 @@ mod tests {
             let mut type_resolver = TypeResolver::new();
             let inputs = parse_quote!(state: State<AppState>, name: String);
 
-            let params = parser.extract_parameters(&inputs, &mut type_resolver);
+            let params = parser.extract_parameters(&inputs, &mut type_resolver, &empty_aliases());
 
             // State should be filtered out
             assert_eq!(params.len(), 1);
@@ -650,11 +775,33 @@ mod tests {
             let mut type_resolver = TypeResolver::new();
             let inputs = parse_quote!(progress: Channel<u32>, name: String);
 
-            let params = parser.extract_parameters(&inputs, &mut type_resolver);
+            let params = parser.extract_parameters(&inputs, &mut type_resolver, &empty_aliases());
 
             // Channel should be filtered out
             assert_eq!(params.len(), 1);
             assert_eq!(params[0].name, "name");
+        }
+
+        #[test]
+        fn test_filters_aliased_state() {
+            let parser = CommandParser::new();
+            let mut type_resolver = TypeResolver::new();
+            let mut aliases = HashMap::new();
+            aliases.insert(
+                "AppSaveState".to_string(),
+                parse_quote!(State<'a, Arc<AppSaveService>>),
+            );
+            let inputs = parse_quote!(
+                state: AppSaveState,
+                source_path: String,
+                relative_dest_path: String
+            );
+
+            let params = parser.extract_parameters(&inputs, &mut type_resolver, &aliases);
+
+            assert_eq!(params.len(), 2);
+            assert_eq!(params[0].name, "source_path");
+            assert_eq!(params[1].name, "relative_dest_path");
         }
 
         #[test]
@@ -663,7 +810,7 @@ mod tests {
             let mut type_resolver = TypeResolver::new();
             let inputs = parse_quote!();
 
-            let params = parser.extract_parameters(&inputs, &mut type_resolver);
+            let params = parser.extract_parameters(&inputs, &mut type_resolver, &empty_aliases());
 
             assert_eq!(params.len(), 0);
         }
@@ -673,6 +820,10 @@ mod tests {
     mod extract_command_info {
         use super::*;
         use std::path::PathBuf;
+
+        fn empty_aliases() -> HashMap<String, Type> {
+            HashMap::new()
+        }
 
         #[test]
         fn test_extract_simple_command() {
@@ -686,7 +837,8 @@ mod tests {
             };
             let path = PathBuf::from("test.rs");
 
-            let info = parser.extract_command_info(&func, &path, &mut type_resolver);
+            let info =
+                parser.extract_command_info(&func, &path, &mut type_resolver, &empty_aliases());
 
             assert!(info.is_some());
             let info = info.unwrap();
@@ -708,7 +860,8 @@ mod tests {
             };
             let path = PathBuf::from("test.rs");
 
-            let info = parser.extract_command_info(&func, &path, &mut type_resolver);
+            let info =
+                parser.extract_command_info(&func, &path, &mut type_resolver, &empty_aliases());
 
             assert!(info.is_some());
             let info = info.unwrap();
@@ -728,7 +881,8 @@ mod tests {
             };
             let path = PathBuf::from("test.rs");
 
-            let info = parser.extract_command_info(&func, &path, &mut type_resolver);
+            let info =
+                parser.extract_command_info(&func, &path, &mut type_resolver, &empty_aliases());
 
             assert!(info.is_some());
             let info = info.unwrap();

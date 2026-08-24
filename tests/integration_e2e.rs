@@ -859,3 +859,89 @@ fn test_cfg_gated_duplicate_command_emitted_once() {
         types_ts
     );
 }
+
+/// Type aliases to Tauri injectables (e.g. `type AppSaveState = State<...>`) must be
+/// skipped from generated Params, just like a direct `State<...>` parameter.
+#[test]
+fn test_aliased_state_parameter_omitted_from_params() {
+    let project = TestProject::new();
+
+    project.write_file(
+        "main.rs",
+        r#"
+        use std::sync::Arc;
+        use tauri::State;
+
+        pub struct AppSaveService;
+
+        impl AppSaveService {
+            pub fn copy_file(&self, _source: &str, _dest: &str) -> Result<(), String> {
+                Ok(())
+            }
+        }
+
+        type AppSaveState<'a> = State<'a, Arc<AppSaveService>>;
+
+        #[tauri::command]
+        pub fn copy_file(
+            state: AppSaveState,
+            source_path: String,
+            relative_dest_path: String,
+        ) -> Result<(), String> {
+            state
+                .copy_file(&source_path, &relative_dest_path)
+                .map_err(|e| e.to_string())
+        }
+    "#,
+    );
+
+    let (analyzer, commands) = project.analyze();
+
+    assert_eq!(commands.len(), 1);
+    assert_eq!(commands[0].name, "copy_file");
+    assert_eq!(commands[0].parameters.len(), 2);
+    assert!(
+        commands[0]
+            .parameters
+            .iter()
+            .all(|p| p.name != "state" && !p.rust_type.contains("AppSaveState")),
+        "aliased State parameter should be filtered out. Got: {:?}",
+        commands[0]
+            .parameters
+            .iter()
+            .map(|p| (&p.name, &p.rust_type))
+            .collect::<Vec<_>>(),
+    );
+
+    let generator = TestGenerator::new();
+    generator.generate(
+        &commands,
+        analyzer.get_discovered_structs(),
+        &analyzer,
+        None,
+        None,
+    );
+
+    let types = generator.read_file("types.ts");
+
+    assert!(
+        types.contains("export interface CopyFileParams"),
+        "Should emit CopyFileParams. Got:\n{}",
+        types
+    );
+    assert!(
+        types.contains("sourcePath"),
+        "Should include sourcePath. Got:\n{}",
+        types
+    );
+    assert!(
+        types.contains("relativeDestPath"),
+        "Should include relativeDestPath. Got:\n{}",
+        types
+    );
+    assert!(
+        !types.contains("state") && !types.contains("AppSaveState"),
+        "Should not include aliased State as a Params field. Got:\n{}",
+        types
+    );
+}

@@ -40,6 +40,8 @@ pub struct CommandAnalyzer {
     discovered_structs: HashMap<String, StructInfo>,
     /// Discovered event emissions
     discovered_events: Vec<EventInfo>,
+    /// Type aliases (`type Foo = Bar`) keyed by alias name → RHS type
+    type_aliases: HashMap<String, syn::Type>,
 }
 
 impl CommandAnalyzer {
@@ -54,6 +56,7 @@ impl CommandAnalyzer {
             dependency_graph: TypeDependencyGraph::new(),
             discovered_structs: HashMap::new(),
             discovered_events: Vec::new(),
+            type_aliases: HashMap::new(),
         }
     }
 
@@ -86,6 +89,16 @@ impl CommandAnalyzer {
         // Extract commands from cached ASTs
         let mut file_paths: Vec<PathBuf> = self.ast_cache.keys().cloned().collect();
         file_paths.sort_unstable();
+
+        // Pass 1: Index type definitions (structs, enums, aliases) before command extraction
+        // so aliased Tauri types (e.g. type AppSaveState = State<...>) can be skipped.
+        for file_path in &file_paths {
+            if let Some(parsed_file) = self.ast_cache.get_cloned(file_path) {
+                self.index_type_definitions(&parsed_file.ast, parsed_file.path.as_path());
+            }
+        }
+
+        // Pass 2: Extract commands, channels, and events from cached ASTs
         let mut commands = Vec::new();
         let mut type_names_to_discover = HashSet::new();
 
@@ -101,6 +114,7 @@ impl CommandAnalyzer {
                     &parsed_file.ast,
                     parsed_file.path.as_path(),
                     &mut self.type_resolver,
+                    &self.type_aliases,
                 )?;
 
                 // Extract channels for each command
@@ -198,6 +212,9 @@ impl CommandAnalyzer {
             Ok(_) => {
                 // Extract commands and events from the cached AST
                 if let Some(parsed_file) = self.ast_cache.get_cloned(&path_buf) {
+                    // Index type definitions (including aliases) before command extraction
+                    self.index_type_definitions(&parsed_file.ast, path_buf.as_path());
+
                     // Extract events
                     let file_events = self.event_parser.extract_events_from_ast(
                         &parsed_file.ast,
@@ -211,6 +228,7 @@ impl CommandAnalyzer {
                         &parsed_file.ast,
                         path_buf.as_path(),
                         &mut self.type_resolver,
+                        &self.type_aliases,
                     )?;
 
                     // Extract channels for each command
@@ -263,6 +281,12 @@ impl CommandAnalyzer {
                         self.dependency_graph
                             .add_type_definition(enum_name, file_path.to_path_buf());
                     }
+                }
+                syn::Item::Type(item_type) => {
+                    let alias_name = item_type.ident.to_string();
+                    self.type_aliases
+                        .entry(alias_name)
+                        .or_insert_with(|| (*item_type.ty).clone());
                 }
                 syn::Item::Mod(item_mod) => {
                     if let Some((_, items)) = &item_mod.content {
