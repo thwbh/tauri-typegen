@@ -159,9 +159,6 @@ impl CommandAnalyzer {
 
                 commands.extend(file_commands);
                 self.discovered_events.extend(file_events);
-
-                // Build type definition index from this file
-                self.index_type_definitions(&parsed_file.ast, parsed_file.path.as_path());
             }
         }
 
