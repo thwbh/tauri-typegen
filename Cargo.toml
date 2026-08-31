@@ -21,7 +21,7 @@ regex = "1.0"
 clap = { version = "4.0", features = ["derive"] }
 chrono = { version = "0.4", features = ["serde"] }
 indicatif = "0.18"
-tera = "1.19"
+tera = "2.3"
 serde-rename-rule = "0.2.2"
 
 [[bin]]
