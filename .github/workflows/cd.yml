@@ -82,9 +82,11 @@ jobs:
             echo "Add a '## [$VERSION] - <date>' entry before releasing." >&2
             exit 1
           fi
-          printf '%s\n' "$NOTES" > release_notes.md
+          # Write outside the checkout so the working tree stays clean for
+          # `cargo publish` (which refuses to package a dirty tree).
+          printf '%s\n' "$NOTES" > "${RUNNER_TEMP}/release_notes.md"
           echo "Extracted release notes for $VERSION:"
-          cat release_notes.md
+          cat "${RUNNER_TEMP}/release_notes.md"
 
       - name: Set version in Cargo.toml
         # set-version overwrites whatever is in the local (intentionally stale)
@@ -108,4 +110,4 @@ jobs:
         run: |
           gh release create "${{ steps.bump_version.outputs.new_version }}" \
             --title "${{ steps.bump_version.outputs.new_version }}" \
-            --notes-file release_notes.md
+            --notes-file "${RUNNER_TEMP}/release_notes.md"
