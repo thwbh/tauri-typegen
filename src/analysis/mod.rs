@@ -355,7 +355,8 @@ impl CommandAnalyzer {
                         for dep_type in &type_dependencies {
                             if !resolved_types.contains(dep_type)
                                 && !self.discovered_structs.contains_key(dep_type)
-                                && self.dependency_graph.has_type_definition(dep_type)
+                                && (self.dependency_graph.has_type_definition(dep_type)
+                                    || self.find_external_type_path(dep_type).is_some())
                             {
                                 types_to_resolve.push(dep_type.clone());
                             }
