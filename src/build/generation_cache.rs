@@ -34,10 +34,20 @@ pub struct GenerationCache {
     config_hash: String,
     /// Combined hash for quick comparison
     combined_hash: String,
+    /// External-crate type lookup index persisted across runs: maps a type
+    /// name to the file that declares it (`Some`) or to a recorded negative
+    /// result (`None`). Seeded into `CommandAnalyzer` at the start of a run so
+    /// the registry walk is skipped for types seen last time (#87). Derived
+    /// data — intentionally excluded from `combined_hash` so registry churn
+    /// doesn't force regeneration; invalidation rides the command/struct hashes.
+    /// `#[serde(default)]` so older cache files (pre-#87, no field) deserialize
+    /// cleanly and are then invalidated by the version check.
+    #[serde(default)]
+    external_type_index: HashMap<String, Option<PathBuf>>,
 }
 
 impl GenerationCache {
-    const CURRENT_VERSION: u32 = 2;
+    const CURRENT_VERSION: u32 = 3;
 
     /// Create a new cache from current generation state
     pub fn new(
@@ -45,6 +55,19 @@ impl GenerationCache {
         structs: &HashMap<String, StructInfo>,
         events: &[EventInfo],
         config: &GenerateConfig,
+    ) -> Result<Self, CacheError> {
+        Self::new_with_external_index(commands, structs, events, config, HashMap::new())
+    }
+
+    /// Like `new`, but persists the external-crate type lookup index so the next
+    /// run can seed `CommandAnalyzer` and skip the registry walk for previously
+    /// resolved types (#87). The index does not participate in `combined_hash`.
+    pub fn new_with_external_index(
+        commands: &[CommandInfo],
+        structs: &HashMap<String, StructInfo>,
+        events: &[EventInfo],
+        config: &GenerateConfig,
+        external_type_index: HashMap<String, Option<PathBuf>>,
     ) -> Result<Self, CacheError> {
         let commands_hash = Self::hash_commands(commands)?;
         let structs_hash = Self::hash_structs(structs)?;
@@ -60,7 +83,14 @@ impl GenerationCache {
             events_hash,
             config_hash,
             combined_hash,
+            external_type_index,
         })
+    }
+
+    /// The persisted external-crate type lookup index, for seeding the analyzer
+    /// at the start of a subsequent run.
+    pub fn external_type_index(&self) -> &HashMap<String, Option<PathBuf>> {
+        &self.external_type_index
     }
 
     /// Load cache from file
@@ -1045,5 +1075,90 @@ mod tests {
         // Should return an error when cache doesn't exist
         let result = GenerationCache::load(temp_dir.path());
         assert!(result.is_err());
+    }
+
+    mod external_type_index {
+        use super::*;
+        use std::path::PathBuf;
+
+        #[test]
+        fn new_with_external_index_stores_and_exposes_it() {
+            let commands = vec![create_test_command("cmd")];
+            let structs = HashMap::new();
+            let config = create_test_config();
+
+            let mut index: HashMap<String, Option<PathBuf>> = HashMap::new();
+            index.insert("Found".to_string(), Some(PathBuf::from("/reg/found.rs")));
+            index.insert("Missing".to_string(), None);
+
+            let cache = GenerationCache::new_with_external_index(
+                &commands,
+                &structs,
+                &[],
+                &config,
+                index.clone(),
+            )
+            .unwrap();
+
+            assert_eq!(cache.external_type_index(), &index);
+        }
+
+        /// The external-type index must NOT feed the combined hash — it is
+        /// derived data, so registry churn must not force regeneration.
+        #[test]
+        fn external_type_index_excluded_from_combined_hash() {
+            let commands = vec![create_test_command("cmd")];
+            let structs = HashMap::new();
+            let config = create_test_config();
+
+            let mut with_index: HashMap<String, Option<PathBuf>> = HashMap::new();
+            with_index.insert("Found".to_string(), Some(PathBuf::from("/reg/found.rs")));
+
+            let empty: HashMap<String, Option<PathBuf>> = HashMap::new();
+
+            let cache_empty =
+                GenerationCache::new_with_external_index(&commands, &structs, &[], &config, empty)
+                    .unwrap();
+            let cache_with = GenerationCache::new_with_external_index(
+                &commands,
+                &structs,
+                &[],
+                &config,
+                with_index,
+            )
+            .unwrap();
+
+            assert_eq!(
+                cache_empty.combined_hash, cache_with.combined_hash,
+                "the external-type index must not affect combined_hash",
+            );
+        }
+
+        /// The index round-trips through save/load so the next run can seed the
+        /// analyzer (#87).
+        #[test]
+        fn external_type_index_round_trips_through_save_load() {
+            let temp_dir = TempDir::new().unwrap();
+            let commands = vec![create_test_command("cmd")];
+            let structs = HashMap::new();
+            let config = create_test_config();
+
+            let mut index: HashMap<String, Option<PathBuf>> = HashMap::new();
+            index.insert("Found".to_string(), Some(PathBuf::from("/reg/found.rs")));
+            index.insert("Missing".to_string(), None);
+
+            let cache =
+                GenerationCache::new_with_external_index(&commands, &structs, &[], &config, index)
+                    .unwrap();
+            cache.save(temp_dir.path()).unwrap();
+
+            let loaded = GenerationCache::load(temp_dir.path()).unwrap();
+            assert_eq!(loaded.external_type_index().len(), 2);
+            assert_eq!(
+                loaded.external_type_index().get("Found"),
+                Some(&Some(PathBuf::from("/reg/found.rs"))),
+            );
+            assert_eq!(loaded.external_type_index().get("Missing"), Some(&None));
+        }
     }
 }

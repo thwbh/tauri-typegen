@@ -47,6 +47,13 @@ pub struct CommandAnalyzer {
     /// surfaced as warnings so silent false negatives (#77/#84) become
     /// observable instead of producing quietly-incomplete bindings.
     unresolved_types: Vec<String>,
+    /// Per-`analyze_project*` memo of external-crate type lookups: maps a type
+    /// name to the file that declares it (`Some`) or to a recorded negative
+    /// result (`None`). Built lazily by `find_external_type_path` so each type
+    /// is walked at most once per analysis pass instead of on every reference
+    /// (#87). Reset implicitly because `CommandAnalyzer` is constructed fresh
+    /// per `analyze_project*` call.
+    external_type_lookup_cache: HashMap<String, Option<PathBuf>>,
 }
 
 impl CommandAnalyzer {
@@ -62,6 +69,7 @@ impl CommandAnalyzer {
             discovered_structs: HashMap::new(),
             discovered_events: Vec::new(),
             unresolved_types: Vec::new(),
+            external_type_lookup_cache: HashMap::new(),
         }
     }
 
@@ -83,6 +91,22 @@ impl CommandAnalyzer {
     /// only warns and continues, to preserve backward-compatible output.
     pub fn unresolved_types(&self) -> &[String] {
         &self.unresolved_types
+    }
+
+    /// Seed the external-crate lookup memo from a previous run's persisted
+    /// index (loaded from `.typecache`). Seeded entries short-circuit the
+    /// registry walk for types already resolved last time (#87). The cache is
+    /// still filled for any type not present in the seed, so a partial/empty
+    /// seed is safe.
+    pub fn seed_external_type_cache(&mut self, index: HashMap<String, Option<PathBuf>>) {
+        self.external_type_lookup_cache = index;
+    }
+
+    /// The current external-crate lookup memo (positive and negative results
+    /// accumulated during this analysis pass). Persisted into `.typecache` for
+    /// the next run via `GenerationCache::new_with_external_index` (#87).
+    pub fn external_type_lookup_cache(&self) -> &HashMap<String, Option<PathBuf>> {
+        &self.external_type_lookup_cache
     }
 
     /// Analyze a complete project for Tauri commands and types
@@ -339,8 +363,8 @@ impl CommandAnalyzer {
                 .get_type_definition_path(&type_name)
                 .cloned()
                 .or_else(|| {
-                    // External crate lookup
-                    if let Some(ext_path) = self.find_external_type_path(&type_name) {
+                    // External crate lookup (memoized per pass — #87)
+                    if let Some(ext_path) = self.find_external_type_path_cached(&type_name) {
                         // Cache the discovery for future look‑ups
                         self.dependency_graph
                             .add_type_definition(type_name.clone(), ext_path.clone());
@@ -397,7 +421,7 @@ impl CommandAnalyzer {
                             if !resolved_types.contains(dep_type)
                                 && !self.discovered_structs.contains_key(dep_type)
                                 && (self.dependency_graph.has_type_definition(dep_type)
-                                    || self.find_external_type_path(dep_type).is_some())
+                                    || self.find_external_type_path_cached(dep_type).is_some())
                             {
                                 types_to_resolve.push(dep_type.clone());
                             }
@@ -441,7 +465,32 @@ impl CommandAnalyzer {
     // `content.contains("struct X")` heuristic missed or matched incorrectly
     // (see issue #82). A cheap `contains` pre-filter keeps the registry walk fast
     // by skipping files that cannot possibly declare the type.
-    fn find_external_type_path(&self, type_name: &str) -> Option<PathBuf> {
+    /// Like `find_external_type_path`, but memoizes the result (positive *or*
+    /// negative) in `external_type_lookup_cache` so repeated lookups for the
+    /// same name within one analysis pass are O(1) instead of re-walking the
+    /// registry (#87). This is the variant the resolver uses.
+    fn find_external_type_path_cached(&mut self, type_name: &str) -> Option<PathBuf> {
+        if let Some(cached) = self.external_type_lookup_cache.get(type_name) {
+            return cached.clone();
+        }
+        let found = self.find_external_type_path_uncached(type_name);
+        self.external_type_lookup_cache
+            .insert(type_name.to_string(), found.clone());
+        found
+    }
+
+    // Walk the Cargo registry source tree looking for a `struct`/`enum` item
+    // whose identifier exactly matches `type_name`.
+    //
+    // The match is performed on the parsed AST (via `syn`) rather than a raw
+    // substring search, so it correctly handles visibility modifiers
+    // (`pub`, `pub(crate)`), attributes (`#[derive(...)]`), generics
+    // (`struct X<T>`), and multi-line declarations — all of which a substring
+    // heuristic misses or matches incorrectly (see #82). A cheap `contains`
+    // pre-filter keeps the walk fast by skipping files that cannot possibly
+    // declare the type. This is the uncached primitive; callers that want
+    // per-pass memoization should use `find_external_type_path_cached`.
+    fn find_external_type_path_uncached(&self, type_name: &str) -> Option<PathBuf> {
         // Resolve Cargo home. `CARGO_HOME` wins; otherwise fall back to
         // `$HOME/.cargo` using path joins (not string formatting) so the
         // fallback is correct on Windows too (#84).
@@ -1333,8 +1382,8 @@ mod tests {
         #[test]
         #[serial]
         fn test_find_external_type_path_pub_struct() {
-            let (reg, analyzer) = FakeRegistry::new(&[("lib.rs", "pub struct ExternalFoo;")]);
-            let found = analyzer.find_external_type_path("ExternalFoo");
+            let (reg, mut analyzer) = FakeRegistry::new(&[("lib.rs", "pub struct ExternalFoo;")]);
+            let found = analyzer.find_external_type_path_cached("ExternalFoo");
             let expected = reg.cargo_home.join("registry/src/dummy-0.1.0/lib.rs");
             assert_eq!(found.unwrap(), expected, "pub struct should be located");
         }
@@ -1344,8 +1393,9 @@ mod tests {
         #[test]
         #[serial]
         fn test_find_external_type_path_pub_crate_visibility() {
-            let (reg, analyzer) = FakeRegistry::new(&[("lib.rs", "pub(crate) struct VisCrate;")]);
-            let found = analyzer.find_external_type_path("VisCrate");
+            let (reg, mut analyzer) =
+                FakeRegistry::new(&[("lib.rs", "pub(crate) struct VisCrate;")]);
+            let found = analyzer.find_external_type_path_cached("VisCrate");
             let expected = reg.cargo_home.join("registry/src/dummy-0.1.0/lib.rs");
             assert_eq!(
                 found.unwrap(),
@@ -1359,11 +1409,11 @@ mod tests {
         #[test]
         #[serial]
         fn test_find_external_type_path_with_derive_attributes() {
-            let (reg, analyzer) = FakeRegistry::new(&[(
+            let (reg, mut analyzer) = FakeRegistry::new(&[(
                 "lib.rs",
                 "#[derive(Debug, Clone)]\npub struct WithDerives { field: i32 }",
             )]);
-            let found = analyzer.find_external_type_path("WithDerives");
+            let found = analyzer.find_external_type_path_cached("WithDerives");
             let expected = reg.cargo_home.join("registry/src/dummy-0.1.0/lib.rs");
             assert_eq!(
                 found.unwrap(),
@@ -1377,9 +1427,9 @@ mod tests {
         #[test]
         #[serial]
         fn test_find_external_type_path_with_generics() {
-            let (reg, analyzer) =
+            let (reg, mut analyzer) =
                 FakeRegistry::new(&[("lib.rs", "pub struct Generic<T, U> { a: T, b: U }")]);
-            let found = analyzer.find_external_type_path("Generic");
+            let found = analyzer.find_external_type_path_cached("Generic");
             let expected = reg.cargo_home.join("registry/src/dummy-0.1.0/lib.rs");
             assert_eq!(
                 found.unwrap(),
@@ -1394,9 +1444,9 @@ mod tests {
         #[test]
         #[serial]
         fn test_find_external_type_path_multiline() {
-            let (reg, analyzer) =
+            let (reg, mut analyzer) =
                 FakeRegistry::new(&[("lib.rs", "pub\n  struct\n  Multiline\n{\n    x: i32,\n  }")]);
-            let found = analyzer.find_external_type_path("Multiline");
+            let found = analyzer.find_external_type_path_cached("Multiline");
             let expected = reg.cargo_home.join("registry/src/dummy-0.1.0/lib.rs");
             assert_eq!(
                 found.unwrap(),
@@ -1409,9 +1459,9 @@ mod tests {
         #[test]
         #[serial]
         fn test_find_external_type_path_enum_with_attributes() {
-            let (reg, analyzer) =
+            let (reg, mut analyzer) =
                 FakeRegistry::new(&[("lib.rs", "#[derive(Debug)]\npub enum EnumAttr { A, B }")]);
-            let found = analyzer.find_external_type_path("EnumAttr");
+            let found = analyzer.find_external_type_path_cached("EnumAttr");
             let expected = reg.cargo_home.join("registry/src/dummy-0.1.0/lib.rs");
             assert_eq!(
                 found.unwrap(),
@@ -1424,9 +1474,9 @@ mod tests {
         #[test]
         #[serial]
         fn test_find_external_type_path_nested_module() {
-            let (reg, analyzer) =
+            let (reg, mut analyzer) =
                 FakeRegistry::new(&[("lib.rs", "mod inner {\n  pub struct Nested;\n}\n")]);
-            let found = analyzer.find_external_type_path("Nested");
+            let found = analyzer.find_external_type_path_cached("Nested");
             let expected = reg.cargo_home.join("registry/src/dummy-0.1.0/lib.rs");
             assert_eq!(
                 found.unwrap(),
@@ -1442,8 +1492,9 @@ mod tests {
         #[test]
         #[serial]
         fn test_find_external_type_path_no_false_positive_prefix() {
-            let (_reg, analyzer) = FakeRegistry::new(&[("lib.rs", "pub struct ExternalFooBar;")]);
-            let found = analyzer.find_external_type_path("ExternalFoo");
+            let (_reg, mut analyzer) =
+                FakeRegistry::new(&[("lib.rs", "pub struct ExternalFooBar;")]);
+            let found = analyzer.find_external_type_path_cached("ExternalFoo");
             assert!(
                 found.is_none(),
                 "a prefix-named struct must not match the shorter identifier"
@@ -1454,8 +1505,9 @@ mod tests {
         #[test]
         #[serial]
         fn test_find_external_type_path_missing() {
-            let (_reg, analyzer) = FakeRegistry::new(&[("lib.rs", "pub struct SomethingElse;")]);
-            let found = analyzer.find_external_type_path("ExternalFoo");
+            let (_reg, mut analyzer) =
+                FakeRegistry::new(&[("lib.rs", "pub struct SomethingElse;")]);
+            let found = analyzer.find_external_type_path_cached("ExternalFoo");
             assert!(found.is_none(), "a missing type must resolve to None");
         }
 
@@ -1463,8 +1515,9 @@ mod tests {
         #[test]
         #[serial]
         fn test_find_external_type_path_skips_unparseable_file() {
-            let (_reg, analyzer) = FakeRegistry::new(&[("lib.rs", "this is not valid rust !!!")]);
-            let found = analyzer.find_external_type_path("ExternalFoo");
+            let (_reg, mut analyzer) =
+                FakeRegistry::new(&[("lib.rs", "this is not valid rust !!!")]);
+            let found = analyzer.find_external_type_path_cached("ExternalFoo");
             assert!(
                 found.is_none(),
                 "an unparseable file must be skipped without panicking"
@@ -1647,12 +1700,234 @@ mod tests {
             env::remove_var("HOME");
             env::set_var("USERPROFILE", &tmp_root);
 
-            let analyzer = CommandAnalyzer::default();
-            let found = analyzer.find_external_type_path("WinOnly");
+            let mut analyzer = CommandAnalyzer::default();
+            let found = analyzer.find_external_type_path_cached("WinOnly");
             assert_eq!(
                 found.unwrap(),
                 file_path,
                 "USERPROFILE fallback must locate the type without HOME/CARGO_HOME",
+            );
+
+            let _ = std::fs::remove_dir_all(&tmp_root);
+        }
+    }
+
+    mod external_type_lookup_caching {
+        use super::*;
+        use serial_test::serial;
+        use std::env;
+        use std::fs;
+        use std::path::PathBuf;
+
+        /// Build a fake registry rooted at a temp `CARGO_HOME`, write the given
+        /// files under `registry/src/dummy-0.1.0/`, set `CARGO_HOME`, and return
+        /// the analyzer + a handle on the temp dir for cleanup.
+        fn registry_with(files: &[(&str, &str)]) -> (PathBuf, CommandAnalyzer) {
+            let root: PathBuf = std::env::temp_dir().join(format!(
+                "tauri_typegen_caching_{}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos(),
+            ));
+            let _ = std::fs::remove_dir_all(&root);
+            let cargo_home: PathBuf = root.join(".cargo");
+            let crate_dir: PathBuf = cargo_home.join("registry/src/dummy-0.1.0");
+            fs::create_dir_all(&crate_dir).expect("create registry crate dir");
+            for (name, content) in files {
+                fs::write(crate_dir.join(name), content).expect("write file");
+            }
+            env::set_var("CARGO_HOME", &cargo_home);
+            (root, CommandAnalyzer::default())
+        }
+
+        /// A successful lookup populates the cache so the next lookup for the
+        /// same name is served without re-walking.
+        #[test]
+        #[serial]
+        fn caches_positive_result() {
+            let (root, mut analyzer) = registry_with(&[("lib.rs", "pub struct CachedFoo;")]);
+
+            let first = analyzer.find_external_type_path_cached("CachedFoo");
+            assert!(first.is_some(), "first lookup should find the type");
+            // The cache must now hold the result.
+            assert_eq!(
+                analyzer.external_type_lookup_cache.get("CachedFoo"),
+                Some(&first.clone()),
+                "positive result must be memoized in external_type_lookup_cache",
+            );
+
+            let second = analyzer.find_external_type_path_cached("CachedFoo");
+            assert_eq!(first, second, "second lookup must return the cached value",);
+
+            let _ = std::fs::remove_dir_all(&root);
+        }
+
+        /// A failed lookup records `None` in the cache so a repeated lookup for
+        /// the same missing type does not re-walk the registry (#87's core
+        /// complaint: no negative-result caching).
+        #[test]
+        #[serial]
+        fn caches_negative_result() {
+            let (root, mut analyzer) = registry_with(&[("lib.rs", "pub struct SomethingElse;")]);
+
+            let first = analyzer.find_external_type_path_cached("MissingType");
+            assert!(first.is_none(), "first lookup should miss");
+            // Negative results are cached as `Some(None)` so repeats are O(1).
+            assert_eq!(
+                analyzer.external_type_lookup_cache.get("MissingType"),
+                Some(&None),
+                "negative result must be memoized as Some(None)",
+            );
+
+            let second = analyzer.find_external_type_path_cached("MissingType");
+            assert!(
+                second.is_none(),
+                "second lookup for a cached-miss must still return None",
+            );
+
+            let _ = std::fs::remove_dir_all(&root);
+        }
+
+        /// Distinct type names get independent cache entries.
+        #[test]
+        #[serial]
+        fn caches_distinct_types_independently() {
+            let (root, mut analyzer) =
+                registry_with(&[("lib.rs", "pub struct Alpha;\npub struct Beta;\n")]);
+
+            let alpha = analyzer.find_external_type_path_cached("Alpha");
+            let beta = analyzer.find_external_type_path_cached("Beta");
+            // A lookup for a third, absent name should not disturb the others.
+            let gamma = analyzer.find_external_type_path_cached("Gamma");
+
+            assert!(alpha.is_some() && beta.is_some());
+            assert!(gamma.is_none());
+            assert_eq!(analyzer.external_type_lookup_cache.len(), 3);
+            assert!(analyzer.external_type_lookup_cache.contains_key("Alpha"));
+            assert!(analyzer.external_type_lookup_cache.contains_key("Beta"));
+            assert!(analyzer.external_type_lookup_cache.contains_key("Gamma"));
+
+            let _ = std::fs::remove_dir_all(&root);
+        }
+    }
+
+    mod external_type_cache_seeding {
+        use super::*;
+        use serial_test::serial;
+        use std::env;
+        use std::fs;
+        use std::path::PathBuf;
+
+        /// Seeding the analyzer from a previous run's index must short-circuit
+        /// the registry walk: a seeded positive entry is returned even when the
+        /// registry is empty (so the walk would otherwise return None).
+        #[test]
+        #[serial]
+        fn seeded_positive_entry_skips_walk() {
+            let tmp_root: PathBuf = std::env::temp_dir().join(format!(
+                "tauri_typegen_seeding_pos_{}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos(),
+            ));
+            let _ = std::fs::remove_dir_all(&tmp_root);
+            // Empty registry — the walk would find nothing.
+            let cargo_home: PathBuf = tmp_root.join(".cargo");
+            fs::create_dir_all(&cargo_home).expect("create empty cargo home");
+            env::set_var("CARGO_HOME", &cargo_home);
+
+            let mut analyzer = CommandAnalyzer::default();
+            let mut seed: HashMap<String, Option<PathBuf>> = HashMap::new();
+            seed.insert(
+                "SeededType".to_string(),
+                Some(PathBuf::from("/fake/registry/seeded.rs")),
+            );
+            analyzer.seed_external_type_cache(seed);
+
+            let found = analyzer.find_external_type_path_cached("SeededType");
+            assert_eq!(
+                found,
+                Some(PathBuf::from("/fake/registry/seeded.rs")),
+                "a seeded positive entry must be returned without walking",
+            );
+
+            let _ = std::fs::remove_dir_all(&tmp_root);
+        }
+
+        /// A seeded negative entry is honored: the walk is skipped and None is
+        /// returned even if the type now exists in the registry. (Stale
+        /// negatives are an accepted trade-off matching .typecache's existing
+        /// source-stability assumption; invalidation rides the command/struct
+        /// hashes via needs_regeneration.)
+        #[test]
+        #[serial]
+        fn seeded_negative_entry_skips_walk() {
+            let tmp_root: PathBuf = std::env::temp_dir().join(format!(
+                "tauri_typegen_seeding_neg_{}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos(),
+            ));
+            let _ = std::fs::remove_dir_all(&tmp_root);
+            let cargo_home: PathBuf = tmp_root.join(".cargo");
+            let crate_dir: PathBuf = cargo_home.join("registry/src/dummy-0.1.0");
+            fs::create_dir_all(&crate_dir).expect("create registry crate dir");
+            // The type genuinely exists now, but the seed says it's missing.
+            fs::write(crate_dir.join("lib.rs"), "pub struct ActuallyHere;").expect("write file");
+            env::set_var("CARGO_HOME", &cargo_home);
+
+            let mut analyzer = CommandAnalyzer::default();
+            let mut seed: HashMap<String, Option<PathBuf>> = HashMap::new();
+            seed.insert("ActuallyHere".to_string(), None);
+            analyzer.seed_external_type_cache(seed);
+
+            let found = analyzer.find_external_type_path_cached("ActuallyHere");
+            assert!(
+                found.is_none(),
+                "a seeded negative entry must short-circuit and return None",
+            );
+
+            let _ = std::fs::remove_dir_all(&tmp_root);
+        }
+
+        /// A type absent from the seed is still resolved via the walk and then
+        /// memoized, so a partial/empty seed is safe.
+        #[test]
+        #[serial]
+        fn unseeded_type_falls_back_to_walk() {
+            let tmp_root: PathBuf = std::env::temp_dir().join(format!(
+                "tauri_typegen_seeding_fallback_{}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos(),
+            ));
+            let _ = std::fs::remove_dir_all(&tmp_root);
+            let cargo_home: PathBuf = tmp_root.join(".cargo");
+            let crate_dir: PathBuf = cargo_home.join("registry/src/dummy-0.1.0");
+            fs::create_dir_all(&crate_dir).expect("create registry crate dir");
+            let file_path: PathBuf = crate_dir.join("lib.rs");
+            fs::write(&file_path, "pub struct WalkResolved;").expect("write file");
+            env::set_var("CARGO_HOME", &cargo_home);
+
+            let mut analyzer = CommandAnalyzer::default();
+            // Empty seed.
+            analyzer.seed_external_type_cache(HashMap::new());
+
+            let found = analyzer.find_external_type_path_cached("WalkResolved");
+            assert_eq!(
+                found.unwrap(),
+                file_path,
+                "an unseeded type must be found via the walk",
+            );
+            assert!(
+                analyzer
+                    .external_type_lookup_cache()
+                    .contains_key("WalkResolved"),
+                "the walk result must be memoized after resolving",
             );
 
             let _ = std::fs::remove_dir_all(&tmp_root);
