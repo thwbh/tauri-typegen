@@ -42,6 +42,11 @@ pub struct CommandAnalyzer {
     discovered_structs: HashMap<String, StructInfo>,
     /// Discovered event emissions
     discovered_events: Vec<EventInfo>,
+    /// Type names referenced by commands/events but not resolved in-project or
+    /// via the external-crate lookup. Populated during `resolve_types_lazily`;
+    /// surfaced as warnings so silent false negatives (#77/#84) become
+    /// observable instead of producing quietly-incomplete bindings.
+    unresolved_types: Vec<String>,
 }
 
 impl CommandAnalyzer {
@@ -56,6 +61,7 @@ impl CommandAnalyzer {
             dependency_graph: TypeDependencyGraph::new(),
             discovered_structs: HashMap::new(),
             discovered_events: Vec::new(),
+            unresolved_types: Vec::new(),
         }
     }
 
@@ -65,6 +71,18 @@ impl CommandAnalyzer {
             self.type_resolver
                 .add_type_mapping(rust_type.clone(), ts_type.clone());
         }
+    }
+
+    /// Type names referenced by commands/events that could not be resolved
+    /// in-project or via the external-crate lookup during the last
+    /// `analyze_project*` call. Empty when everything resolved (or when nothing
+    /// was analyzed yet).
+    ///
+    /// These are the names whose absence used to be silently dropped (#77/#84);
+    /// callers can log them, fail the build, or ignore them. The analyzer itself
+    /// only warns and continues, to preserve backward-compatible output.
+    pub fn unresolved_types(&self) -> &[String] {
+        &self.unresolved_types
     }
 
     /// Analyze a complete project for Tauri commands and types
@@ -185,6 +203,25 @@ impl CommandAnalyzer {
             }
         }
 
+        // Surface unresolved referenced types as a warning on stderr so they
+        // are visible to CLI and build.rs users regardless of --verbose. These
+        // were previously silently dropped, producing quietly-incomplete
+        // bindings (see #77/#84). Non-fatal: generation continues.
+        if !self.unresolved_types.is_empty() {
+            eprintln!(
+                "⚠️  tauri-typegen: {} referenced type(s) could not be resolved in the \
+                 project or the Cargo registry; their bindings will be missing from the output:",
+                self.unresolved_types.len()
+            );
+            for name in &self.unresolved_types {
+                eprintln!("    - {}", name);
+            }
+            eprintln!(
+                "    This is usually caused by a missing/empty/relocated Cargo registry \
+                 (CARGO_HOME) or a vendored dependency layout. See issue #84."
+            );
+        }
+
         Ok(commands)
     }
 
@@ -283,6 +320,10 @@ impl CommandAnalyzer {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let mut types_to_resolve: Vec<String> = initial_types.iter().cloned().collect();
         let mut resolved_types = HashSet::new();
+        // Names that were requested but could not be resolved in-project or via
+        // the external-crate lookup. Surfaced as warnings after the pass so the
+        // silent false negatives reported in #77/#84 become observable.
+        let mut unresolved_types: Vec<String> = Vec::new();
 
         while let Some(type_name) = types_to_resolve.pop() {
             // Skip if already resolved
@@ -372,8 +413,19 @@ impl CommandAnalyzer {
                         resolved_types.insert(type_name);
                     }
                 }
+            } else {
+                // No definition path in-project and the external-crate lookup
+                // came up empty (e.g. an empty/missing/relocated Cargo registry
+                // — see #84). Record the name so it can be reported rather than
+                // silently dropped.
+                unresolved_types.push(type_name);
             }
         }
+
+        // De-duplicate in stable (first-seen) order for a tidy warning.
+        let mut seen: HashSet<String> = HashSet::new();
+        unresolved_types.retain(|name| seen.insert(name.clone()));
+        self.unresolved_types = unresolved_types;
 
         Ok(())
     }
@@ -390,11 +442,17 @@ impl CommandAnalyzer {
     // (see issue #82). A cheap `contains` pre-filter keeps the registry walk fast
     // by skipping files that cannot possibly declare the type.
     fn find_external_type_path(&self, type_name: &str) -> Option<PathBuf> {
-        // Resolve Cargo home – fall back to $HOME/.cargo if the env var is missing.
-        let cargo_home: String = env::var("CARGO_HOME")
-            .or_else(|_| env::var("HOME").map(|h| format!("{}/.cargo", h)))
-            .ok()?;
-        let src_dir: PathBuf = PathBuf::from(cargo_home).join("registry/src");
+        // Resolve Cargo home. `CARGO_HOME` wins; otherwise fall back to
+        // `$HOME/.cargo` using path joins (not string formatting) so the
+        // fallback is correct on Windows too (#84).
+        let cargo_home: PathBuf = match env::var("CARGO_HOME") {
+            Ok(dir) => PathBuf::from(dir),
+            Err(_) => {
+                let home: String = env::var("HOME").or(env::var("USERPROFILE")).ok()?;
+                PathBuf::from(home).join(".cargo")
+            }
+        };
+        let src_dir: PathBuf = cargo_home.join("registry/src");
 
         // A cheap substring pre-filter: only the identifier, without the
         // `struct`/`enum` keyword, so that `pub struct X`, `pub(crate) enum X`,
@@ -1411,6 +1469,193 @@ mod tests {
                 found.is_none(),
                 "an unparseable file must be skipped without panicking"
             );
+        }
+    }
+
+    mod unresolved_type_reporting {
+        use super::*;
+        use serial_test::serial;
+        use std::env;
+        use std::fs;
+        use std::path::PathBuf;
+
+        /// A freshly constructed analyzer reports no unresolved types.
+        #[test]
+        fn fresh_analyzer_reports_no_unresolved_types() {
+            let analyzer = CommandAnalyzer::default();
+            assert!(
+                analyzer.unresolved_types().is_empty(),
+                "a fresh analyzer must report no unresolved types",
+            );
+        }
+
+        /// A referenced type that is absent from both the (empty) project and
+        /// the (empty/fake) Cargo registry must be recorded as unresolved so the
+        /// previously-silent false negative (#77/#84) becomes observable.
+        #[test]
+        #[serial]
+        fn records_unresolved_type_when_registry_is_empty() {
+            // Point CARGO_HOME at an empty dir so the registry walk finds nothing.
+            let tmp_root: PathBuf = std::env::temp_dir().join(format!(
+                "tauri_typegen_unresolved_empty_{}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos(),
+            ));
+            let _ = std::fs::remove_dir_all(&tmp_root);
+            let cargo_home: PathBuf = tmp_root.join(".cargo");
+            fs::create_dir_all(&cargo_home).expect("create empty cargo home");
+            env::set_var("CARGO_HOME", &cargo_home);
+
+            let mut analyzer = CommandAnalyzer::default();
+            let mut initial: HashSet<String> = HashSet::new();
+            initial.insert("DefinitelyMissing".to_string());
+
+            analyzer
+                .resolve_types_lazily(&initial)
+                .expect("resolve pass");
+
+            let unresolved = analyzer.unresolved_types();
+            assert!(
+                unresolved.contains(&"DefinitelyMissing".to_string()),
+                "an absent type must be recorded as unresolved, got: {:?}",
+                unresolved,
+            );
+
+            let _ = std::fs::remove_dir_all(&tmp_root);
+        }
+
+        /// When the registry is missing entirely (no `registry/src` at all),
+        /// the walk must not panic and the type must still be reported.
+        #[test]
+        #[serial]
+        fn records_unresolved_type_when_registry_dir_absent() {
+            let tmp_root: PathBuf = std::env::temp_dir().join(format!(
+                "tauri_typegen_unresolved_absent_{}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos(),
+            ));
+            let _ = std::fs::remove_dir_all(&tmp_root);
+            // Create the cargo home but NOT registry/src inside it.
+            fs::create_dir_all(&tmp_root).expect("create cargo home root");
+            env::set_var("CARGO_HOME", &tmp_root);
+
+            let mut analyzer = CommandAnalyzer::default();
+            let mut initial: HashSet<String> = HashSet::new();
+            initial.insert("NoRegistryHere".to_string());
+
+            analyzer
+                .resolve_types_lazily(&initial)
+                .expect("resolve pass");
+
+            assert!(
+                analyzer
+                    .unresolved_types()
+                    .contains(&"NoRegistryHere".to_string()),
+                "a missing registry dir must still yield an unresolved report",
+            );
+
+            let _ = std::fs::remove_dir_all(&tmp_root);
+        }
+
+        /// A type that IS resolvable in-project (present in the dependency
+        /// graph with a real on-disk source file) must NOT appear in the
+        /// unresolved list — guards against the warning firing for happy-path
+        /// types.
+        #[test]
+        #[serial]
+        fn resolved_type_is_not_reported_unresolved() {
+            let tmp_root: PathBuf = std::env::temp_dir().join(format!(
+                "tauri_typegen_unresolved_resolved_{}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos(),
+            ));
+            let _ = std::fs::remove_dir_all(&tmp_root);
+            let cargo_home: PathBuf = tmp_root.join(".cargo");
+            fs::create_dir_all(&cargo_home).expect("create cargo home");
+            env::set_var("CARGO_HOME", &cargo_home);
+
+            // Real on-disk Rust source declaring the type. Must carry a
+            // Serialize/Deserialize derive, otherwise should_include_struct
+            // filters it out (project policy).
+            let src_file: PathBuf = tmp_root.join("types.rs");
+            fs::write(
+                &src_file,
+                "use serde::Serialize;\n#[derive(Serialize)]\npub struct ResolvedType { a: i32 }",
+            )
+            .expect("write source");
+
+            let mut analyzer = CommandAnalyzer::default();
+            // Parse + cache the file so extract_type_from_ast can find it.
+            analyzer
+                .ast_cache
+                .parse_and_cache_file(&src_file)
+                .expect("parse source file");
+            // Tell the dependency graph where the type lives.
+            analyzer
+                .dependency_graph
+                .add_type_definition("ResolvedType".to_string(), src_file.clone());
+
+            let mut initial: HashSet<String> = HashSet::new();
+            initial.insert("ResolvedType".to_string());
+
+            analyzer
+                .resolve_types_lazily(&initial)
+                .expect("resolve pass");
+
+            assert!(
+                analyzer.discovered_structs.contains_key("ResolvedType"),
+                "the in-project type should have been resolved",
+            );
+            assert!(
+                !analyzer
+                    .unresolved_types()
+                    .contains(&"ResolvedType".to_string()),
+                "a resolved in-project type must not be reported unresolved",
+            );
+
+            let _ = std::fs::remove_dir_all(&tmp_root);
+        }
+
+        /// The `CARGO_HOME` fallback must work when only `USERPROFILE` is set
+        /// (Windows-style), and `HOME` is unset — regression for the
+        /// `format!("{}/.cargo", h)` path that produced wrong paths on Windows.
+        #[test]
+        #[serial]
+        fn cargo_home_fallback_uses_userprofile_when_home_absent() {
+            let tmp_root: PathBuf = std::env::temp_dir().join(format!(
+                "tauri_typegen_userprofile_{}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos(),
+            ));
+            let _ = std::fs::remove_dir_all(&tmp_root);
+            // Build the registry under a fake "user profile" home.
+            let src_dir: PathBuf = tmp_root.join(".cargo").join("registry/src");
+            let crate_dir: PathBuf = src_dir.join("windep-0.1.0");
+            fs::create_dir_all(&crate_dir).expect("create registry crate dir");
+            let file_path: PathBuf = crate_dir.join("lib.rs");
+            fs::write(&file_path, "pub struct WinOnly;").expect("write registry file");
+
+            env::remove_var("CARGO_HOME");
+            env::remove_var("HOME");
+            env::set_var("USERPROFILE", &tmp_root);
+
+            let analyzer = CommandAnalyzer::default();
+            let found = analyzer.find_external_type_path("WinOnly");
+            assert_eq!(
+                found.unwrap(),
+                file_path,
+                "USERPROFILE fallback must locate the type without HOME/CARGO_HOME",
+            );
+
+            let _ = std::fs::remove_dir_all(&tmp_root);
         }
     }
 }
