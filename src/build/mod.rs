@@ -190,6 +190,11 @@ impl BuildSystem {
         config: &GenerateConfig,
     ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
         let mut analyzer = CommandAnalyzer::new();
+        // Seed the external-crate lookup memo from the previous run's cache so
+        // warm builds skip the registry walk for already-resolved types (#87).
+        if let Ok(prev_cache) = GenerationCache::load(&config.output_path) {
+            analyzer.seed_external_type_cache(prev_cache.external_type_index().clone());
+        }
         let commands = analyzer.analyze_project(&config.project_path)?;
 
         if commands.is_empty() {
@@ -254,7 +259,13 @@ impl BuildSystem {
         }
 
         // Save cache after successful generation
-        let cache = GenerationCache::new(&commands, discovered_structs, discovered_events, config)?;
+        let cache = GenerationCache::new_with_external_index(
+            &commands,
+            discovered_structs,
+            discovered_events,
+            config,
+            analyzer.external_type_lookup_cache().clone(),
+        )?;
         if let Err(e) = cache.save(&config.output_path) {
             self.logger
                 .warning(&format!("Failed to save generation cache: {}", e));
