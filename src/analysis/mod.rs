@@ -10,6 +10,8 @@ pub mod validator_parser;
 
 use crate::models::{ChannelInfo, CommandInfo, EventInfo, StructInfo};
 use std::collections::{HashMap, HashSet};
+use std::env;
+use std::fs;
 use std::path::{Path, PathBuf};
 
 use ast_cache::AstCache;
@@ -40,6 +42,18 @@ pub struct CommandAnalyzer {
     discovered_structs: HashMap<String, StructInfo>,
     /// Discovered event emissions
     discovered_events: Vec<EventInfo>,
+    /// Type names referenced by commands/events but not resolved in-project or
+    /// via the external-crate lookup. Populated during `resolve_types_lazily`;
+    /// surfaced as warnings so silent false negatives (#77/#84) become
+    /// observable instead of producing quietly-incomplete bindings.
+    unresolved_types: Vec<String>,
+    /// Per-`analyze_project*` memo of external-crate type lookups: maps a type
+    /// name to the file that declares it (`Some`) or to a recorded negative
+    /// result (`None`). Built lazily by `find_external_type_path` so each type
+    /// is walked at most once per analysis pass instead of on every reference
+    /// (#87). Reset implicitly because `CommandAnalyzer` is constructed fresh
+    /// per `analyze_project*` call.
+    external_type_lookup_cache: HashMap<String, Option<PathBuf>>,
 }
 
 impl CommandAnalyzer {
@@ -54,6 +68,8 @@ impl CommandAnalyzer {
             dependency_graph: TypeDependencyGraph::new(),
             discovered_structs: HashMap::new(),
             discovered_events: Vec::new(),
+            unresolved_types: Vec::new(),
+            external_type_lookup_cache: HashMap::new(),
         }
     }
 
@@ -63,6 +79,34 @@ impl CommandAnalyzer {
             self.type_resolver
                 .add_type_mapping(rust_type.clone(), ts_type.clone());
         }
+    }
+
+    /// Type names referenced by commands/events that could not be resolved
+    /// in-project or via the external-crate lookup during the last
+    /// `analyze_project*` call. Empty when everything resolved (or when nothing
+    /// was analyzed yet).
+    ///
+    /// These are the names whose absence used to be silently dropped (#77/#84);
+    /// callers can log them, fail the build, or ignore them. The analyzer itself
+    /// only warns and continues, to preserve backward-compatible output.
+    pub fn unresolved_types(&self) -> &[String] {
+        &self.unresolved_types
+    }
+
+    /// Seed the external-crate lookup memo from a previous run's persisted
+    /// index (loaded from `.typecache`). Seeded entries short-circuit the
+    /// registry walk for types already resolved last time (#87). The cache is
+    /// still filled for any type not present in the seed, so a partial/empty
+    /// seed is safe.
+    pub fn seed_external_type_cache(&mut self, index: HashMap<String, Option<PathBuf>>) {
+        self.external_type_lookup_cache = index;
+    }
+
+    /// The current external-crate lookup memo (positive and negative results
+    /// accumulated during this analysis pass). Persisted into `.typecache` for
+    /// the next run via `GenerationCache::new_with_external_index` (#87).
+    pub fn external_type_lookup_cache(&self) -> &HashMap<String, Option<PathBuf>> {
+        &self.external_type_lookup_cache
     }
 
     /// Analyze a complete project for Tauri commands and types
@@ -183,6 +227,25 @@ impl CommandAnalyzer {
             }
         }
 
+        // Surface unresolved referenced types as a warning on stderr so they
+        // are visible to CLI and build.rs users regardless of --verbose. These
+        // were previously silently dropped, producing quietly-incomplete
+        // bindings (see #77/#84). Non-fatal: generation continues.
+        if !self.unresolved_types.is_empty() {
+            eprintln!(
+                "⚠️  tauri-typegen: {} referenced type(s) could not be resolved in the \
+                 project or the Cargo registry; their bindings will be missing from the output:",
+                self.unresolved_types.len()
+            );
+            for name in &self.unresolved_types {
+                eprintln!("    - {}", name);
+            }
+            eprintln!(
+                "    This is usually caused by a missing/empty/relocated Cargo registry \
+                 (CARGO_HOME) or a vendored dependency layout. See issue #84."
+            );
+        }
+
         Ok(commands)
     }
 
@@ -281,6 +344,10 @@ impl CommandAnalyzer {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let mut types_to_resolve: Vec<String> = initial_types.iter().cloned().collect();
         let mut resolved_types = HashSet::new();
+        // Names that were requested but could not be resolved in-project or via
+        // the external-crate lookup. Surfaced as warnings after the pass so the
+        // silent false negatives reported in #77/#84 become observable.
+        let mut unresolved_types: Vec<String> = Vec::new();
 
         while let Some(type_name) = types_to_resolve.pop() {
             // Skip if already resolved
@@ -295,8 +362,21 @@ impl CommandAnalyzer {
                 .dependency_graph
                 .get_type_definition_path(&type_name)
                 .cloned()
+                .or_else(|| {
+                    // External crate lookup (memoized per pass — #87)
+                    if let Some(ext_path) = self.find_external_type_path_cached(&type_name) {
+                        // Cache the discovery for future look‑ups
+                        self.dependency_graph
+                            .add_type_definition(type_name.clone(), ext_path.clone());
+                        let _ = self.ast_cache.parse_and_cache_file(&ext_path);
+                        Some(ext_path)
+                    } else {
+                        None
+                    }
+                })
             {
                 if let Some(parsed_file) = self.ast_cache.get_cloned(&file_path) {
+                    self.index_items(&parsed_file.ast.items, &file_path);
                     // Find and parse the specific type from the cached AST
                     if let Some(struct_info) = self.extract_type_from_ast(
                         &parsed_file.ast,
@@ -340,7 +420,8 @@ impl CommandAnalyzer {
                         for dep_type in &type_dependencies {
                             if !resolved_types.contains(dep_type)
                                 && !self.discovered_structs.contains_key(dep_type)
-                                && self.dependency_graph.has_type_definition(dep_type)
+                                && (self.dependency_graph.has_type_definition(dep_type)
+                                    || self.find_external_type_path_cached(dep_type).is_some())
                             {
                                 types_to_resolve.push(dep_type.clone());
                             }
@@ -356,10 +437,139 @@ impl CommandAnalyzer {
                         resolved_types.insert(type_name);
                     }
                 }
+            } else {
+                // No definition path in-project and the external-crate lookup
+                // came up empty (e.g. an empty/missing/relocated Cargo registry
+                // — see #84). Record the name so it can be reported rather than
+                // silently dropped.
+                unresolved_types.push(type_name);
             }
         }
 
+        // De-duplicate in stable (first-seen) order for a tidy warning.
+        let mut seen: HashSet<String> = HashSet::new();
+        unresolved_types.retain(|name| seen.insert(name.clone()));
+        self.unresolved_types = unresolved_types;
+
         Ok(())
+    }
+
+    // Find type paths from external crates.
+    //
+    // Walks the Cargo registry source tree and, for each `.rs` file, looks for a
+    // `struct` or `enum` item whose identifier exactly matches `type_name`. The
+    // match is performed on the parsed AST (via `syn`) rather than with a raw
+    // substring search, so it correctly handles visibility modifiers
+    // (`pub`, `pub(crate)`), attributes (`#[derive(...)]`), generics
+    // (`struct X<T>`), and multi-line declarations — all of which the previous
+    // `content.contains("struct X")` heuristic missed or matched incorrectly
+    // (see issue #82). A cheap `contains` pre-filter keeps the registry walk fast
+    // by skipping files that cannot possibly declare the type.
+    /// Like `find_external_type_path`, but memoizes the result (positive *or*
+    /// negative) in `external_type_lookup_cache` so repeated lookups for the
+    /// same name within one analysis pass are O(1) instead of re-walking the
+    /// registry (#87). This is the variant the resolver uses.
+    fn find_external_type_path_cached(&mut self, type_name: &str) -> Option<PathBuf> {
+        if let Some(cached) = self.external_type_lookup_cache.get(type_name) {
+            return cached.clone();
+        }
+        let found = self.find_external_type_path_uncached(type_name);
+        self.external_type_lookup_cache
+            .insert(type_name.to_string(), found.clone());
+        found
+    }
+
+    // Walk the Cargo registry source tree looking for a `struct`/`enum` item
+    // whose identifier exactly matches `type_name`.
+    //
+    // The match is performed on the parsed AST (via `syn`) rather than a raw
+    // substring search, so it correctly handles visibility modifiers
+    // (`pub`, `pub(crate)`), attributes (`#[derive(...)]`), generics
+    // (`struct X<T>`), and multi-line declarations — all of which a substring
+    // heuristic misses or matches incorrectly (see #82). A cheap `contains`
+    // pre-filter keeps the walk fast by skipping files that cannot possibly
+    // declare the type. This is the uncached primitive; callers that want
+    // per-pass memoization should use `find_external_type_path_cached`.
+    fn find_external_type_path_uncached(&self, type_name: &str) -> Option<PathBuf> {
+        // Resolve Cargo home. `CARGO_HOME` wins; otherwise fall back to
+        // `$HOME/.cargo` using path joins (not string formatting) so the
+        // fallback is correct on Windows too (#84).
+        let cargo_home: PathBuf = match env::var("CARGO_HOME") {
+            Ok(dir) => PathBuf::from(dir),
+            Err(_) => {
+                let home: String = env::var("HOME").or(env::var("USERPROFILE")).ok()?;
+                PathBuf::from(home).join(".cargo")
+            }
+        };
+        let src_dir: PathBuf = cargo_home.join("registry/src");
+
+        // A cheap substring pre-filter: only the identifier, without the
+        // `struct`/`enum` keyword, so that `pub struct X`, `pub(crate) enum X`,
+        // and `struct\n  X` all pass through to the AST check. This avoids parsing
+        // the vast majority of registry files that cannot contain the type.
+        let needle: String = type_name.to_string();
+
+        // Walk the registry tree depth‑first.
+        let mut dirs: Vec<PathBuf> = vec![src_dir];
+        while let Some(dir) = dirs.pop() {
+            let entries: fs::ReadDir = fs::read_dir(&dir).ok()?;
+            for entry in entries.filter_map(Result::ok) {
+                let path: PathBuf = entry.path();
+                if path.is_dir() {
+                    dirs.push(path);
+                    continue;
+                }
+                if path.extension().and_then(|s| s.to_str()) != Some("rs") {
+                    continue;
+                }
+                // Cheap pre-filter on the raw source before paying for a full parse.
+                let content: String = match fs::read_to_string(&path) {
+                    Ok(c) => c,
+                    Err(_) => continue,
+                };
+                if !content.contains(&needle) {
+                    continue;
+                }
+                // Authoritative check on the parsed AST.
+                if Self::file_declares_type(&content, type_name) {
+                    return Some(path);
+                }
+            }
+        }
+        None
+    }
+
+    /// Returns `true` if `source` declares a `struct` or `enum` item whose
+    /// identifier equals `type_name`. Items nested inside `mod` blocks are
+    /// considered as well, mirroring how the analyzer indexes local modules.
+    /// Files that fail to parse (e.g. macro-heavy or generated sources) yield
+    /// `false` so they are simply skipped during the registry walk.
+    fn file_declares_type(source: &str, type_name: &str) -> bool {
+        let file: syn::File = match syn::parse_file(source) {
+            Ok(f) => f,
+            Err(_) => return false,
+        };
+        Self::items_declare_type(&file.items, type_name)
+    }
+
+    fn items_declare_type(items: &[syn::Item], type_name: &str) -> bool {
+        for item in items {
+            let declares = match item {
+                syn::Item::Struct(s) => s.ident == type_name,
+                syn::Item::Enum(e) => e.ident == type_name,
+                // Recurse into inline modules so types declared in `mod x { ... }`
+                // blocks within a single file are still discovered.
+                syn::Item::Mod(m) => match &m.content {
+                    Some((_, inner)) => Self::items_declare_type(inner, type_name),
+                    None => false,
+                },
+                _ => false,
+            };
+            if declares {
+                return true;
+            }
+        }
+        false
     }
 
     /// Extract a specific type from a cached AST
@@ -1118,6 +1328,609 @@ mod tests {
             let dot = analyzer.generate_dot_graph(&commands);
             // Verify basic DOT format
             assert!(dot.contains("digraph"));
+        }
+    }
+
+    mod external_type_lookup {
+        use super::*;
+        use serial_test::serial;
+        use std::env;
+        use std::fs;
+        use std::path::PathBuf;
+
+        /// Build a fake Cargo registry rooted at a temp dir, write the given
+        /// source files into `registry/src/dummy-0.1.0/`, point `CARGO_HOME` at
+        /// it, and return the analyzer + the path that a declaration in
+        /// `lib.rs` should resolve to.
+        struct FakeRegistry {
+            _root: PathBuf,
+            cargo_home: PathBuf,
+        }
+
+        impl FakeRegistry {
+            fn new(files: &[(&str, &str)]) -> (Self, CommandAnalyzer) {
+                let root: PathBuf = std::env::temp_dir().join(format!(
+                    "tauri_typegen_external_test_{}",
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_nanos(),
+                ));
+                let _ = std::fs::remove_dir_all(&root);
+                let cargo_home: PathBuf = root.join(".cargo");
+                let src_dir: PathBuf = cargo_home.join("registry/src");
+                let crate_dir: PathBuf = src_dir.join("dummy-0.1.0");
+                fs::create_dir_all(&crate_dir).expect("create temp crate dir");
+                for (name, content) in files {
+                    fs::write(crate_dir.join(name), content).expect("write file");
+                }
+                env::set_var("CARGO_HOME", &cargo_home);
+                let fake = FakeRegistry {
+                    _root: root.clone(),
+                    cargo_home,
+                };
+                (fake, CommandAnalyzer::default())
+            }
+        }
+
+        impl Drop for FakeRegistry {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self._root);
+            }
+        }
+
+        #[test]
+        #[serial]
+        fn test_find_external_type_path_pub_struct() {
+            let (reg, mut analyzer) = FakeRegistry::new(&[("lib.rs", "pub struct ExternalFoo;")]);
+            let found = analyzer.find_external_type_path_cached("ExternalFoo");
+            let expected = reg.cargo_home.join("registry/src/dummy-0.1.0/lib.rs");
+            assert_eq!(found.unwrap(), expected, "pub struct should be located");
+        }
+
+        /// Regression for issue #82: visibility modifiers such as `pub(crate)`
+        /// must not prevent discovery.
+        #[test]
+        #[serial]
+        fn test_find_external_type_path_pub_crate_visibility() {
+            let (reg, mut analyzer) =
+                FakeRegistry::new(&[("lib.rs", "pub(crate) struct VisCrate;")]);
+            let found = analyzer.find_external_type_path_cached("VisCrate");
+            let expected = reg.cargo_home.join("registry/src/dummy-0.1.0/lib.rs");
+            assert_eq!(
+                found.unwrap(),
+                expected,
+                "pub(crate) struct should be located"
+            );
+        }
+
+        /// Regression for issue #82: derive attributes preceding the
+        /// declaration must not prevent discovery.
+        #[test]
+        #[serial]
+        fn test_find_external_type_path_with_derive_attributes() {
+            let (reg, mut analyzer) = FakeRegistry::new(&[(
+                "lib.rs",
+                "#[derive(Debug, Clone)]\npub struct WithDerives { field: i32 }",
+            )]);
+            let found = analyzer.find_external_type_path_cached("WithDerives");
+            let expected = reg.cargo_home.join("registry/src/dummy-0.1.0/lib.rs");
+            assert_eq!(
+                found.unwrap(),
+                expected,
+                "#[derive(...)] pub struct should be located"
+            );
+        }
+
+        /// Regression for issue #82: generic parameters must not prevent
+        /// discovery.
+        #[test]
+        #[serial]
+        fn test_find_external_type_path_with_generics() {
+            let (reg, mut analyzer) =
+                FakeRegistry::new(&[("lib.rs", "pub struct Generic<T, U> { a: T, b: U }")]);
+            let found = analyzer.find_external_type_path_cached("Generic");
+            let expected = reg.cargo_home.join("registry/src/dummy-0.1.0/lib.rs");
+            assert_eq!(
+                found.unwrap(),
+                expected,
+                "generic pub struct should be located"
+            );
+        }
+
+        /// Multi-line declarations (keyword and identifier on different lines)
+        /// must be discovered — the old `contains("struct X")` heuristic missed
+        /// these.
+        #[test]
+        #[serial]
+        fn test_find_external_type_path_multiline() {
+            let (reg, mut analyzer) =
+                FakeRegistry::new(&[("lib.rs", "pub\n  struct\n  Multiline\n{\n    x: i32,\n  }")]);
+            let found = analyzer.find_external_type_path_cached("Multiline");
+            let expected = reg.cargo_home.join("registry/src/dummy-0.1.0/lib.rs");
+            assert_eq!(
+                found.unwrap(),
+                expected,
+                "multi-line struct should be located"
+            );
+        }
+
+        /// Enums with attributes and visibility must be discovered too.
+        #[test]
+        #[serial]
+        fn test_find_external_type_path_enum_with_attributes() {
+            let (reg, mut analyzer) =
+                FakeRegistry::new(&[("lib.rs", "#[derive(Debug)]\npub enum EnumAttr { A, B }")]);
+            let found = analyzer.find_external_type_path_cached("EnumAttr");
+            let expected = reg.cargo_home.join("registry/src/dummy-0.1.0/lib.rs");
+            assert_eq!(
+                found.unwrap(),
+                expected,
+                "pub enum with derive should be located"
+            );
+        }
+
+        /// Types declared inside an inline `mod` block should still be found.
+        #[test]
+        #[serial]
+        fn test_find_external_type_path_nested_module() {
+            let (reg, mut analyzer) =
+                FakeRegistry::new(&[("lib.rs", "mod inner {\n  pub struct Nested;\n}\n")]);
+            let found = analyzer.find_external_type_path_cached("Nested");
+            let expected = reg.cargo_home.join("registry/src/dummy-0.1.0/lib.rs");
+            assert_eq!(
+                found.unwrap(),
+                expected,
+                "struct inside an inline mod should be located"
+            );
+        }
+
+        /// The lookup must not return false positives: a struct whose name only
+        /// *starts with* the searched identifier (e.g. `ExternalFooBar` when
+        /// searching for `ExternalFoo`) must not match. The old substring
+        /// heuristic would incorrectly match this.
+        #[test]
+        #[serial]
+        fn test_find_external_type_path_no_false_positive_prefix() {
+            let (_reg, mut analyzer) =
+                FakeRegistry::new(&[("lib.rs", "pub struct ExternalFooBar;")]);
+            let found = analyzer.find_external_type_path_cached("ExternalFoo");
+            assert!(
+                found.is_none(),
+                "a prefix-named struct must not match the shorter identifier"
+            );
+        }
+
+        /// An absent type must resolve to `None`.
+        #[test]
+        #[serial]
+        fn test_find_external_type_path_missing() {
+            let (_reg, mut analyzer) =
+                FakeRegistry::new(&[("lib.rs", "pub struct SomethingElse;")]);
+            let found = analyzer.find_external_type_path_cached("ExternalFoo");
+            assert!(found.is_none(), "a missing type must resolve to None");
+        }
+
+        /// A file that fails to parse must be skipped, not panic.
+        #[test]
+        #[serial]
+        fn test_find_external_type_path_skips_unparseable_file() {
+            let (_reg, mut analyzer) =
+                FakeRegistry::new(&[("lib.rs", "this is not valid rust !!!")]);
+            let found = analyzer.find_external_type_path_cached("ExternalFoo");
+            assert!(
+                found.is_none(),
+                "an unparseable file must be skipped without panicking"
+            );
+        }
+    }
+
+    mod unresolved_type_reporting {
+        use super::*;
+        use serial_test::serial;
+        use std::env;
+        use std::fs;
+        use std::path::PathBuf;
+
+        /// A freshly constructed analyzer reports no unresolved types.
+        #[test]
+        fn fresh_analyzer_reports_no_unresolved_types() {
+            let analyzer = CommandAnalyzer::default();
+            assert!(
+                analyzer.unresolved_types().is_empty(),
+                "a fresh analyzer must report no unresolved types",
+            );
+        }
+
+        /// A referenced type that is absent from both the (empty) project and
+        /// the (empty/fake) Cargo registry must be recorded as unresolved so the
+        /// previously-silent false negative (#77/#84) becomes observable.
+        #[test]
+        #[serial]
+        fn records_unresolved_type_when_registry_is_empty() {
+            // Point CARGO_HOME at an empty dir so the registry walk finds nothing.
+            let tmp_root: PathBuf = std::env::temp_dir().join(format!(
+                "tauri_typegen_unresolved_empty_{}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos(),
+            ));
+            let _ = std::fs::remove_dir_all(&tmp_root);
+            let cargo_home: PathBuf = tmp_root.join(".cargo");
+            fs::create_dir_all(&cargo_home).expect("create empty cargo home");
+            env::set_var("CARGO_HOME", &cargo_home);
+
+            let mut analyzer = CommandAnalyzer::default();
+            let mut initial: HashSet<String> = HashSet::new();
+            initial.insert("DefinitelyMissing".to_string());
+
+            analyzer
+                .resolve_types_lazily(&initial)
+                .expect("resolve pass");
+
+            let unresolved = analyzer.unresolved_types();
+            assert!(
+                unresolved.contains(&"DefinitelyMissing".to_string()),
+                "an absent type must be recorded as unresolved, got: {:?}",
+                unresolved,
+            );
+
+            let _ = std::fs::remove_dir_all(&tmp_root);
+        }
+
+        /// When the registry is missing entirely (no `registry/src` at all),
+        /// the walk must not panic and the type must still be reported.
+        #[test]
+        #[serial]
+        fn records_unresolved_type_when_registry_dir_absent() {
+            let tmp_root: PathBuf = std::env::temp_dir().join(format!(
+                "tauri_typegen_unresolved_absent_{}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos(),
+            ));
+            let _ = std::fs::remove_dir_all(&tmp_root);
+            // Create the cargo home but NOT registry/src inside it.
+            fs::create_dir_all(&tmp_root).expect("create cargo home root");
+            env::set_var("CARGO_HOME", &tmp_root);
+
+            let mut analyzer = CommandAnalyzer::default();
+            let mut initial: HashSet<String> = HashSet::new();
+            initial.insert("NoRegistryHere".to_string());
+
+            analyzer
+                .resolve_types_lazily(&initial)
+                .expect("resolve pass");
+
+            assert!(
+                analyzer
+                    .unresolved_types()
+                    .contains(&"NoRegistryHere".to_string()),
+                "a missing registry dir must still yield an unresolved report",
+            );
+
+            let _ = std::fs::remove_dir_all(&tmp_root);
+        }
+
+        /// A type that IS resolvable in-project (present in the dependency
+        /// graph with a real on-disk source file) must NOT appear in the
+        /// unresolved list — guards against the warning firing for happy-path
+        /// types.
+        #[test]
+        #[serial]
+        fn resolved_type_is_not_reported_unresolved() {
+            let tmp_root: PathBuf = std::env::temp_dir().join(format!(
+                "tauri_typegen_unresolved_resolved_{}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos(),
+            ));
+            let _ = std::fs::remove_dir_all(&tmp_root);
+            let cargo_home: PathBuf = tmp_root.join(".cargo");
+            fs::create_dir_all(&cargo_home).expect("create cargo home");
+            env::set_var("CARGO_HOME", &cargo_home);
+
+            // Real on-disk Rust source declaring the type. Must carry a
+            // Serialize/Deserialize derive, otherwise should_include_struct
+            // filters it out (project policy).
+            let src_file: PathBuf = tmp_root.join("types.rs");
+            fs::write(
+                &src_file,
+                "use serde::Serialize;\n#[derive(Serialize)]\npub struct ResolvedType { a: i32 }",
+            )
+            .expect("write source");
+
+            let mut analyzer = CommandAnalyzer::default();
+            // Parse + cache the file so extract_type_from_ast can find it.
+            analyzer
+                .ast_cache
+                .parse_and_cache_file(&src_file)
+                .expect("parse source file");
+            // Tell the dependency graph where the type lives.
+            analyzer
+                .dependency_graph
+                .add_type_definition("ResolvedType".to_string(), src_file.clone());
+
+            let mut initial: HashSet<String> = HashSet::new();
+            initial.insert("ResolvedType".to_string());
+
+            analyzer
+                .resolve_types_lazily(&initial)
+                .expect("resolve pass");
+
+            assert!(
+                analyzer.discovered_structs.contains_key("ResolvedType"),
+                "the in-project type should have been resolved",
+            );
+            assert!(
+                !analyzer
+                    .unresolved_types()
+                    .contains(&"ResolvedType".to_string()),
+                "a resolved in-project type must not be reported unresolved",
+            );
+
+            let _ = std::fs::remove_dir_all(&tmp_root);
+        }
+
+        /// The `CARGO_HOME` fallback must work when only `USERPROFILE` is set
+        /// (Windows-style), and `HOME` is unset — regression for the
+        /// `format!("{}/.cargo", h)` path that produced wrong paths on Windows.
+        #[test]
+        #[serial]
+        fn cargo_home_fallback_uses_userprofile_when_home_absent() {
+            let tmp_root: PathBuf = std::env::temp_dir().join(format!(
+                "tauri_typegen_userprofile_{}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos(),
+            ));
+            let _ = std::fs::remove_dir_all(&tmp_root);
+            // Build the registry under a fake "user profile" home.
+            let src_dir: PathBuf = tmp_root.join(".cargo").join("registry/src");
+            let crate_dir: PathBuf = src_dir.join("windep-0.1.0");
+            fs::create_dir_all(&crate_dir).expect("create registry crate dir");
+            let file_path: PathBuf = crate_dir.join("lib.rs");
+            fs::write(&file_path, "pub struct WinOnly;").expect("write registry file");
+
+            env::remove_var("CARGO_HOME");
+            env::remove_var("HOME");
+            env::set_var("USERPROFILE", &tmp_root);
+
+            let mut analyzer = CommandAnalyzer::default();
+            let found = analyzer.find_external_type_path_cached("WinOnly");
+            assert_eq!(
+                found.unwrap(),
+                file_path,
+                "USERPROFILE fallback must locate the type without HOME/CARGO_HOME",
+            );
+
+            let _ = std::fs::remove_dir_all(&tmp_root);
+        }
+    }
+
+    mod external_type_lookup_caching {
+        use super::*;
+        use serial_test::serial;
+        use std::env;
+        use std::fs;
+        use std::path::PathBuf;
+
+        /// Build a fake registry rooted at a temp `CARGO_HOME`, write the given
+        /// files under `registry/src/dummy-0.1.0/`, set `CARGO_HOME`, and return
+        /// the analyzer + a handle on the temp dir for cleanup.
+        fn registry_with(files: &[(&str, &str)]) -> (PathBuf, CommandAnalyzer) {
+            let root: PathBuf = std::env::temp_dir().join(format!(
+                "tauri_typegen_caching_{}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos(),
+            ));
+            let _ = std::fs::remove_dir_all(&root);
+            let cargo_home: PathBuf = root.join(".cargo");
+            let crate_dir: PathBuf = cargo_home.join("registry/src/dummy-0.1.0");
+            fs::create_dir_all(&crate_dir).expect("create registry crate dir");
+            for (name, content) in files {
+                fs::write(crate_dir.join(name), content).expect("write file");
+            }
+            env::set_var("CARGO_HOME", &cargo_home);
+            (root, CommandAnalyzer::default())
+        }
+
+        /// A successful lookup populates the cache so the next lookup for the
+        /// same name is served without re-walking.
+        #[test]
+        #[serial]
+        fn caches_positive_result() {
+            let (root, mut analyzer) = registry_with(&[("lib.rs", "pub struct CachedFoo;")]);
+
+            let first = analyzer.find_external_type_path_cached("CachedFoo");
+            assert!(first.is_some(), "first lookup should find the type");
+            // The cache must now hold the result.
+            assert_eq!(
+                analyzer.external_type_lookup_cache.get("CachedFoo"),
+                Some(&first.clone()),
+                "positive result must be memoized in external_type_lookup_cache",
+            );
+
+            let second = analyzer.find_external_type_path_cached("CachedFoo");
+            assert_eq!(first, second, "second lookup must return the cached value",);
+
+            let _ = std::fs::remove_dir_all(&root);
+        }
+
+        /// A failed lookup records `None` in the cache so a repeated lookup for
+        /// the same missing type does not re-walk the registry (#87's core
+        /// complaint: no negative-result caching).
+        #[test]
+        #[serial]
+        fn caches_negative_result() {
+            let (root, mut analyzer) = registry_with(&[("lib.rs", "pub struct SomethingElse;")]);
+
+            let first = analyzer.find_external_type_path_cached("MissingType");
+            assert!(first.is_none(), "first lookup should miss");
+            // Negative results are cached as `Some(None)` so repeats are O(1).
+            assert_eq!(
+                analyzer.external_type_lookup_cache.get("MissingType"),
+                Some(&None),
+                "negative result must be memoized as Some(None)",
+            );
+
+            let second = analyzer.find_external_type_path_cached("MissingType");
+            assert!(
+                second.is_none(),
+                "second lookup for a cached-miss must still return None",
+            );
+
+            let _ = std::fs::remove_dir_all(&root);
+        }
+
+        /// Distinct type names get independent cache entries.
+        #[test]
+        #[serial]
+        fn caches_distinct_types_independently() {
+            let (root, mut analyzer) =
+                registry_with(&[("lib.rs", "pub struct Alpha;\npub struct Beta;\n")]);
+
+            let alpha = analyzer.find_external_type_path_cached("Alpha");
+            let beta = analyzer.find_external_type_path_cached("Beta");
+            // A lookup for a third, absent name should not disturb the others.
+            let gamma = analyzer.find_external_type_path_cached("Gamma");
+
+            assert!(alpha.is_some() && beta.is_some());
+            assert!(gamma.is_none());
+            assert_eq!(analyzer.external_type_lookup_cache.len(), 3);
+            assert!(analyzer.external_type_lookup_cache.contains_key("Alpha"));
+            assert!(analyzer.external_type_lookup_cache.contains_key("Beta"));
+            assert!(analyzer.external_type_lookup_cache.contains_key("Gamma"));
+
+            let _ = std::fs::remove_dir_all(&root);
+        }
+    }
+
+    mod external_type_cache_seeding {
+        use super::*;
+        use serial_test::serial;
+        use std::env;
+        use std::fs;
+        use std::path::PathBuf;
+
+        /// Seeding the analyzer from a previous run's index must short-circuit
+        /// the registry walk: a seeded positive entry is returned even when the
+        /// registry is empty (so the walk would otherwise return None).
+        #[test]
+        #[serial]
+        fn seeded_positive_entry_skips_walk() {
+            let tmp_root: PathBuf = std::env::temp_dir().join(format!(
+                "tauri_typegen_seeding_pos_{}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos(),
+            ));
+            let _ = std::fs::remove_dir_all(&tmp_root);
+            // Empty registry — the walk would find nothing.
+            let cargo_home: PathBuf = tmp_root.join(".cargo");
+            fs::create_dir_all(&cargo_home).expect("create empty cargo home");
+            env::set_var("CARGO_HOME", &cargo_home);
+
+            let mut analyzer = CommandAnalyzer::default();
+            let mut seed: HashMap<String, Option<PathBuf>> = HashMap::new();
+            seed.insert(
+                "SeededType".to_string(),
+                Some(PathBuf::from("/fake/registry/seeded.rs")),
+            );
+            analyzer.seed_external_type_cache(seed);
+
+            let found = analyzer.find_external_type_path_cached("SeededType");
+            assert_eq!(
+                found,
+                Some(PathBuf::from("/fake/registry/seeded.rs")),
+                "a seeded positive entry must be returned without walking",
+            );
+
+            let _ = std::fs::remove_dir_all(&tmp_root);
+        }
+
+        /// A seeded negative entry is honored: the walk is skipped and None is
+        /// returned even if the type now exists in the registry. (Stale
+        /// negatives are an accepted trade-off matching .typecache's existing
+        /// source-stability assumption; invalidation rides the command/struct
+        /// hashes via needs_regeneration.)
+        #[test]
+        #[serial]
+        fn seeded_negative_entry_skips_walk() {
+            let tmp_root: PathBuf = std::env::temp_dir().join(format!(
+                "tauri_typegen_seeding_neg_{}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos(),
+            ));
+            let _ = std::fs::remove_dir_all(&tmp_root);
+            let cargo_home: PathBuf = tmp_root.join(".cargo");
+            let crate_dir: PathBuf = cargo_home.join("registry/src/dummy-0.1.0");
+            fs::create_dir_all(&crate_dir).expect("create registry crate dir");
+            // The type genuinely exists now, but the seed says it's missing.
+            fs::write(crate_dir.join("lib.rs"), "pub struct ActuallyHere;").expect("write file");
+            env::set_var("CARGO_HOME", &cargo_home);
+
+            let mut analyzer = CommandAnalyzer::default();
+            let mut seed: HashMap<String, Option<PathBuf>> = HashMap::new();
+            seed.insert("ActuallyHere".to_string(), None);
+            analyzer.seed_external_type_cache(seed);
+
+            let found = analyzer.find_external_type_path_cached("ActuallyHere");
+            assert!(
+                found.is_none(),
+                "a seeded negative entry must short-circuit and return None",
+            );
+
+            let _ = std::fs::remove_dir_all(&tmp_root);
+        }
+
+        /// A type absent from the seed is still resolved via the walk and then
+        /// memoized, so a partial/empty seed is safe.
+        #[test]
+        #[serial]
+        fn unseeded_type_falls_back_to_walk() {
+            let tmp_root: PathBuf = std::env::temp_dir().join(format!(
+                "tauri_typegen_seeding_fallback_{}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos(),
+            ));
+            let _ = std::fs::remove_dir_all(&tmp_root);
+            let cargo_home: PathBuf = tmp_root.join(".cargo");
+            let crate_dir: PathBuf = cargo_home.join("registry/src/dummy-0.1.0");
+            fs::create_dir_all(&crate_dir).expect("create registry crate dir");
+            let file_path: PathBuf = crate_dir.join("lib.rs");
+            fs::write(&file_path, "pub struct WalkResolved;").expect("write file");
+            env::set_var("CARGO_HOME", &cargo_home);
+
+            let mut analyzer = CommandAnalyzer::default();
+            // Empty seed.
+            analyzer.seed_external_type_cache(HashMap::new());
+
+            let found = analyzer.find_external_type_path_cached("WalkResolved");
+            assert_eq!(
+                found.unwrap(),
+                file_path,
+                "an unseeded type must be found via the walk",
+            );
+            assert!(
+                analyzer
+                    .external_type_lookup_cache()
+                    .contains_key("WalkResolved"),
+                "the walk result must be memoized after resolving",
+            );
+
+            let _ = std::fs::remove_dir_all(&tmp_root);
         }
     }
 }

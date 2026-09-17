@@ -6,6 +6,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.3] - 2026-09-17
+
+### Added
+- **External-Crate Type Resolution**: Resolve types imported from dependencies by walking the Cargo registry source tree, so moving types to a separate crate no longer drops them from the output (#77/#78)
+
+### Fixed
+- **External-Crate Type Discovery**: Discover external types declared with visibility modifiers, attributes, or generics (`pub(crate) struct X`, `#[derive(Debug)] pub struct X<T>`, multi-line) — the original substring heuristic missed these and produced false positives on prefix-named types (#82)
+  - Match is now `syn`-based on the item identifier; unparseable registry files are skipped
+- **External Crate Lookup Diagnostics**: Unresolved referenced types are no longer silently dropped; they are recorded and surfaced as a non-fatal stderr warning, and exposed via `CommandAnalyzer::unresolved_types()` (#84)
+- **Windows `CARGO_HOME` Fallback**: Use `PathBuf::join` (not string formatting) and honor `USERPROFILE` when `HOME` is unset (#84)
+
+### Changed
+- **Persisted External-Type Lookup Index**: The external-crate type index is persisted in `.typecache` and seeded into the analyzer each run, so warm builds skip the registry walk (#87)
+  - `GenerationCache` cache format bumped to v3; the index is excluded from the regeneration hash
+  - Added `CommandAnalyzer::seed_external_type_cache()` and `external_type_lookup_cache()`
+
 ## [0.5.2] - 2026-06-21
 
 ### Fixed
