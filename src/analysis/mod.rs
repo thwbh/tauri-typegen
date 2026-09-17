@@ -10,6 +10,8 @@ pub mod validator_parser;
 
 use crate::models::{ChannelInfo, CommandInfo, EventInfo, StructInfo};
 use std::collections::{HashMap, HashSet};
+use std::env;
+use std::fs;
 use std::path::{Path, PathBuf};
 
 use ast_cache::AstCache;
@@ -295,8 +297,21 @@ impl CommandAnalyzer {
                 .dependency_graph
                 .get_type_definition_path(&type_name)
                 .cloned()
+                .or_else(|| {
+                    // External crate lookup
+                    if let Some(ext_path) = self.find_external_type_path(&type_name) {
+                        // Cache the discovery for future look‑ups
+                        self.dependency_graph
+                            .add_type_definition(type_name.clone(), ext_path.clone());
+                        let _ = self.ast_cache.parse_and_cache_file(&ext_path);
+                        Some(ext_path)
+                    } else {
+                        None
+                    }
+                })
             {
                 if let Some(parsed_file) = self.ast_cache.get_cloned(&file_path) {
+                    self.index_items(&parsed_file.ast.items, &file_path);
                     // Find and parse the specific type from the cached AST
                     if let Some(struct_info) = self.extract_type_from_ast(
                         &parsed_file.ast,
@@ -340,7 +355,8 @@ impl CommandAnalyzer {
                         for dep_type in &type_dependencies {
                             if !resolved_types.contains(dep_type)
                                 && !self.discovered_structs.contains_key(dep_type)
-                                && self.dependency_graph.has_type_definition(dep_type)
+                                && (self.dependency_graph.has_type_definition(dep_type)
+                                    || self.find_external_type_path(dep_type).is_some())
                             {
                                 types_to_resolve.push(dep_type.clone());
                             }
@@ -360,6 +376,40 @@ impl CommandAnalyzer {
         }
 
         Ok(())
+    }
+
+    // Find type paths from external crates
+    fn find_external_type_path(&self, type_name: &str) -> Option<PathBuf> {
+        // Resolve Cargo home – fall back to $HOME/.cargo if the env var is missing.
+        let cargo_home: String = env::var("CARGO_HOME")
+            .or_else(|_| env::var("HOME").map(|h| format!("{}/.cargo", h)))
+            .ok()?;
+        let src_dir: PathBuf = PathBuf::from(cargo_home).join("registry/src");
+
+        // Walk the registry tree depth‑first.
+        let mut dirs: Vec<PathBuf> = vec![src_dir];
+        while let Some(dir) = dirs.pop() {
+            let entries: fs::ReadDir = fs::read_dir(&dir).ok()?;
+            for entry in entries.filter_map(Result::ok) {
+                let path: PathBuf = entry.path();
+                if path.is_dir() {
+                    dirs.push(path);
+                    continue;
+                }
+                if path.extension().and_then(|s| s.to_str()) != Some("rs") {
+                    continue;
+                }
+                // Cheap heuristic – read the file and look for the exact identifier.
+                if let Ok(content) = fs::read_to_string(&path) {
+                    let struct_pat: String = format!("struct {}", type_name);
+                    let enum_pat: String = format!("enum {}", type_name);
+                    if content.contains(&struct_pat) || content.contains(&enum_pat) {
+                        return Some(path);
+                    }
+                }
+            }
+        }
+        None
     }
 
     /// Extract a specific type from a cached AST
@@ -1118,6 +1168,37 @@ mod tests {
             let dot = analyzer.generate_dot_graph(&commands);
             // Verify basic DOT format
             assert!(dot.contains("digraph"));
+        }
+    }
+
+    mod external_type_lookup {
+        use super::*;
+        use std::env;
+        use std::fs;
+        use std::path::PathBuf;
+
+        #[test]
+        fn test_find_external_type_path() {
+            let tmp_root: PathBuf = std::env::temp_dir().join("tauri_typegen_external_test");
+            let _ = std::fs::remove_dir_all(&tmp_root);
+            let cargo_home: PathBuf = tmp_root.join(".cargo");
+            let src_dir: PathBuf = cargo_home.join("registry/src");
+            let crate_dir: PathBuf = src_dir.join("dummy-0.1.0");
+            fs::create_dir_all(&crate_dir).expect("create temp crate dir");
+
+            let file_path: PathBuf = crate_dir.join("lib.rs");
+            fs::write(&file_path, "pub struct ExternalFoo;").expect("write dummy crate file");
+
+            env::set_var("CARGO_HOME", &cargo_home);
+
+            let analyzer: CommandAnalyzer = CommandAnalyzer::default();
+            let found: Option<PathBuf> = analyzer.find_external_type_path("ExternalFoo");
+
+            assert_eq!(
+                found.unwrap(),
+                file_path,
+                "the external‑type lookup should locate the dummy `ExternalFoo`"
+            );
         }
     }
 }
