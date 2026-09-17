@@ -378,13 +378,29 @@ impl CommandAnalyzer {
         Ok(())
     }
 
-    // Find type paths from external crates
+    // Find type paths from external crates.
+    //
+    // Walks the Cargo registry source tree and, for each `.rs` file, looks for a
+    // `struct` or `enum` item whose identifier exactly matches `type_name`. The
+    // match is performed on the parsed AST (via `syn`) rather than with a raw
+    // substring search, so it correctly handles visibility modifiers
+    // (`pub`, `pub(crate)`), attributes (`#[derive(...)]`), generics
+    // (`struct X<T>`), and multi-line declarations — all of which the previous
+    // `content.contains("struct X")` heuristic missed or matched incorrectly
+    // (see issue #82). A cheap `contains` pre-filter keeps the registry walk fast
+    // by skipping files that cannot possibly declare the type.
     fn find_external_type_path(&self, type_name: &str) -> Option<PathBuf> {
         // Resolve Cargo home – fall back to $HOME/.cargo if the env var is missing.
         let cargo_home: String = env::var("CARGO_HOME")
             .or_else(|_| env::var("HOME").map(|h| format!("{}/.cargo", h)))
             .ok()?;
         let src_dir: PathBuf = PathBuf::from(cargo_home).join("registry/src");
+
+        // A cheap substring pre-filter: only the identifier, without the
+        // `struct`/`enum` keyword, so that `pub struct X`, `pub(crate) enum X`,
+        // and `struct\n  X` all pass through to the AST check. This avoids parsing
+        // the vast majority of registry files that cannot contain the type.
+        let needle: String = type_name.to_string();
 
         // Walk the registry tree depth‑first.
         let mut dirs: Vec<PathBuf> = vec![src_dir];
@@ -399,17 +415,54 @@ impl CommandAnalyzer {
                 if path.extension().and_then(|s| s.to_str()) != Some("rs") {
                     continue;
                 }
-                // Cheap heuristic – read the file and look for the exact identifier.
-                if let Ok(content) = fs::read_to_string(&path) {
-                    let struct_pat: String = format!("struct {}", type_name);
-                    let enum_pat: String = format!("enum {}", type_name);
-                    if content.contains(&struct_pat) || content.contains(&enum_pat) {
-                        return Some(path);
-                    }
+                // Cheap pre-filter on the raw source before paying for a full parse.
+                let content: String = match fs::read_to_string(&path) {
+                    Ok(c) => c,
+                    Err(_) => continue,
+                };
+                if !content.contains(&needle) {
+                    continue;
+                }
+                // Authoritative check on the parsed AST.
+                if Self::file_declares_type(&content, type_name) {
+                    return Some(path);
                 }
             }
         }
         None
+    }
+
+    /// Returns `true` if `source` declares a `struct` or `enum` item whose
+    /// identifier equals `type_name`. Items nested inside `mod` blocks are
+    /// considered as well, mirroring how the analyzer indexes local modules.
+    /// Files that fail to parse (e.g. macro-heavy or generated sources) yield
+    /// `false` so they are simply skipped during the registry walk.
+    fn file_declares_type(source: &str, type_name: &str) -> bool {
+        let file: syn::File = match syn::parse_file(source) {
+            Ok(f) => f,
+            Err(_) => return false,
+        };
+        Self::items_declare_type(&file.items, type_name)
+    }
+
+    fn items_declare_type(items: &[syn::Item], type_name: &str) -> bool {
+        for item in items {
+            let declares = match item {
+                syn::Item::Struct(s) => s.ident == type_name,
+                syn::Item::Enum(e) => e.ident == type_name,
+                // Recurse into inline modules so types declared in `mod x { ... }`
+                // blocks within a single file are still discovered.
+                syn::Item::Mod(m) => match &m.content {
+                    Some((_, inner)) => Self::items_declare_type(inner, type_name),
+                    None => false,
+                },
+                _ => false,
+            };
+            if declares {
+                return true;
+            }
+        }
+        false
     }
 
     /// Extract a specific type from a cached AST
@@ -1173,31 +1226,190 @@ mod tests {
 
     mod external_type_lookup {
         use super::*;
+        use serial_test::serial;
         use std::env;
         use std::fs;
         use std::path::PathBuf;
 
+        /// Build a fake Cargo registry rooted at a temp dir, write the given
+        /// source files into `registry/src/dummy-0.1.0/`, point `CARGO_HOME` at
+        /// it, and return the analyzer + the path that a declaration in
+        /// `lib.rs` should resolve to.
+        struct FakeRegistry {
+            _root: PathBuf,
+            cargo_home: PathBuf,
+        }
+
+        impl FakeRegistry {
+            fn new(files: &[(&str, &str)]) -> (Self, CommandAnalyzer) {
+                let root: PathBuf = std::env::temp_dir().join(format!(
+                    "tauri_typegen_external_test_{}",
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_nanos(),
+                ));
+                let _ = std::fs::remove_dir_all(&root);
+                let cargo_home: PathBuf = root.join(".cargo");
+                let src_dir: PathBuf = cargo_home.join("registry/src");
+                let crate_dir: PathBuf = src_dir.join("dummy-0.1.0");
+                fs::create_dir_all(&crate_dir).expect("create temp crate dir");
+                for (name, content) in files {
+                    fs::write(crate_dir.join(name), content).expect("write file");
+                }
+                env::set_var("CARGO_HOME", &cargo_home);
+                let fake = FakeRegistry {
+                    _root: root.clone(),
+                    cargo_home,
+                };
+                (fake, CommandAnalyzer::default())
+            }
+        }
+
+        impl Drop for FakeRegistry {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self._root);
+            }
+        }
+
         #[test]
-        fn test_find_external_type_path() {
-            let tmp_root: PathBuf = std::env::temp_dir().join("tauri_typegen_external_test");
-            let _ = std::fs::remove_dir_all(&tmp_root);
-            let cargo_home: PathBuf = tmp_root.join(".cargo");
-            let src_dir: PathBuf = cargo_home.join("registry/src");
-            let crate_dir: PathBuf = src_dir.join("dummy-0.1.0");
-            fs::create_dir_all(&crate_dir).expect("create temp crate dir");
+        #[serial]
+        fn test_find_external_type_path_pub_struct() {
+            let (reg, analyzer) = FakeRegistry::new(&[("lib.rs", "pub struct ExternalFoo;")]);
+            let found = analyzer.find_external_type_path("ExternalFoo");
+            let expected = reg.cargo_home.join("registry/src/dummy-0.1.0/lib.rs");
+            assert_eq!(found.unwrap(), expected, "pub struct should be located");
+        }
 
-            let file_path: PathBuf = crate_dir.join("lib.rs");
-            fs::write(&file_path, "pub struct ExternalFoo;").expect("write dummy crate file");
-
-            env::set_var("CARGO_HOME", &cargo_home);
-
-            let analyzer: CommandAnalyzer = CommandAnalyzer::default();
-            let found: Option<PathBuf> = analyzer.find_external_type_path("ExternalFoo");
-
+        /// Regression for issue #82: visibility modifiers such as `pub(crate)`
+        /// must not prevent discovery.
+        #[test]
+        #[serial]
+        fn test_find_external_type_path_pub_crate_visibility() {
+            let (reg, analyzer) = FakeRegistry::new(&[("lib.rs", "pub(crate) struct VisCrate;")]);
+            let found = analyzer.find_external_type_path("VisCrate");
+            let expected = reg.cargo_home.join("registry/src/dummy-0.1.0/lib.rs");
             assert_eq!(
                 found.unwrap(),
-                file_path,
-                "the external‑type lookup should locate the dummy `ExternalFoo`"
+                expected,
+                "pub(crate) struct should be located"
+            );
+        }
+
+        /// Regression for issue #82: derive attributes preceding the
+        /// declaration must not prevent discovery.
+        #[test]
+        #[serial]
+        fn test_find_external_type_path_with_derive_attributes() {
+            let (reg, analyzer) = FakeRegistry::new(&[(
+                "lib.rs",
+                "#[derive(Debug, Clone)]\npub struct WithDerives { field: i32 }",
+            )]);
+            let found = analyzer.find_external_type_path("WithDerives");
+            let expected = reg.cargo_home.join("registry/src/dummy-0.1.0/lib.rs");
+            assert_eq!(
+                found.unwrap(),
+                expected,
+                "#[derive(...)] pub struct should be located"
+            );
+        }
+
+        /// Regression for issue #82: generic parameters must not prevent
+        /// discovery.
+        #[test]
+        #[serial]
+        fn test_find_external_type_path_with_generics() {
+            let (reg, analyzer) =
+                FakeRegistry::new(&[("lib.rs", "pub struct Generic<T, U> { a: T, b: U }")]);
+            let found = analyzer.find_external_type_path("Generic");
+            let expected = reg.cargo_home.join("registry/src/dummy-0.1.0/lib.rs");
+            assert_eq!(
+                found.unwrap(),
+                expected,
+                "generic pub struct should be located"
+            );
+        }
+
+        /// Multi-line declarations (keyword and identifier on different lines)
+        /// must be discovered — the old `contains("struct X")` heuristic missed
+        /// these.
+        #[test]
+        #[serial]
+        fn test_find_external_type_path_multiline() {
+            let (reg, analyzer) =
+                FakeRegistry::new(&[("lib.rs", "pub\n  struct\n  Multiline\n{\n    x: i32,\n  }")]);
+            let found = analyzer.find_external_type_path("Multiline");
+            let expected = reg.cargo_home.join("registry/src/dummy-0.1.0/lib.rs");
+            assert_eq!(
+                found.unwrap(),
+                expected,
+                "multi-line struct should be located"
+            );
+        }
+
+        /// Enums with attributes and visibility must be discovered too.
+        #[test]
+        #[serial]
+        fn test_find_external_type_path_enum_with_attributes() {
+            let (reg, analyzer) =
+                FakeRegistry::new(&[("lib.rs", "#[derive(Debug)]\npub enum EnumAttr { A, B }")]);
+            let found = analyzer.find_external_type_path("EnumAttr");
+            let expected = reg.cargo_home.join("registry/src/dummy-0.1.0/lib.rs");
+            assert_eq!(
+                found.unwrap(),
+                expected,
+                "pub enum with derive should be located"
+            );
+        }
+
+        /// Types declared inside an inline `mod` block should still be found.
+        #[test]
+        #[serial]
+        fn test_find_external_type_path_nested_module() {
+            let (reg, analyzer) =
+                FakeRegistry::new(&[("lib.rs", "mod inner {\n  pub struct Nested;\n}\n")]);
+            let found = analyzer.find_external_type_path("Nested");
+            let expected = reg.cargo_home.join("registry/src/dummy-0.1.0/lib.rs");
+            assert_eq!(
+                found.unwrap(),
+                expected,
+                "struct inside an inline mod should be located"
+            );
+        }
+
+        /// The lookup must not return false positives: a struct whose name only
+        /// *starts with* the searched identifier (e.g. `ExternalFooBar` when
+        /// searching for `ExternalFoo`) must not match. The old substring
+        /// heuristic would incorrectly match this.
+        #[test]
+        #[serial]
+        fn test_find_external_type_path_no_false_positive_prefix() {
+            let (_reg, analyzer) = FakeRegistry::new(&[("lib.rs", "pub struct ExternalFooBar;")]);
+            let found = analyzer.find_external_type_path("ExternalFoo");
+            assert!(
+                found.is_none(),
+                "a prefix-named struct must not match the shorter identifier"
+            );
+        }
+
+        /// An absent type must resolve to `None`.
+        #[test]
+        #[serial]
+        fn test_find_external_type_path_missing() {
+            let (_reg, analyzer) = FakeRegistry::new(&[("lib.rs", "pub struct SomethingElse;")]);
+            let found = analyzer.find_external_type_path("ExternalFoo");
+            assert!(found.is_none(), "a missing type must resolve to None");
+        }
+
+        /// A file that fails to parse must be skipped, not panic.
+        #[test]
+        #[serial]
+        fn test_find_external_type_path_skips_unparseable_file() {
+            let (_reg, analyzer) = FakeRegistry::new(&[("lib.rs", "this is not valid rust !!!")]);
+            let found = analyzer.find_external_type_path("ExternalFoo");
+            assert!(
+                found.is_none(),
+                "an unparseable file must be skipped without panicking"
             );
         }
     }
